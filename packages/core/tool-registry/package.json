@@ -1,0 +1,72 @@
+{
+  "name": "@gonk/tool-registry",
+  "version": "0.0.8",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./registry": {
+      "types": "./dist/registry.d.ts",
+      "import": "./dist/registry.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js"
+    },
+    "./metrics": {
+      "types": "./dist/metrics.d.ts",
+      "import": "./dist/metrics.js"
+    },
+    "./shape": {
+      "types": "./dist/shape.d.ts",
+      "import": "./dist/shape.js"
+    },
+    "./approval": {
+      "types": "./dist/approval.d.ts",
+      "import": "./dist/approval.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "catalog:"
+  },
+  "peerDependencies": {
+    "@gonk/scope": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@gonk/scope": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@gonk/scope": "workspace:*",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "description": "Core tool definition shape, registry, and dispatch path. Harness-agnostic — the same ToolDefinition runs through CLI, MCP, and Pi adapters.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/core/tool-registry"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@gonk/core",
+  "version": "0.0.8",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gonk/scope": "workspace:*",
+    "@gonk/tool-registry": "workspace:*"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "description": "Barrel over the gonk foundation — the typed tool registry (@gonk/tool-registry) and the five-tier scope system (@gonk/scope) under one import. `import { ToolRegistry, createScope } from \"@gonk/core\"`. Import the focused package directly for a tighter dependency.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/core/core"
+  }
+}

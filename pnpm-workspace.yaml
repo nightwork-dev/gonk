@@ -1,0 +1,63 @@
+packages:
+  - "packages/*/*"
+
+# Write exact versions (no ^ range) on `pnpm add`.
+savePrefix: ""
+
+# Pin the MCP SDK's HTTP-transport deps to the newest releases >7 days old, so a fresh
+# lockfile satisfies the supply-chain cooldown below. hono@4.12.25 satisfies the SDK's
+# ^4.11.4; body-parser@2.2.2 (via express@5's ^2.2.1) sidesteps the just-published
+# 2.3.0. Bump these deliberately when revisiting @modelcontextprotocol/sdk.
+overrides:
+  hono: 4.12.25
+  body-parser: 2.2.2
+
+# Supply-chain cooldown: refuse to install any version published less than this
+# many minutes ago (7 days). Defends against pulling a just-published compromised
+# release before it is detected and yanked. Only affects fresh resolution — a
+# frozen install replays the lockfile and is unaffected. Workspace deps are linked,
+# not fetched, so internal @gonk packages are never gated.
+minimumReleaseAge: 10080
+
+# Exempt the pi upstream from the cooldown: @earendil-works/* (the harness host)
+# and @mariozechner/* (its first-party deps, from the same author) are tracked
+# closely and bumped deliberately — pinned exact in the catalog, reviewed on bump.
+# Trade-off: a compromised pi release would not be caught by the delay. The cooldown
+# still guards the rest of the dependency surface.
+#
+# The @aws-sdk/@smithy/@google/protobufjs entries are pi-ai's provider SDKs (Bedrock,
+# Gemini), pulled transitively via @earendil-works/pi-agent-core — which is a *peer*
+# dependency here (dev-only, used `import type` to typecheck the pi adapter). Core
+# never ships them. They publish daily, so a fresh resolution can never satisfy a
+# 7-day cooldown; excluding the pi-provider surface lets the lockfile generate while
+# the cooldown still guards every dep core actually ships. @rollup/* are the build
+# chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
+minimumReleaseAgeExclude:
+  - "@earendil-works/*"
+  - "@mariozechner/*"
+  - "@aws-sdk/*"
+  - "@smithy/*"
+  - "@google/*"
+  - "protobufjs"
+  - "@rollup/*"
+  - "rollup"
+
+# Canonical versions for heavily-reused dependencies. Packages reference these via
+# "catalog:" so a version lives in exactly one place. Bump here, not in every file.
+catalog:
+  "@earendil-works/pi-agent-core": 0.77.0
+  "@modelcontextprotocol/sdk": 1.29.0
+  "@standard-schema/spec": 1.1.0
+  "@types/node": 22.19.17
+  tsup: 8.5.1
+  typebox: 1.1.38
+  typescript: 5.9.3
+  vitest: 2.1.9
+  yaml: 2.9.0
+
+# Which dependencies may run install/build lifecycle scripts. Everything not listed
+# is blocked — the primary defense against npm-malware that executes in postinstall.
+allowBuilds:
+  "@google/genai": false
+  esbuild: false
+  protobufjs: false

@@ -1,0 +1,55 @@
+{
+  "name": "@gonk/scope",
+  "version": "0.0.8",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./fs": {
+      "types": "./dist/fs.d.ts",
+      "import": "./dist/fs.js"
+    },
+    "./memory": {
+      "types": "./dist/memory.d.ts",
+      "import": "./dist/memory.js"
+    },
+    "./resolver": {
+      "types": "./dist/resolver.d.ts",
+      "import": "./dist/resolver.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "description": "Five-tier scope abstraction for the gonk harness. Multi-root, symlink-aware, with blob storage and ambient-document scanning.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/core/scope"
+  }
+}

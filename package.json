@@ -1,0 +1,23 @@
+{
+  "name": "core",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.5.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/changelog-github": "0.7.0",
+    "@changesets/cli": "2.31.0",
+    "tsup": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "name": "@gonk/tool-registry-mcp",
+  "version": "0.0.8",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./http": {
+      "types": "./dist/http/index.d.ts",
+      "import": "./dist/http/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "gonk-mcp-http": "./dist/http/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "catalog:",
+    "@gonk/tool-registry": "workspace:*",
+    "@gonk/tool-orchestrator": "workspace:*"
+  },
+  "devDependencies": {
+    "@standard-schema/spec": "catalog:",
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "description": "MCP adapter — exposes a ToolRegistry or Orchestrator over the Model Context Protocol, over stdio or (via the @gonk/tool-registry-mcp/http subpath) streamable-HTTP for remote clients.",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/adapters/tool-registry-mcp"
+  }
+}
