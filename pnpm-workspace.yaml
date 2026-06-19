@@ -61,4 +61,5 @@ catalog:
 allowBuilds:
   "@google/genai": false
   esbuild: false
+  nx: false
   protobufjs: false

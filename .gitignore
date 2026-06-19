@@ -4,4 +4,5 @@ dist/
 .vite/
 .omc/
 .gonk/
+.nx/
 .DS_Store
