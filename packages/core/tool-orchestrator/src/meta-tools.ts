@@ -8,7 +8,7 @@ export type { ExplainResult, ToolExplainRecord } from "./explain.ts";
 
 // =============================================================================
 // Schemas — built with `shape()` from @gonk/tool-registry/shape so we
-// don't have to depend on a schema library for these five meta-tools.
+// don't have to depend on a schema library for these six meta-tools.
 // =============================================================================
 
 const isOptionalString = (v: unknown): v is string | undefined =>

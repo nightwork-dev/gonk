@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 
 /** Constant-time string equality; false on length mismatch without branching on
- *  content. Never logs either operand. (Mirrors serve-openai/auth.ts.) */
+ *  content. Never logs either operand. */
 function safeEqual(a: string, b: string): boolean {
   const ab = Buffer.from(a, "utf8");
   const bb = Buffer.from(b, "utf8");
@@ -21,9 +21,7 @@ function bearerFromHeader(authorization: string | undefined): string | undefined
 /**
  * Header-only bearer auth check. A configured `apiKey` requires
  * `Authorization: Bearer <key>`. When `apiKey` is unconfigured, every request
- * passes (trusted-tailnet / keyless mode). The key is never returned or logged.
- * (serve-openai's `checkAuth` adds a body `api_key` placement for chat clients;
- * MCP clients use the header, so this is the header-only sibling.)
+ * passes (trusted-network / keyless mode). The key is never returned or logged.
  */
 export function checkBearer(
   authorization: string | undefined,

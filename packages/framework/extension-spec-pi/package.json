@@ -1,0 +1,46 @@
+{
+  "name": "@gonk/extension-spec-pi",
+  "version": "0.0.8",
+  "type": "module",
+  "description": "Pi runtime for @gonk/extension-spec — turns an ExtensionSpec into a registered Pi extension (tools, slash command, auto-generated settings TUI, presets).",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./parse-args": {
+      "types": "./dist/parse-args.d.ts",
+      "import": "./dist/parse-args.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gonk/extension-spec": "workspace:*",
+    "@gonk/scope": "workspace:*",
+    "@gonk/tool-registry": "workspace:*",
+    "@gonk/tool-registry-pi": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/framework/extension-spec-pi"
+  }
+}

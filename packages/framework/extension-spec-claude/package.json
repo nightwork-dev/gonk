@@ -1,0 +1,51 @@
+{
+  "name": "@gonk/extension-spec-claude",
+  "version": "0.0.8",
+  "type": "module",
+  "description": "Claude Code materializer for @gonk/extension-spec — turns an ExtensionSpec into a Claude Code plugin tree (plugin.json, commands/*.md, hooks/hooks.json).",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./materialize": {
+      "types": "./dist/materialize.d.ts",
+      "import": "./dist/materialize.js"
+    },
+    "./placement": {
+      "types": "./dist/placement.d.ts",
+      "import": "./dist/placement.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gonk/extension-spec": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/framework/extension-spec-claude"
+  }
+}

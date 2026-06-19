@@ -37,8 +37,8 @@ import type { ScopeStore, ScopeName } from "@gonk/scope/types";
 // Just the in-memory store (testing) — no node:fs / yaml deps
 import { MemoryScopeStore } from "@gonk/scope/memory";
 
-// Filesystem store + YAML root adapter
-import { FsScopeStore, YamlRootAdapter } from "@gonk/scope/fs";
+// Filesystem store + standard root adapter
+import { FsScopeStore, StandardRootAdapter } from "@gonk/scope/fs";
 
 // Just the discovery helpers
 import { findProjectRoot, scanDocuments, bindRoots } from "@gonk/scope/resolver";

@@ -71,7 +71,7 @@ describe("StandardRootAdapter — settings", () => {
 
   it("throws when writing a key without an extension namespace (no dot)", () => {
     const a = adapter();
-    expect(() => a.writeSetting("active", "alice")).toThrow(/extension namespace/);
+    expect(() => a.writeSetting("active", "gimble")).toThrow(/extension namespace/);
   });
 
   it("returns undefined when reading a key without a dot", () => {
@@ -136,14 +136,14 @@ describe("StandardRootAdapter — blobs", () => {
   it("writes a blob and reads it back", async () => {
     const a = adapter();
     const handle = await a.writeBlob(
-      "voice-samples/alice.wav",
+      "voice-samples/gimble.wav",
       new Uint8Array([1, 2, 3, 4]),
     );
     expect(handle.rootKind).toBe(".agents");
     expect(handle.size).toBe(4);
-    expect(handle.path.endsWith("blobs/voice-samples/alice.wav")).toBe(true);
+    expect(handle.path.endsWith("blobs/voice-samples/gimble.wav")).toBe(true);
 
-    const got = await a.readBlob("voice-samples/alice.wav");
+    const got = await a.readBlob("voice-samples/gimble.wav");
     expect(got).toEqual(new Uint8Array([1, 2, 3, 4]));
   });
 
@@ -206,14 +206,14 @@ describe("StandardRootAdapter — interop and layout", () => {
   it("does not touch agents/ — that's persona territory", () => {
     mkdirSync(join(tmp, "agents"), { recursive: true });
     writeFileSync(
-      join(tmp, "agents", "alice.md"),
-      "---\nname: Alice\n---\nHi.",
+      join(tmp, "agents", "gimble.md"),
+      "---\nname: Gimble\n---\nHi.",
     );
     const a = adapter();
     a.writeSetting("voice.tts.provider", "openai");
 
-    expect(readFileSync(join(tmp, "agents", "alice.md"), "utf8")).toContain(
-      "name: Alice",
+    expect(readFileSync(join(tmp, "agents", "gimble.md"), "utf8")).toContain(
+      "name: Gimble",
     );
   });
 });

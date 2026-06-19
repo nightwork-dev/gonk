@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Thin CLI launcher for createHttpMcpServer — the real consumer that makes the
 // exported factory non-orphan. Serves a built-in `gonk_health` tool so the
-// endpoint advertises something live; production deployments wire gonk's full
-// capability suite (memory / self_model / knowledge / rlm / …) by calling
-// createHttpMcpServer from the library with their own ToolRegistry/Orchestrator.
+// endpoint advertises something live; production deployments wire their full
+// capability suite (memory, knowledge, RLM, …) by calling createHttpMcpServer
+// from the library with their own ToolRegistry/Orchestrator.
 //
 //   gonk-mcp-http [--host 0.0.0.0] [--port 8808] [--api-key <key>]
 //
-// Bind 0.0.0.0 on a Tailscale node + leave the key unset for trusted-tailnet
+// Bind 0.0.0.0 on a Tailscale node and leave the key unset for trusted-tailnet
 // mode; point an MCP client (an Eve `connection`, curl, any MCP client) at
 // http://<host>:<port>/mcp.
 

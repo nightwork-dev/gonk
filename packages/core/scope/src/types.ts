@@ -8,8 +8,8 @@ export type ScopeName =
   /** Harness-wide. Lives at `~/`. */
   | "global"
   /** Tied to the active persona — the directory containing the persona's
-   *  definition file (e.g. `~/agents/alice/` if `alice.md` lives in `~/agents/`,
-   *  or `.claude/agents/alice/` if it lives there). */
+   *  definition file (e.g. `~/agents/gimble/` if `gimble.md` lives in `~/agents/`,
+   *  or `.claude/agents/gimble/` if it lives there). */
   | "persona"
   /** Project-wide, independent of cwd. Resolved via project root walk. */
   | "project"
@@ -44,7 +44,6 @@ export const SCOPE_RESOLUTION_ORDER: readonly ScopeName[] = [
  *    `.windsurf/`     — Windsurf
  *    `.opencode/`     — opencode
  *    `.aider/`        — aider
- *    `.claude-code/`  — alt naming variant some installs use
  */
 export type RootKind = string;
 

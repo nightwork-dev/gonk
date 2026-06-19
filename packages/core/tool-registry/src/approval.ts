@@ -3,8 +3,8 @@
  * of any pattern policy. Hosts (e.g. the gonk guard) map these tiers onto
  * their own gate so that UNKNOWN / MCP / custom tools fail safe.
  *
- * The contract mirrors oh-my-pi's approval axis so the two ecosystems read the
- * same way:
+ * The contract uses the read/write/exec axis a host's guard already reasons
+ * about, so independent ecosystems read it the same way:
  *   - "read":  reads data or updates UI-only session metadata.
  *   - "write": mutates workspace/session state, no arbitrary code execution.
  *   - "exec":  executes code, shells out, drives a browser, spawns agents —

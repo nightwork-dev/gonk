@@ -46,6 +46,7 @@ minimumReleaseAgeExclude:
 # "catalog:" so a version lives in exactly one place. Bump here, not in every file.
 catalog:
   "@earendil-works/pi-agent-core": 0.77.0
+  "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/sdk": 1.29.0
   "@standard-schema/spec": 1.1.0
   "@types/node": 22.19.17

@@ -25,14 +25,14 @@ afterEach(() => {
 
 describe("nativeSubstrateMirror", () => {
   it("keys the mirror by host + id under <globalHome>/.agents/native/", () => {
-    expect(nativeSubstrateMirror("/home/dr", "claude", "iris")).toBe(
-      join("/home/dr", SUBSTRATE_NS, "native", "claude", "iris"),
+    expect(nativeSubstrateMirror("/home/user", "claude", "gimble")).toBe(
+      join("/home/user", SUBSTRATE_NS, "native", "claude", "gimble"),
     );
   });
 
   it("separates hosts so their substrate never shares a dir", () => {
-    const a = nativeSubstrateMirror("/h", "claude", "iris");
-    const b = nativeSubstrateMirror("/h", "codex", "iris");
+    const a = nativeSubstrateMirror("/h", "claude", "gimble");
+    const b = nativeSubstrateMirror("/h", "codex", "gimble");
     expect(a).not.toBe(b);
   });
 });
@@ -44,8 +44,8 @@ describe("substrate stub I/O", () => {
   });
 
   it("round-trips the mirror path", () => {
-    const def = join(tmp, "claude", "agents", "iris");
-    const mirror = nativeSubstrateMirror(tmp, "claude", "iris");
+    const def = join(tmp, "claude", "agents", "gimble");
+    const mirror = nativeSubstrateMirror(tmp, "claude", "gimble");
     writeSubstrateStub(def, mirror);
     expect(readSubstrateStub(def)).toBe(mirror);
   });
@@ -71,22 +71,22 @@ describe("substrate stub I/O", () => {
 
 describe("resolveNativeSubstrateHome", () => {
   it("returns the canonical mirror when there is no stub", () => {
-    const def = join(tmp, "claude", "agents", "iris");
-    expect(resolveNativeSubstrateHome(def, tmp, "claude", "iris")).toBe(
-      nativeSubstrateMirror(tmp, "claude", "iris"),
+    const def = join(tmp, "claude", "agents", "gimble");
+    expect(resolveNativeSubstrateHome(def, tmp, "claude", "gimble")).toBe(
+      nativeSubstrateMirror(tmp, "claude", "gimble"),
     );
   });
 
   it("follows an existing stub's path (use what's available)", () => {
-    const def = join(tmp, "claude", "agents", "iris");
-    const moved = join(tmp, "elsewhere", "iris");
+    const def = join(tmp, "claude", "agents", "gimble");
+    const moved = join(tmp, "elsewhere", "gimble");
     writeSubstrateStub(def, moved);
-    expect(resolveNativeSubstrateHome(def, tmp, "claude", "iris")).toBe(moved);
+    expect(resolveNativeSubstrateHome(def, tmp, "claude", "gimble")).toBe(moved);
   });
 
   it("never resolves to a path inside the host definition dir", () => {
-    const def = join(tmp, "claude", "agents", "iris");
-    const resolved = resolveNativeSubstrateHome(def, tmp, "claude", "iris");
+    const def = join(tmp, "claude", "agents", "gimble");
+    const resolved = resolveNativeSubstrateHome(def, tmp, "claude", "gimble");
     expect(resolved.startsWith(def)).toBe(false);
   });
 });
@@ -96,15 +96,15 @@ describe("substrateDir on a native mirror home", () => {
     // The mirror is already a pure gonk-owned substrate container under
     // .agents/native, so substrate lands at <mirror>/memory, not
     // <mirror>/.agents/memory.
-    const mirror = nativeSubstrateMirror(tmp, "claude", "iris");
+    const mirror = nativeSubstrateMirror(tmp, "claude", "gimble");
     expect(substrateDir("persona", mirror, "memory")).toBe(join(mirror, "memory"));
     expect(substrateDir("persona", mirror, "memory")).not.toContain(
-      join(SUBSTRATE_NS, "native", "claude", "iris", SUBSTRATE_NS),
+      join(SUBSTRATE_NS, "native", "claude", "gimble", SUBSTRATE_NS),
     );
   });
 
   it("still nests a normal persona definition home under .agents", () => {
-    const personaHome = join(tmp, "agents", "garnet");
+    const personaHome = join(tmp, "agents", "gimble");
     expect(substrateDir("persona", personaHome, "memory")).toBe(
       join(personaHome, SUBSTRATE_NS, "memory"),
     );

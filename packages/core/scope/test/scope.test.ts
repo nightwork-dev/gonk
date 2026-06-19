@@ -141,8 +141,8 @@ describe("resolveTierHomes", () => {
     expect(homes.has("directory")).toBe(true);
     expect(homes.has("persona")).toBe(false);
 
-    mkdirSync(join(tmp, "home", "agents", "alice"), { recursive: true });
-    const env2 = envWith({ personaHome: join(tmp, "home", "agents", "alice") });
+    mkdirSync(join(tmp, "home", "agents", "gimble"), { recursive: true });
+    const env2 = envWith({ personaHome: join(tmp, "home", "agents", "gimble") });
     expect(resolveTierHomes(env2).has("persona")).toBe(true);
   });
 
@@ -204,7 +204,10 @@ describe("scanDocuments", () => {
     const dir = join(tmp, "scope-home");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "AGENTS.md"), "context content");
-    writeFileSync(join(dir, "PERSONA.md"), "I am Alice.");
+    writeFileSync(
+      join(dir, "PERSONA.md"),
+      "---\nname: Gimble\n---\nI keep your config level no matter which host you tilt through. Named for a gimbal — though between us, I suspect that's just a flattering story someone told to cover a typo.",
+    );
     writeFileSync(join(dir, "SOUL.md"), "Soul content.");
     writeFileSync(join(dir, "README.md"), "ignored");
     const docs = scanDocuments(dir, "directory");
@@ -439,7 +442,7 @@ describe("FsScopeStore — multi-root", () => {
     const home = join(tmp, "home");
     const cwd = join(tmp, "cwd");
     const proj = join(tmp, "proj");
-    const personaDir = join(tmp, "alice");
+    const personaDir = join(tmp, "gimble");
     const sessionDir = join(tmp, "ses");
     mkroot(home, ".gonk");
     mkroot(cwd, ".gonk");

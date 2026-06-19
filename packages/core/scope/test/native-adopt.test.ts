@@ -19,8 +19,8 @@ let defHome: string;
 beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), "gonk-adopt-"));
   globalHome = join(tmp, "home");
-  // A native-host persona definition dir, e.g. ~/.claude/agents/iris
-  defHome = join(tmp, "host", ".claude", "agents", "iris");
+  // A native-host persona definition dir, e.g. ~/.claude/agents/gimble
+  defHome = join(tmp, "host", ".claude", "agents", "gimble");
   mkdirSync(globalHome, { recursive: true });
   mkdirSync(defHome, { recursive: true });
 });
@@ -36,10 +36,10 @@ function seed(dir: string, name: string, body: string): void {
 
 describe("adoptNativePersonaSubstrate", () => {
   it("moves consolidated .agents/<kind> substrate into the mirror and writes a stub", () => {
-    seed(join(defHome, SUBSTRATE_NS, "memory"), "curated.md", "iris-fact");
-    const mirror = nativeSubstrateMirror(globalHome, "claude", "iris");
+    seed(join(defHome, SUBSTRATE_NS, "memory"), "curated.md", "gimble-fact");
+    const mirror = nativeSubstrateMirror(globalHome, "claude", "gimble");
 
-    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
+    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
 
     expect(summary.moved).toContainEqual({
       from: join(defHome, SUBSTRATE_NS, "memory"),
@@ -47,7 +47,7 @@ describe("adoptNativePersonaSubstrate", () => {
     });
     // Data moved into the mirror; host dir no longer holds the substrate.
     expect(readFileSync(join(mirror, "memory", "curated.md"), "utf8")).toBe(
-      "iris-fact",
+      "gimble-fact",
     );
     expect(existsSync(join(defHome, SUBSTRATE_NS, "memory"))).toBe(false);
     // Stub left behind, pointing at the mirror.
@@ -57,33 +57,33 @@ describe("adoptNativePersonaSubstrate", () => {
 
   it("adopts legacy bare <defHome>/<kind> substrate too", () => {
     seed(join(defHome, "knowledge"), "knowledge.db", "k");
-    const mirror = nativeSubstrateMirror(globalHome, "claude", "iris");
-    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
+    const mirror = nativeSubstrateMirror(globalHome, "claude", "gimble");
+    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
     expect(readFileSync(join(mirror, "knowledge", "knowledge.db"), "utf8")).toBe("k");
     expect(existsSync(join(defHome, "knowledge"))).toBe(false);
   });
 
   it("after adoption, resolveNativeSubstrateHome follows the stub to the mirror", () => {
     seed(join(defHome, SUBSTRATE_NS, "memory"), "curated.md", "x");
-    const mirror = nativeSubstrateMirror(globalHome, "claude", "iris");
-    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
-    expect(resolveNativeSubstrateHome(defHome, globalHome, "claude", "iris")).toBe(mirror);
+    const mirror = nativeSubstrateMirror(globalHome, "claude", "gimble");
+    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
+    expect(resolveNativeSubstrateHome(defHome, globalHome, "claude", "gimble")).toBe(mirror);
   });
 
   it("is idempotent — a second run moves nothing", () => {
     seed(join(defHome, SUBSTRATE_NS, "memory"), "curated.md", "x");
-    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
-    const second = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
+    adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
+    const second = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
     expect(second.moved).toEqual([]);
     expect(second.skipped).toEqual([]);
   });
 
   it("is non-clobbering — a pre-existing mirror dir leaves the source and is reported", () => {
     seed(join(defHome, SUBSTRATE_NS, "memory"), "old.md", "legacy");
-    const mirror = nativeSubstrateMirror(globalHome, "claude", "iris");
+    const mirror = nativeSubstrateMirror(globalHome, "claude", "gimble");
     seed(join(mirror, "memory"), "new.md", "current");
 
-    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris");
+    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble");
 
     expect(summary.moved).toEqual([]);
     expect(summary.skipped).toContainEqual({
@@ -101,7 +101,7 @@ describe("adoptNativePersonaSubstrate", () => {
 
   it("dryRun reports moves without touching disk or writing the stub", () => {
     seed(join(defHome, SUBSTRATE_NS, "memory"), "curated.md", "x");
-    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "iris", {
+    const summary = adoptNativePersonaSubstrate(defHome, globalHome, "claude", "gimble", {
       dryRun: true,
     });
     expect(summary.moved.length).toBeGreaterThan(0);
