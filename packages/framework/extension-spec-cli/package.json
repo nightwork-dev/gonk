@@ -1,6 +1,6 @@
 {
   "name": "@gonk/extension-spec-cli",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "type": "module",
   "description": "CLI runtime for @gonk/extension-spec — turns an ExtensionSpec into a registered CLI extension (subcommands, auto-generated set/preset/config, interactive settings prompts).",
   "exports": {

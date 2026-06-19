@@ -14,4 +14,4 @@ export type { SettingsConfigPromptOptions } from "./settings-prompt.ts";
 export { registerSpecExtensionCli } from "./runtime.ts";
 export type { RegisterSpecCliOptions } from "./runtime.ts";
 
-export const PACKAGE_VERSION = "0.0.8";
+export const PACKAGE_VERSION = "0.0.9";
