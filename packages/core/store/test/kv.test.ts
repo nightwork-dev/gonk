@@ -63,7 +63,7 @@ describe("KvStore", () => {
       kvGet: (k) => inMemory.get(k),
       kvSet: (k, e) => void inMemory.set(k, e),
       kvDelete: (k) => void inMemory.delete(k),
-      kvList: () => [...inMemory.keys()],
+      kvEntries: () => [...inMemory.entries()].map(([key, entry]) => ({ key, entry })),
       blobPut() {},
       blobGet: () => undefined,
       blobDelete() {},
@@ -87,6 +87,29 @@ describe("KvStore", () => {
     store.set("other", 3);
     expect(store.list()).toEqual(["other", "user.a", "user.b"]);
     expect(store.list("user.")).toEqual(["user.a", "user.b"]);
+  });
+
+  it("entries returns key/value pairs in one read, sorted + prefix-filterable", () => {
+    const store = kv<number>();
+    store.set("user.b", 1);
+    store.set("user.a", 2);
+    store.set("other", 3);
+    expect(store.entries()).toEqual([
+      { key: "other", value: 3 },
+      { key: "user.a", value: 2 },
+      { key: "user.b", value: 1 },
+    ]);
+    expect(store.entries("user.")).toEqual([
+      { key: "user.a", value: 2 },
+      { key: "user.b", value: 1 },
+    ]);
+  });
+
+  it("entries excludes (and prunes) an expired TTL entry", () => {
+    const store = kv<string>();
+    store.set("keep", "v", { ttlMs: 60_000 });
+    store.set("gone", "v", { ttlMs: -1 });
+    expect(store.entries().map((e) => e.key)).toEqual(["keep"]);
   });
 
   it("persists across a fresh store reopened from the same dir", () => {

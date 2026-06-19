@@ -21,6 +21,11 @@ export interface KvStore<T = unknown> {
   delete(key: string): void;
   /** Keys (optionally prefix-filtered), expired entries excluded, sorted. */
   list(prefix?: string): string[];
+  /** Non-expired entries (optionally prefix-filtered) as key/value pairs, sorted
+   *  by key — resolved in a single read, so a record consumer avoids a `get()`
+   *  per key. Sort by a value field in the caller when a different order (e.g.
+   *  newest-first by `createdAt`) is needed. */
+  entries(prefix?: string): Array<{ key: string; value: T }>;
 }
 
 export interface KvSetOptions {
@@ -109,7 +114,11 @@ export interface StoreBackend {
   kvGet(key: string): KvEntry | undefined;
   kvSet(key: string, entry: KvEntry): void;
   kvDelete(key: string): void;
-  kvList(): string[];
+  /** All persisted entries in one read (key + raw `KvEntry`). The `KvStore`
+   *  facade applies TTL pruning, prefix filtering, and ordering on top; the
+   *  backend just hands back what it holds. Both `list` and `entries` derive from
+   *  this, so no consumer pays a `get()` per key. */
+  kvEntries(): Array<{ key: string; entry: KvEntry }>;
 
   // ---- Blob ----------------------------------------------------------------
   blobPut(key: string, bytes: Uint8Array, opts?: BlobPutOptions): void;

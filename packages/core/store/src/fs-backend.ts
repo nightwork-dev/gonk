@@ -77,8 +77,8 @@ export class FsStoreBackend implements StoreBackend {
     }
   }
 
-  kvList(): string[] {
-    return Object.keys(this.readKv());
+  kvEntries(): Array<{ key: string; entry: KvEntry }> {
+    return Object.entries(this.readKv()).map(([key, entry]) => ({ key, entry }));
   }
 
   private kvPath(): string {

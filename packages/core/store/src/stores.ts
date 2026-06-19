@@ -1,6 +1,7 @@
 import type {
   BlobPutOptions,
   BlobStore,
+  KvEntry,
   KvSetOptions,
   KvStore,
   LogStore,
@@ -58,18 +59,27 @@ export class BackedKvStore<T> implements KvStore<T> {
   }
 
   list(prefix?: string): string[] {
-    const out: string[] = [];
-    for (const key of this.backend.kvList()) {
-      const entry = this.backend.kvGet(key);
-      if (!entry) continue;
+    return this.liveEntries(prefix).map((e) => e.key);
+  }
+
+  entries(prefix?: string): Array<{ key: string; value: T }> {
+    return this.liveEntries(prefix).map((e) => ({ key: e.key, value: e.entry.value as T }));
+  }
+
+  /** One read of the backend: prune expired entries, prefix-filter, sort by key.
+   *  Both `list` and `entries` derive from this so neither pays a `get()` per key. */
+  private liveEntries(prefix?: string): Array<{ key: string; entry: KvEntry }> {
+    const out: Array<{ key: string; entry: KvEntry }> = [];
+    for (const { key, entry } of this.backend.kvEntries()) {
       if (isExpired(entry.expiresAt)) {
         this.backend.kvDelete(key);
         continue;
       }
       if (prefix && !key.startsWith(prefix)) continue;
-      out.push(key);
+      out.push({ key, entry });
     }
-    return out.sort();
+    out.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+    return out;
   }
 }
 
