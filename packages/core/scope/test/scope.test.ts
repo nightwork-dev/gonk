@@ -116,6 +116,23 @@ describe("findProjectRoot", () => {
     expect(findProjectRoot(dir)).toBeUndefined();
   });
 
+  it("a .agents holding ONLY a store/ substrate does NOT mark a project", () => {
+    // The @gonk/store backend writes `<dir>/.agents/store/<ns>`. Like memory,
+    // `store` is auto-spawned substrate and must NOT promote <dir> to a project
+    // root (regression for the SUBSTRATE_KINDS-excludes-"store" footgun).
+    const dir = join(tmp, "store-only");
+    mkdirSync(join(dir, ".agents", "store"), { recursive: true });
+    expect(findProjectRoot(dir)).toBeUndefined();
+  });
+
+  it("a .agents holding memory/ substrate still does NOT mark a project", () => {
+    // Confirms the SUBSTRATE_KINDS set still excludes the pre-existing kinds
+    // after adding "store".
+    const dir = join(tmp, "memory-only-after-store");
+    mkdirSync(join(dir, ".agents", "memory"), { recursive: true });
+    expect(findProjectRoot(dir)).toBeUndefined();
+  });
+
   it("a .agents holding a bound root (settings/) DOES mark a project", () => {
     const root = join(tmp, "bound-root");
     mkdirSync(join(root, "src"), { recursive: true });

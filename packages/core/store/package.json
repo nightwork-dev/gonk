@@ -1,5 +1,5 @@
 {
-  "name": "@gonk/tool-registry-mcp",
+  "name": "@gonk/store",
   "version": "0.0.10",
   "type": "module",
   "exports": {
@@ -7,16 +7,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./http": {
-      "types": "./dist/http/index.d.ts",
-      "import": "./dist/http/index.js"
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "bin": {
-    "gonk-mcp-http": "./dist/http/cli.js"
-  },
   "files": [
     "dist"
   ],
@@ -28,22 +25,19 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "catalog:",
-    "@gonk/tool-registry": "workspace:*",
-    "@gonk/tool-orchestrator": "workspace:*"
+    "@gonk/scope": "workspace:*"
   },
   "devDependencies": {
-    "@standard-schema/spec": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "MCP adapter — exposes a ToolRegistry or Orchestrator over the Model Context Protocol, over stdio or (via the @gonk/tool-registry-mcp/http subpath) streamable-HTTP for remote clients.",
+  "description": "Backing-agnostic scoped store for the gonk harness: KV, blob, append-log, and vector-KNN stores resolved by (scope-tier, namespace) through @gonk/scope, never a caller-assembled path. Default pure-filesystem backend behind a swappable StoreBackend SPI.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
-    "directory": "packages/adapters/tool-registry-mcp"
+    "directory": "packages/core/store"
   }
 }

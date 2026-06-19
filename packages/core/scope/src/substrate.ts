@@ -28,7 +28,7 @@ const LEGACY_SUBSTRATE_NS = ".gonk";
  *  any `substrateDir(...)` call site, add it here too, or a dir holding only the
  *  new kind will be falsely promoted to a project root (silently — no error, no
  *  failing test, just over-eager project-tier resolution). */
-export const SUBSTRATE_KINDS = ["memory", "knowledge", "sessions"] as const;
+export const SUBSTRATE_KINDS = ["memory", "knowledge", "sessions", "store"] as const;
 
 /** The one common function that resolves where a tier's operational substrate of
  *  `kind` lives, based on the scope `tier` and its `tierHome`. Nothing should
