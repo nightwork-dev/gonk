@@ -143,7 +143,7 @@ describe("materializeClaudePlugin", () => {
     const escapeTarget = join(tmpdir(), "gonk-escape.md");
     if (existsSync(escapeTarget)) rmSync(escapeTarget, { force: true });
 
-    expect(() => materializeClaudePlugin({ spec, outDir })).toThrow(/escapes plugin root/);
+    expect(() => materializeClaudePlugin({ spec, outDir })).toThrow(/escapes root/);
     // The decisive assertion: nothing was written outside the plugin root.
     expect(existsSync(escapeTarget)).toBe(false);
   });

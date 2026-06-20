@@ -1,6 +1,8 @@
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
+import { safeJoin } from "@gonk/utils/fs";
+
 import { defaultCommandPlacement, defaultHookPlacement } from "./placement.ts";
 import type {
   ClaudeHooksFile,
@@ -352,20 +354,6 @@ class WriteBuffer {
   relativePaths(): string[] {
     return [...this.entries.keys()].sort();
   }
-}
-
-/** Resolve `rel` under `root` and confirm it stays inside `root`. Throws on
- *  any path that escapes (via `..`, an absolute segment, etc.). `root` must
- *  already be absolute (callers pass the resolved pluginRoot). The repo carries
- *  the same containment check in three other places (@gonk/scope and
- *  @gonk/store both guard blob keys this way) — a candidate to consolidate into
- *  a shared fs-safety helper. */
-function safeJoin(root: string, rel: string): string {
-  const abs = resolve(root, rel);
-  if (abs !== root && !abs.startsWith(root + sep)) {
-    throw new Error(`path escapes plugin root: ${rel}`);
-  }
-  return abs;
 }
 
 // =============================================================================

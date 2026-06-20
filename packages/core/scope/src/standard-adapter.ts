@@ -1,15 +1,9 @@
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, normalize } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
+
+import { atomicWriteText, safeKeyPath } from "@gonk/utils/fs";
 
 import type { BlobHandle, RootAdapter, RootKind, ScopeName } from "./types.ts";
 
@@ -171,12 +165,8 @@ export class StandardRootAdapter implements RootAdapter {
   }
 
   private writeExtYaml(ext: string, cfg: Record<string, unknown>): void {
-    const dir = join(this.path, SETTINGS_DIR);
-    mkdirSync(dir, { recursive: true });
-    const path = join(dir, `${ext}.yaml`);
-    const tmp = `${path}.tmp.${process.pid}.${Date.now()}`;
-    writeFileSync(tmp, stringify(cfg));
-    renameSync(tmp, path);
+    const path = join(this.path, SETTINGS_DIR, `${ext}.yaml`);
+    atomicWriteText(path, stringify(cfg));
   }
 
   private readMimeSidecar(key: string): string | undefined {
@@ -190,14 +180,7 @@ export class StandardRootAdapter implements RootAdapter {
   }
 
   private blobPath(key: string): string {
-    if (key.startsWith("/") || key.startsWith("\\")) {
-      throw new Error(`Blob key must be relative: ${key}`);
-    }
-    const segments = normalize(key).split(/[\\/]/);
-    if (segments.some((s) => s === ".." || s === "")) {
-      throw new Error(`Blob key escapes root: ${key}`);
-    }
-    return join(this.path, BLOBS_DIR, ...segments);
+    return safeKeyPath(this.path, BLOBS_DIR, key);
   }
 }
 

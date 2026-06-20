@@ -1,15 +1,17 @@
 {
-  "name": "@gonk/store",
-  "version": "0.0.15",
+  "name": "@gonk/utils",
+  "version": "0.0.11",
   "type": "module",
+  "description": "Zero-dependency utility primitives for the gonk harness: filesystem path containment and atomic writes. Code-split per concern (import the subpath, e.g. @gonk/utils/fs) so unbundled consumers load only what they use.",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.js"
+    "./fs": {
+      "types": "./dist/fs.d.ts",
+      "import": "./dist/fs.js"
     }
   },
   "main": "./dist/index.js",
@@ -24,24 +26,16 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@gonk/scope": "workspace:*",
-    "@gonk/utils": "workspace:*",
-    "@mirk/store": "catalog:",
-    "better-sqlite3": "catalog:"
-  },
   "devDependencies": {
-    "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "Backing-agnostic scoped store for the gonk harness: KV, blob, append-log, and vector-KNN stores resolved by (scope-tier, namespace) through @gonk/scope, never a caller-assembled path. Default pure-filesystem backend behind a swappable StoreBackend SPI.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
-    "directory": "packages/core/store"
+    "directory": "packages/core/utils"
   }
 }

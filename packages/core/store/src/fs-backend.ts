@@ -6,13 +6,19 @@ import {
   readFileSync,
   readSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
   writeFileSync,
   closeSync,
 } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join } from "node:path";
+
+import {
+  atomicWriteBytes,
+  atomicWriteJson,
+  atomicWriteText,
+  safeKeyPath,
+} from "@gonk/utils/fs";
 
 import { cosineSimilarity } from "./cosine.ts";
 import type {
@@ -99,7 +105,7 @@ export class FsStoreBackend implements StoreBackend {
   }
 
   private writeKv(all: Record<string, KvEntry>): void {
-    writeJsonAtomic(this.kvPath(), all);
+    atomicWriteJson(this.kvPath(), all);
   }
 
   // ---- Blob ----------------------------------------------------------------
@@ -107,7 +113,7 @@ export class FsStoreBackend implements StoreBackend {
   blobPut(key: string, bytes: Uint8Array, opts?: BlobPutOptions): void {
     const path = this.blobPath(key);
     mkdirSync(dirname(path), { recursive: true });
-    writeBytesAtomic(path, bytes);
+    atomicWriteBytes(path, bytes);
     const mimePath = `${path}.mime`;
     if (opts?.mimeType) {
       writeFileSync(mimePath, opts.mimeType);
@@ -155,14 +161,7 @@ export class FsStoreBackend implements StoreBackend {
   }
 
   private blobPath(key: string): string {
-    if (key.startsWith("/") || key.startsWith("\\")) {
-      throw new Error(`Blob key must be relative: ${key}`);
-    }
-    const segments = normalize(key).split(/[\\/]/);
-    if (segments.some((s) => s === ".." || s === "")) {
-      throw new Error(`Blob key escapes root: ${key}`);
-    }
-    return join(this.dir, BLOBS_DIR, ...segments);
+    return safeKeyPath(this.dir, BLOBS_DIR, key);
   }
 
   // ---- Log -----------------------------------------------------------------
@@ -293,33 +292,6 @@ export class FsStoreBackend implements StoreBackend {
     const path = this.vectorsPath();
     mkdirSync(dirname(path), { recursive: true });
     const body = [...all.values()].map((e) => JSON.stringify(e)).join("\n");
-    writeTextAtomic(path, body ? `${body}\n` : "");
+    atomicWriteText(path, body ? `${body}\n` : "");
   }
-}
-
-// =============================================================================
-// Atomic write helpers — temp file + rename, matching @gonk/scope and the
-// harness memory/traces code.
-// =============================================================================
-
-function tmpFor(path: string): string {
-  return `${path}.tmp.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
-}
-
-function writeTextAtomic(path: string, text: string): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = tmpFor(path);
-  writeFileSync(tmp, text);
-  renameSync(tmp, path);
-}
-
-function writeBytesAtomic(path: string, bytes: Uint8Array): void {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = tmpFor(path);
-  writeFileSync(tmp, bytes);
-  renameSync(tmp, path);
-}
-
-function writeJsonAtomic(path: string, value: unknown): void {
-  writeTextAtomic(path, `${JSON.stringify(value, null, 2)}\n`);
 }
