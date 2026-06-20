@@ -13,12 +13,8 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 
-import {
-  atomicWriteBytes,
-  atomicWriteJson,
-  atomicWriteText,
-  safeKeyPath,
-} from "@gonk/utils/fs";
+import { atomicWriteBytes, atomicWriteJson, atomicWriteText } from "@gonk/utils/fs";
+import { safeKeyPath } from "@gonk/utils/path";
 
 import { cosineSimilarity } from "./cosine.ts";
 import type {

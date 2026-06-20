@@ -1,7 +1,7 @@
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
-import { safeJoin } from "@gonk/utils/fs";
+import { safeJoin } from "@gonk/utils/path";
 
 import { defaultCommandPlacement, defaultHookPlacement } from "./placement.ts";
 import type {

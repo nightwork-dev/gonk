@@ -4,13 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  atomicWriteBytes,
-  atomicWriteJson,
-  atomicWriteText,
-  safeJoin,
-  safeKeyPath,
-} from "../src/fs.ts";
+import { atomicWriteBytes, atomicWriteJson, atomicWriteText } from "../src/fs.ts";
 
 let dir: string;
 beforeEach(() => {
@@ -18,36 +12,6 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
-});
-
-describe("safeJoin", () => {
-  it("resolves a normal relative path under the root", () => {
-    expect(safeJoin(dir, "a/b.txt")).toBe(join(dir, "a/b.txt"));
-  });
-  it("returns the root itself for an empty/`.` rel", () => {
-    expect(safeJoin(dir, ".")).toBe(dir);
-  });
-  it("throws on traversal past the root", () => {
-    expect(() => safeJoin(dir, "../../etc/passwd")).toThrow(/escapes root/);
-  });
-  it("throws on an absolute segment that escapes", () => {
-    expect(() => safeJoin(dir, "/etc/passwd")).toThrow(/escapes root/);
-  });
-  it("does not treat a sibling prefix as inside", () => {
-    expect(() => safeJoin(dir, "../" + "x")).toThrow(/escapes root/);
-  });
-});
-
-describe("safeKeyPath", () => {
-  it("places a key under root/subdir", () => {
-    expect(safeKeyPath(dir, "blobs", "k/v.bin")).toBe(join(dir, "blobs", "k", "v.bin"));
-  });
-  it("rejects an absolute key", () => {
-    expect(() => safeKeyPath(dir, "blobs", "/abs")).toThrow(/must be relative/);
-  });
-  it("rejects a traversing key", () => {
-    expect(() => safeKeyPath(dir, "blobs", "../escape")).toThrow(/escapes root/);
-  });
 });
 
 describe("atomic writes", () => {

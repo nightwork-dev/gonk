@@ -3,7 +3,8 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { parse, stringify } from "yaml";
 
-import { atomicWriteText, safeKeyPath } from "@gonk/utils/fs";
+import { atomicWriteText } from "@gonk/utils/fs";
+import { safeKeyPath } from "@gonk/utils/path";
 
 import type { BlobHandle, RootAdapter, RootKind, ScopeName } from "./types.ts";
 

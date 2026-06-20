@@ -2,12 +2,16 @@
   "name": "@gonk/utils",
   "version": "0.0.11",
   "type": "module",
-  "description": "Zero-dependency utility primitives for the gonk harness: filesystem path containment and atomic writes. Code-split per concern (import the subpath, e.g. @gonk/utils/fs) so unbundled consumers load only what they use.",
+  "description": "Zero-dependency utility primitives for the gonk harness. Code-split per concern and per platform: @gonk/utils/path is pure, browser-safe path containment; @gonk/utils/fs is Node-only atomic writes. Import the subpath so unbundled (and non-Node) consumers load only what they use.",
   "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./path": {
+      "types": "./dist/path.d.ts",
+      "import": "./dist/path.js"
     },
     "./fs": {
       "types": "./dist/fs.d.ts",
