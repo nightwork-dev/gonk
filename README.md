@@ -1,54 +1,28 @@
 # gonk core
 
-**A typed tool registry, a five-tier scope system, and host adapters — the foundation one persistent agent stands on as it moves between hosts.**
+> **One agent tool, many hosts.** The lingua franca for agent extensions — write a capability once against a small set of host-agnostic primitives, then surface it natively in any harness.
 
-gonk separates *what a tool is* from *who is asking and where they are standing*. Define a tool once against a typed registry; expose it through a CLI, an MCP server, or a Pi agent without rewriting it; and let every tool read and write configuration through a single scope chain that resolves the same way everywhere.
+![License](https://img.shields.io/badge/license-Apache--2.0-blue) ![Status](https://img.shields.io/badge/status-pre--1.0-orange) ![Stack](https://img.shields.io/badge/TypeScript-pnpm%20%C2%B7%20vitest-3178c6)
 
-Extracted from [gonk](https://github.com/nightwork-dev/gonk) for public release.
+## Why
+
+Every harness has something the others don't. [Hermes](https://github.com/nousresearch/hermes-agent) has session-surviving memory and a self-grooming skill library; [Pi](https://github.com/earendil-works/pi) has a clean extension model and a sharp TUI; Claude Code has its plugin ecosystem; Codex has its sandboxed agentic loop. Each is worth having everywhere — *if* you didn't have to rewrite it against a new host's API every single time.
+
+gonk core is the lingua franca that ends the rewrite. It separates **what a tool is** from **who is asking and where they are standing**: define a tool once against a typed registry, expose it through a CLI, an MCP server, or a Pi agent without changing a line, and let every tool read and write its config through one five-tier scope chain that resolves the same way in every host. Build a capability on these primitives and it ships once, runs everywhere.
+
+This repo is that foundation — the registry, the scope, the host adapters, and the persistence store beneath them. The capabilities built on top (memory, persona, self-model, RLM, voice, the background curator) live in [gonk-extensions](https://github.com/nightwork-dev/gonk-extensions).
 
 ## Architecture
 
-```mermaid
-flowchart TB
-  subgraph hosts["Hosts"]
-    direction LR
-    cli["CLI"]
-    mcp["MCP client"]
-    pi["Pi agent"]
-    cc["Claude Code"]
-  end
+<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: tool-registry, tool-orchestrator, scope, and store." width="880"></p>
 
-  subgraph surface["Surface"]
-    direction LR
-    adapters["@gonk/tool-registry-{cli,mcp,pi}<br/>expose a registry to a host"]
-    spec["@gonk/extension-spec (+ -cli/-pi/-claude)<br/>author once, materialize per host"]
-  end
-
-  subgraph foundation["Foundation"]
-    direction LR
-    reg["@gonk/tool-registry<br/>typed tool definitions"]
-    orch["@gonk/tool-orchestrator<br/>selection + ranking"]
-    scope["@gonk/scope<br/>five-tier resolution"]
-  end
-
-  cli --> adapters
-  mcp --> adapters
-  pi --> adapters
-  cc --> spec
-  pi --> spec
-  cli --> spec
-  adapters --> reg
-  spec --> reg
-  orch --> reg
-  reg -.->|reads & writes config| scope
-```
-
-Three primitives, each its own package, plus an authoring layer on top of them:
+The foundation primitives, each its own package, plus an authoring layer on top of them:
 
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). The registry holds them; the core packages carry zero schema-library dependencies (an in-tree minimal adapter covers the schema shape).
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
+- **Persistence** — [`@gonk/store`](packages/core/store). The same idea for *data* that scope is for *config*: four backing-agnostic primitives — KV, blob, append-log, vector-KNN — each obtained from a factory keyed by `(scope-tier, namespace)`, so a capability owns its data and access pattern while the store owns *where* (the same `.agents`-preferring resolution) and *what backing*. A `StoreBackend` SPI with a pure-`fs` default (atomic temp+rename, JSONL, JS-cosine — zero native deps in core) is swappable for sqlite/remote without touching a caller. See [docs/store-abstraction-design.md](docs/store-abstraction-design.md).
 - **Adapters** — [`@gonk/tool-registry-{cli,mcp,pi}`](packages/adapters). Each exposes the *same* registry + orchestrator to a different host, so a capability ships once and surfaces everywhere.
-- **Extension authoring** — [`@gonk/extension-spec`](packages/framework/extension-spec) (+ `-cli` / `-pi` / `-claude`). Declare a whole extension — slash commands, settings UIs, presets, and tools — as host-agnostic data, then materialize it into a CLI extension, a Pi extension, or a Claude Code plugin tree. Built on the two primitives above.
+- **Extension authoring** — [`@gonk/extension-spec`](packages/framework/extension-spec) (+ `-cli` / `-pi` / `-claude`). Declare a whole extension — slash commands, settings UIs, presets, and tools — as host-agnostic data, then materialize it into a CLI extension, a Pi extension, or a Claude Code plugin tree. Built on the registry and scope primitives above.
 
 `@gonk/tool-orchestrator` sits on top of the registry for semantic selection (`find_tools`, `load_tool`, …) when a host carries more tools than it wants visible at once.
 
@@ -56,15 +30,7 @@ Three primitives, each its own package, plus an authoring layer on top of them:
 
 Every tool reads and writes state through one chain. With the tier unspecified, a read walks **most → least specific** and returns the first match; a write always names its tier. The same five tiers resolve identically across CLI, MCP, and Pi.
 
-```mermaid
-flowchart LR
-  q["scope.get('tts.provider')"] --> s1
-  subgraph chain["walk · most → least specific"]
-    direction LR
-    s1["session"] --> s2["directory"] --> s3["project"] --> s4["persona"] --> s5["global"]
-  end
-  s1 -.->|first match along the walk wins| out["resolved value"]
-```
+<p align="center"><img src="assets/scope-resolution.svg" alt="A read walks the five tiers session, directory, project, persona, global from most to least specific and returns the first match; a write always names its tier." width="880"></p>
 
 A worked example — Gimble, the example persona, keeps a voice preference at the persona tier, and a session override wins without erasing it:
 
@@ -87,6 +53,7 @@ scope.resolve("tts.provider");  // → every tier where it is set, most → leas
 | Package | What it is |
 | --- | --- |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
+| `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
 | `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, metrics sinks. |
 | `@gonk/tool-orchestrator` | Semantic tool selection / ranking over a registry. |
 | `@gonk/core` | A barrel over `@gonk/scope` + `@gonk/tool-registry` — one import for the common surface. |

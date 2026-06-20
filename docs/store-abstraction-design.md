@@ -1,9 +1,27 @@
 # Store abstraction — design
 
-> Status: design, pre-implementation. No code lands until this is signed off.
+> Status: **implemented.** Shipped as `@gonk/store` (core, `0.0.10`; `KvStore.entries()` added `0.0.11`)
+> and consumed by the extension capabilities (Tier 3, gonk-extensions). All three implementation
+> tiers in §7 landed; §4.2's relational extraction was built **in full** (memory triples + sessions,
+> knowledge, traces — each behind a capability-local interface with sqlite as the default impl and a
+> non-sqlite in-memory second impl proving the seam). §5's three-question standard and §6's usage
+> telemetry remain conventions/roadmap, not yet enforced/built. One behaviour emerged during the
+> migration that this design did not anticipate and is worth recording — see the **Migration note** below.
 > Scope: a persistence layer in `@gonk/core` (extending scope) + a migration of the
 > extension capabilities onto it. Also defines the repo's layer map and the
 > three-question description standard, which the repo nowhere spells out today.
+
+> **Migration note (emerged in Tier 3 S2).** Moving memory's KV (`kv.db`) and curated bodies
+> (`curated.md`/`user.md`) onto the store changed both the substrate *kind* (`memory` → `store`) and
+> the on-disk *format*, so an existing install would silently lose its memory on upgrade. The fix is a
+> one-time **legacy carry-forward**: on the first store-handle build per `(tier, home)`, any
+> pre-migration data is imported into the new store — idempotent (a `.legacy-imported` marker),
+> non-clobbering (a key/blob the new store already holds is never overwritten; post-cutover writes
+> win), and litter-free on fresh installs (absent the legacy file it no-ops). The general rule this
+> bought, for any future backing move: a layout/format change is **data-loss-on-upgrade** until the
+> old data is carried forward (or a tested, documented breaking cutoff is declared). The universal
+> `FsStoreBackend` already migrates the `.gonk/` → `.agents/` *path* shift transparently; only a
+> *kind-or-format* change needs an explicit importer like this one.
 
 ## 1. Why this exists
 

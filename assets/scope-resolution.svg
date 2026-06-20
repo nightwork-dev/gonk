@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 248" font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" role="img" aria-label="scope resolution: a read walks the five tiers from session (most specific) to global (least specific) and returns the first match.">
+  <defs>
+    <marker id="sa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c3bbb0"/>
+    </marker>
+    <style>
+      .q      { font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; font-size:13px; fill:#3a342e; }
+      .tier   { font-size:13.5px; font-weight:600; fill:#3a342e; }
+      .tierw  { font-size:13.5px; font-weight:700; fill:#ffffff; }
+      .cap    { font-size:11px; fill:#a39a8e; letter-spacing:1px; }
+      .note   { font-size:12px; fill:#8c8378; }
+      .win    { font-size:11px; font-weight:600; fill:#8a2d3b; }
+    </style>
+  </defs>
+
+  <rect x="8" y="8" width="864" height="232" rx="18" fill="#faf8f5" stroke="#e7e1d9"/>
+
+  <!-- query -->
+  <rect x="32" y="36" width="300" height="36" rx="9" fill="#ffffff" stroke="#dcd5cc"/>
+  <text class="q" x="48" y="59">scope.get("tts.provider")</text>
+
+  <text class="cap" x="32" y="104">WALK · MOST → LEAST SPECIFIC</text>
+
+  <!-- tier chain -->
+  <g>
+    <rect x="32"  y="116" width="140" height="50" rx="10" fill="#8a2d3b" stroke="#8a2d3b"/>
+    <rect x="201" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
+    <rect x="370" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
+    <rect x="539" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
+    <rect x="708" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
+    <text class="tierw" x="102" y="146" text-anchor="middle">session</text>
+    <text class="tier"  x="271" y="146" text-anchor="middle">directory</text>
+    <text class="tier"  x="440" y="146" text-anchor="middle">project</text>
+    <text class="tier"  x="609" y="146" text-anchor="middle">persona</text>
+    <text class="tier"  x="778" y="146" text-anchor="middle">global</text>
+  </g>
+
+  <!-- walk arrows -->
+  <line x1="174" y1="141" x2="199" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
+  <line x1="343" y1="141" x2="368" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
+  <line x1="512" y1="141" x2="537" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
+  <line x1="681" y1="141" x2="706" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
+
+  <text class="win"  x="102" y="190" text-anchor="middle">▲ first match wins</text>
+  <text class="note" x="440" y="222" text-anchor="middle">a write always names its tier · the same five tiers resolve identically across CLI, MCP, and Pi</text>
+</svg>
