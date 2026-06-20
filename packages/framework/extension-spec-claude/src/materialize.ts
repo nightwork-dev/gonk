@@ -131,7 +131,14 @@ export function unmaterializeClaudePlugin(opts: { outDir: string }): { removed: 
   const ordered = [...previous].sort();
   for (const rel of ordered) {
     if (rel === MATERIALIZE_MANIFEST_FILE) continue;
-    const abs = join(pluginRoot, rel);
+    // Same containment guard as the sweep: a manifest path that resolves
+    // outside the plugin root is skipped, never deleted.
+    let abs: string;
+    try {
+      abs = safeJoin(pluginRoot, rel);
+    } catch {
+      continue;
+    }
     try {
       rmSync(abs);
       removed.push(rel);
@@ -271,7 +278,15 @@ function sweepObsolete(args: {
     if (args.current.has(rel)) continue;
     if (rel === MATERIALIZE_MANIFEST_FILE) continue;
     if (!isInsideOwnedDir(rel)) continue;
-    const abs = join(args.pluginRoot, rel);
+    // Never delete outside the plugin root. A manifest carrying a traversing
+    // path (`commands/../../x` passes isInsideOwnedDir on its first segment but
+    // resolves outside) is skipped rather than honored.
+    let abs: string;
+    try {
+      abs = safeJoin(args.pluginRoot, rel);
+    } catch {
+      continue;
+    }
     try {
       rmSync(abs);
     } catch {
@@ -323,9 +338,13 @@ class WriteBuffer {
   constructor(private readonly pluginRoot: string) {}
 
   write(relPath: string, content: string): void {
+    // Confine the write to the plugin root. relPath is derived from spec data
+    // (command names, verb keys) that is only kebab-case "by convention" and
+    // never validated — a name like `../../etc/x` would otherwise escape the
+    // tree. safeJoin throws on escape rather than writing outside.
+    const abs = safeJoin(this.pluginRoot, relPath);
     const normalized = relPath.split(sep).join("/");
     this.entries.set(normalized, content);
-    const abs = join(this.pluginRoot, relPath);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
   }
@@ -333,6 +352,20 @@ class WriteBuffer {
   relativePaths(): string[] {
     return [...this.entries.keys()].sort();
   }
+}
+
+/** Resolve `rel` under `root` and confirm it stays inside `root`. Throws on
+ *  any path that escapes (via `..`, an absolute segment, etc.). `root` must
+ *  already be absolute (callers pass the resolved pluginRoot). The repo carries
+ *  the same containment check in three other places (@gonk/scope and
+ *  @gonk/store both guard blob keys this way) — a candidate to consolidate into
+ *  a shared fs-safety helper. */
+function safeJoin(root: string, rel: string): string {
+  const abs = resolve(root, rel);
+  if (abs !== root && !abs.startsWith(root + sep)) {
+    throw new Error(`path escapes plugin root: ${rel}`);
+  }
+  return abs;
 }
 
 // =============================================================================

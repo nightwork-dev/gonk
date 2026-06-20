@@ -1,8 +1,38 @@
+import { request } from "node:http";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { ToolRegistry, passthrough } from "@gonk/tool-registry";
 import { afterEach, describe, expect, it } from "vitest";
+
+/** POST JSON to 127.0.0.1:port with an explicit (possibly foreign) Host header,
+ *  bypassing fetch's forbidden-header filtering. Resolves the status code. */
+function rawPost(port: number, path: string, host: string, body: unknown): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const payload = JSON.stringify(body);
+    const req = request(
+      {
+        host: "127.0.0.1",
+        port,
+        path,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json, text/event-stream",
+          Host: host,
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode ?? 0);
+      },
+    );
+    req.on("error", reject);
+    req.end(payload);
+  });
+}
 
 import { createHttpMcpServer } from "../src/http/server.ts";
 import type { HttpMcpServer, HttpMcpServerOptions } from "../src/http/types.ts";
@@ -148,6 +178,60 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     expect((await b.callTool({ name: "add", arguments: { a: 1, b: 1 } })).structuredContent).toEqual({
       sum: 2,
     });
+  });
+
+  it("refuses a non-loopback bind with no apiKey (unauthenticated network exposure)", () => {
+    expect(() =>
+      createHttpMcpServer({
+        source: makeRegistry(),
+        serverName: "t",
+        serverVersion: "0",
+        host: "0.0.0.0",
+      }),
+    ).toThrow(/unauthenticated/i);
+  });
+
+  it("allows a non-loopback bind with no key when allowInsecure is set", async () => {
+    const server = createHttpMcpServer({
+      source: makeRegistry(),
+      serverName: "t",
+      serverVersion: "0",
+      host: "0.0.0.0",
+      port: 0,
+      allowInsecure: true,
+    });
+    await server.start();
+    servers.push(server);
+    expect(server.port).toBeGreaterThan(0);
+  });
+
+  it("allows a non-loopback bind when an apiKey is set", async () => {
+    const server = createHttpMcpServer({
+      source: makeRegistry(),
+      serverName: "t",
+      serverVersion: "0",
+      host: "0.0.0.0",
+      port: 0,
+      apiKey: "k3y",
+    });
+    await server.start();
+    servers.push(server);
+    expect(server.port).toBeGreaterThan(0);
+  });
+
+  it("DNS-rebinding protection is on by default but a foreign Host header is rejected", async () => {
+    const { url } = await start();
+    const port = Number(new URL(url).port);
+    // A request whose Host header is not the bound address is rejected by the
+    // SDK transport (classic DNS-rebinding defense). fetch forbids setting Host,
+    // so drive it through node:http with an explicit foreign Host.
+    const status = await rawPost(port, "/mcp", "evil.example.com", {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "x", version: "0" } },
+    });
+    expect(status).toBeGreaterThanOrEqual(400);
   });
 
   it("network-safe default: a write-capable tool is gated (require-allowlist) unless allowlisted", async () => {
