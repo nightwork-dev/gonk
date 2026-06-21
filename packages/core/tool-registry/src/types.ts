@@ -187,6 +187,23 @@ export type ToolVisibility =
 // Tool definition
 // =============================================================================
 
+/** Self-declared authorization metadata — *who* may invoke this tool. Declared
+ *  in core and enforced by a host gate (e.g. `@gonk/pi-guard`): the same
+ *  declare-here / enforce-there split as `approval`. All fields are optional and
+ *  free-form strings (no baked-in role/level union) so each host defines its own
+ *  vocabulary. Declared-not-enforced and backward-compatible — a tool that omits
+ *  it behaves exactly as before. Intended consumer: the cross-agent comms /
+ *  multi-user trust layer (a tool's required role, the callers allowed to invoke
+ *  it). */
+export interface ToolAuthorization {
+  /** Minimum authorization level required to invoke (host-defined vocabulary). */
+  authLevel?: string;
+  /** Role a caller must hold to invoke (host-defined vocabulary). */
+  requiredRole?: string;
+  /** Explicit allow-list of caller identities permitted to invoke. */
+  allowedCallers?: string[];
+}
+
 export interface ToolDefinition<I = unknown, O = unknown> {
   /** Stable id. CLI subcommand, MCP tool name, Pi tool name. kebab-case, verb-noun. */
   name: string;
@@ -256,6 +273,11 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *  MCP / custom tools fail safe. Optional and backward-compatible — tools
    *  that don't set it behave exactly as before. */
   approval?: ToolApproval;
+
+  /** Self-declared authorization — *who* may invoke this tool. Declared in core,
+   *  enforced by a host gate (`@gonk/pi-guard`), the same split as `approval`.
+   *  Optional, free-form strings, backward-compatible. */
+  authorization?: ToolAuthorization;
 
   /** Registration-time predicate. When false, `ToolRegistry.register()`
    *  skips the tool — it's not stored, not advertised in `list_tools` /
