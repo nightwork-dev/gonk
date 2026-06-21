@@ -205,7 +205,7 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     expect(server.port).toBeGreaterThan(0);
   });
 
-  it("allows a non-loopback bind when an apiKey is set", async () => {
+  it("allows a non-loopback bind when an apiKey AND allowedHosts are set", async () => {
     const server = createHttpMcpServer({
       source: makeRegistry(),
       serverName: "t",
@@ -213,10 +213,71 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
       host: "0.0.0.0",
       port: 0,
       apiKey: "k3y",
+      allowedHosts: ["mybox.tail-scale.ts.net:8080"],
     });
     await server.start();
     servers.push(server);
     expect(server.port).toBeGreaterThan(0);
+  });
+
+  it("refuses a protected non-loopback bind with no allowedHosts (would silently reject every request)", () => {
+    // apiKey satisfies the exposure guard, but rebinding protection on a
+    // wildcard bind with no allowedHosts can only allow-list `0.0.0.0:port` —
+    // a Host no client ever sends — so every request would 400 while the port
+    // sits open. Must fail loud at construction instead.
+    expect(() =>
+      createHttpMcpServer({
+        source: makeRegistry(),
+        serverName: "t",
+        serverVersion: "0",
+        host: "0.0.0.0",
+        apiKey: "k3y",
+      }),
+    ).toThrow(/allowedHosts/);
+  });
+
+  it("an EMPTY allowedHosts array doesn't satisfy the guard (dead-server one layer over)", () => {
+    // [] is `!== undefined` but hands the SDK an empty allowlist → every Host
+    // rejected. The guard must catch it the same as omitting it.
+    expect(() =>
+      createHttpMcpServer({
+        source: makeRegistry(),
+        serverName: "t",
+        serverVersion: "0",
+        host: "0.0.0.0",
+        apiKey: "k3y",
+        allowedHosts: [],
+      }),
+    ).toThrow(/allowedHosts/);
+  });
+
+  it("an explicit enableDnsRebindingProtection:true on a wildcard bind still requires allowedHosts", () => {
+    // The footgun is closed on the explicit path too, not just the default.
+    expect(() =>
+      createHttpMcpServer({
+        source: makeRegistry(),
+        serverName: "t",
+        serverVersion: "0",
+        host: "0.0.0.0",
+        apiKey: "k3y",
+        enableDnsRebindingProtection: true,
+      }),
+    ).toThrow(/allowedHosts/);
+  });
+
+  it("keyless trusted-tailnet (allowInsecure) defaults rebinding OFF so a client can dial by any name", () => {
+    // The documented keyless mode: perimeter is the boundary. Protection off →
+    // no Host-check → a tailnet client dialing by MagicDNS name isn't rejected.
+    // Construction must succeed with no allowedHosts.
+    const server = createHttpMcpServer({
+      source: makeRegistry(),
+      serverName: "t",
+      serverVersion: "0",
+      host: "0.0.0.0",
+      port: 0,
+      allowInsecure: true,
+    });
+    expect(server).toBeDefined();
   });
 
   it("DNS-rebinding protection is on by default but a foreign Host header is rejected", async () => {

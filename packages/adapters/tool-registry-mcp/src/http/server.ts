@@ -100,9 +100,38 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
     );
   }
 
-  // DNS-rebinding protection defaults on (see types.ts). It stops a malicious
-  // web page from rebinding its domain onto this host and POSTing to it.
-  const dnsProtection = options.enableDnsRebindingProtection ?? true;
+  // DNS-rebinding protection (see types.ts). It stops a malicious web page from
+  // rebinding its domain onto this host and POSTing to it. The default is on —
+  // BUT the auto-allowlist (the bound host:port) is only sound for a loopback
+  // bind, where the client's Host header is exactly that. For a non-loopback
+  // bind the bound address can't be auto-allowlisted: a wildcard like 0.0.0.0
+  // is never a client's Host, and even a concrete external bind may be reached
+  // via a different name/IP. So for a non-loopback bind with no explicit
+  // allowedHosts, default OFF only when the caller has accepted the network as
+  // the boundary (allowInsecure — the keyless trusted-tailnet mode); otherwise
+  // default on, which the guard below then rejects unless allowedHosts is set.
+  const dnsProtection =
+    options.enableDnsRebindingProtection ??
+    (isLoopbackHost(host) || options.allowedHosts !== undefined || options.allowInsecure !== true);
+
+  // Silent-dead-server guard. Protection on + a non-loopback bind + no
+  // allowedHosts means the only allowlist we could synthesize is the bound
+  // address — which no real client ever sends as Host (especially a wildcard),
+  // so every request would be rejected on the Host check while the port sits
+  // open: a server that looks up and is uniformly dead. Fail loud at
+  // construction instead, matching the exposure guard's deliberate-choice
+  // posture. (Catches both the default-on and an explicit
+  // enableDnsRebindingProtection:true path.)
+  if (dnsProtection && !isLoopbackHost(host) && !options.allowedHosts?.length) {
+    throw new Error(
+      `Refusing to bind ${host} with DNS-rebinding protection on and no allowedHosts: ` +
+        `a non-loopback bind can't be auto-allowlisted (a wildcard like 0.0.0.0 is never a ` +
+        `client's Host header), so every request would be rejected on the Host check while ` +
+        `the port sits open. Set allowedHosts to the host(s) clients will dial, pass ` +
+        `allowInsecure:true to rely on the network perimeter (protection off), or set ` +
+        `enableDnsRebindingProtection:false explicitly.`,
+    );
+  }
 
   const transports = new Map<string, StreamableHTTPServerTransport>();
   let boundPort = requestedPort;

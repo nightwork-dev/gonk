@@ -24,13 +24,26 @@ export interface HttpMcpServerOptions extends McpAdapterOptions {
   /** Endpoint path the MCP transport is mounted at. Default "/mcp". */
   path?: string;
   /** Enable the SDK's DNS-rebinding protection (Host-header allow-listing).
-   *  Default **on** — it stops a drive-by browser request (a malicious page
-   *  POSTing to a localhost endpoint) from rebinding onto this server. When on
-   *  and `allowedHosts` is unset, the bound host:port (plus loopback aliases) is
-   *  allow-listed automatically. Set false only when a proxy rewrites Host. */
+   *  Stops a drive-by browser request (a malicious page POSTing to a localhost
+   *  endpoint) from rebinding onto this server. Default depends on the bind:
+   *  - **loopback** → on, auto-allow-listing the bound host:port + loopback
+   *    aliases (the client's Host is exactly that).
+   *  - **non-loopback with `allowedHosts` set** → on, using those.
+   *  - **non-loopback, keyless trusted-tailnet (`allowInsecure`)** → off; the
+   *    network perimeter is the boundary and Host-checking would only break
+   *    legitimate access.
+   *  - **non-loopback otherwise** → would be on but has no sound allowlist, so
+   *    construction throws (see `allowedHosts`). Set this explicitly to override
+   *    — but note an explicit `true` on a non-loopback bind still requires
+   *    `allowedHosts`, else the same throw fires (the bound address can't be
+   *    auto-allow-listed). */
   enableDnsRebindingProtection?: boolean;
-  /** Allowed `Host` header values when DNS-rebinding protection is on. When
-   *  unset, defaults to the bound host:port and its loopback aliases. */
+  /** Allowed `Host` header values when DNS-rebinding protection is on. Only
+   *  auto-defaulted for a loopback bind (bound host:port + loopback aliases).
+   *  REQUIRED for a protected non-loopback bind — the bound address is not a
+   *  client-sendable Host (a wildcard like `0.0.0.0` never appears as `Host`),
+   *  so without it every request is rejected on the Host check. Set it to the
+   *  name(s) clients will actually dial. */
   allowedHosts?: string[];
 }
 
