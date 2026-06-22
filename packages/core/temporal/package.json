@@ -1,0 +1,37 @@
+{
+  "name": "@gonk/temporal",
+  "version": "0.0.12",
+  "type": "module",
+  "description": "The time-and-activity decision primitive: a pure temporal-awareness surface (wall-clock, session elapsed, turn index, idle signals), the periodic-run scheduler (shouldRun — interval-elapsed + idle), and the persistent-presence policy (wake/defer). Subsumes the former @gonk/scheduler.",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gonk/store": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/core/temporal"
+  }
+}

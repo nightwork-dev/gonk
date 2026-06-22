@@ -1,0 +1,44 @@
+{
+  "name": "@gonk/channel",
+  "version": "0.0.12",
+  "type": "module",
+  "description": "Connectivity-layer channel core: the transport contract (IChannel/BaseChannel), the address-on-the-message Message + ContentPart on Standard Schema, ConnectAddress (persona@host#scope), the ChannelRegistry, the InternalChannel loopback reference impl, and the ReconnectionManager. Built to gonk conventions (zero zod, no barrel). Slice 2 foundation of the connectivity layer.",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./base": {
+      "types": "./dist/base.d.ts",
+      "import": "./dist/base.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@gonk/scope": "workspace:*",
+    "@gonk/tool-registry": "workspace:*",
+    "@standard-schema/spec": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsup": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nightwork-dev/gonk.git",
+    "directory": "packages/core/channel"
+  }
+}
