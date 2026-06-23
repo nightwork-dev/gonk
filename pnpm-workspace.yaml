@@ -32,8 +32,7 @@ minimumReleaseAge: 10080
 # 7-day cooldown; excluding the pi-provider surface lets the lockfile generate while
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
-# @mirk/store is pinned exactly and consumed from the canonical local Verdaccio
-# during the core/mirk substrate integration.
+# @mirk/store is pinned exactly; published to real npm as of 0.6.0.
 minimumReleaseAgeExclude:
   - "@earendil-works/*"
   - "@mariozechner/*"
@@ -51,7 +50,7 @@ catalog:
   "@earendil-works/pi-agent-core": 0.77.0
   "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/sdk": 1.29.0
-  "@mirk/store": 0.5.0
+  "@mirk/store": 0.6.0
   "@standard-schema/spec": 1.1.0
   "@types/better-sqlite3": 7.6.13
   "@types/node": 22.19.17
