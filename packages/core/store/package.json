@@ -25,9 +25,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gonk/scope": "workspace:*"
+    "@gonk/scope": "workspace:*",
+    "@mirk/store": "catalog:",
+    "better-sqlite3": "catalog:"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
