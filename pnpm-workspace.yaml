@@ -32,6 +32,8 @@ minimumReleaseAge: 10080
 # 7-day cooldown; excluding the pi-provider surface lets the lockfile generate while
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
+# @mirk/store is pinned exactly and consumed from the canonical local Verdaccio
+# during the core/mirk substrate integration.
 minimumReleaseAgeExclude:
   - "@earendil-works/*"
   - "@mariozechner/*"
@@ -41,6 +43,7 @@ minimumReleaseAgeExclude:
   - "protobufjs"
   - "@rollup/*"
   - "rollup"
+  - "@mirk/store"
 
 # Canonical versions for heavily-reused dependencies. Packages reference these via
 # "catalog:" so a version lives in exactly one place. Bump here, not in every file.
@@ -48,8 +51,11 @@ catalog:
   "@earendil-works/pi-agent-core": 0.77.0
   "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/sdk": 1.29.0
+  "@mirk/store": 0.5.0
   "@standard-schema/spec": 1.1.0
+  "@types/better-sqlite3": 7.6.13
   "@types/node": 22.19.17
+  better-sqlite3: 12.10.0
   tsup: 8.5.1
   typebox: 1.1.38
   typescript: 5.9.3
@@ -60,6 +66,7 @@ catalog:
 # is blocked — the primary defense against npm-malware that executes in postinstall.
 allowBuilds:
   "@google/genai": false
+  better-sqlite3: true
   esbuild: false
   nx: false
   protobufjs: false

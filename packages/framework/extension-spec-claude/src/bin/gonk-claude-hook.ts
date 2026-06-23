@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /** General Claude Code hook dispatch binary.
  *
  *  Invoked by a materialized `hooks.json` as:

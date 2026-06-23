@@ -1,14 +1,14 @@
 {
-  "name": "@gonk/core",
+  "name": "@gonk/temporal",
   "version": "0.0.14",
   "type": "module",
+  "description": "The time-and-activity decision primitive: a pure temporal-awareness surface (wall-clock, session elapsed, turn index, idle signals), the periodic-run scheduler (shouldRun — interval-elapsed + idle), and the persistent-presence policy (wake/defer). Subsumes the former @gonk/scheduler.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     }
   },
-  "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
     "dist"
@@ -17,25 +17,21 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gonk/scope": "workspace:*",
-    "@gonk/tool-registry": "workspace:*"
+    "@gonk/store": "workspace:*"
   },
   "devDependencies": {
-    "@standard-schema/spec": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "Barrel over the gonk foundation — the typed tool registry (@gonk/tool-registry) and the five-tier scope system (@gonk/scope) under one import. `import { ToolRegistry, createScope } from \"@gonk/core\"`. Import the focused package directly for a tighter dependency.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
-    "directory": "packages/core/core"
+    "directory": "packages/core/temporal"
   }
 }

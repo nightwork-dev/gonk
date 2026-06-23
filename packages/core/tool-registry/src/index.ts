@@ -15,6 +15,7 @@ export type {
   ToolHandler,
   ToolVisibility,
   ToolDefinition,
+  ToolAuthorization,
   ToolCostClass,
   ToolLatencyClass,
   CapabilityState,
