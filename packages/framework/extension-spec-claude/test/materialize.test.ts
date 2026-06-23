@@ -130,6 +130,42 @@ describe("materializeClaudePlugin", () => {
     expect(recall).toContain("# /memory recall");
   });
 
+  it("refuses to write outside the plugin root when a verb key traverses (`..`)", () => {
+    const spec = buildFixtureSpec();
+    // A hostile/buggy spec: a verb key that climbs out of commands/ and the
+    // plugin root entirely. Names are only kebab-case by convention, never
+    // validated, so this is reachable input.
+    spec.command!.subcommands!["../../../../tmp/gonk-escape"] = {
+      description: "escape attempt",
+      handler: noop,
+    };
+
+    const escapeTarget = join(tmpdir(), "gonk-escape.md");
+    if (existsSync(escapeTarget)) rmSync(escapeTarget, { force: true });
+
+    expect(() => materializeClaudePlugin({ spec, outDir })).toThrow(/escapes root/);
+    // The decisive assertion: nothing was written outside the plugin root.
+    expect(existsSync(escapeTarget)).toBe(false);
+  });
+
+  it("the sweep skips a manifest path that resolves outside the plugin root", () => {
+    const spec = buildFixtureSpec();
+    materializeClaudePlugin({ spec, outDir });
+
+    // Tamper with the sidecar to claim a traversing path was previously written.
+    const sidecar = join(outDir, ".gonk-materialize.json");
+    const manifest = JSON.parse(readFileSync(sidecar, "utf8"));
+    const victim = join(tmpdir(), "gonk-sweep-victim.txt");
+    writeFileSync(victim, "do not delete me");
+    manifest.written = [...manifest.written, "commands/../../../../tmp/gonk-sweep-victim.txt"];
+    writeFileSync(sidecar, JSON.stringify(manifest));
+
+    // Re-materialize: the sweep would honor the tampered path without the guard.
+    materializeClaudePlugin({ spec, outDir });
+    expect(existsSync(victim)).toBe(true);
+    rmSync(victim, { force: true });
+  });
+
   it("writes the bare command file with a verb listing that excludes gated verbs", () => {
     const spec = buildFixtureSpec();
     materializeClaudePlugin({ spec, outDir });

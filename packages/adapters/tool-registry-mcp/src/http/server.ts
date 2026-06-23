@@ -86,6 +86,53 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
   const path = options.path ?? "/mcp";
   const apiKey = options.apiKey;
 
+  // Security posture guard. A server reachable beyond loopback with no bearer
+  // key is an unauthenticated tool-execution endpoint — anyone who can reach
+  // the port can call tools. Refuse to stand one up unless the caller has
+  // deliberately acknowledged the exposure via `allowInsecure`. This checks the
+  // bind address the code actually uses, instead of trusting that "it's only on
+  // my private network" (which the code can't verify).
+  if (!isLoopbackHost(host) && !apiKey && options.allowInsecure !== true) {
+    throw new Error(
+      `Refusing to bind ${host} with no apiKey: this exposes unauthenticated tool ` +
+        `execution to the network. Set apiKey, bind a loopback host (127.0.0.1), or ` +
+        `pass allowInsecure:true to deliberately accept the exposure.`,
+    );
+  }
+
+  // DNS-rebinding protection (see types.ts). It stops a malicious web page from
+  // rebinding its domain onto this host and POSTing to it. The default is on —
+  // BUT the auto-allowlist (the bound host:port) is only sound for a loopback
+  // bind, where the client's Host header is exactly that. For a non-loopback
+  // bind the bound address can't be auto-allowlisted: a wildcard like 0.0.0.0
+  // is never a client's Host, and even a concrete external bind may be reached
+  // via a different name/IP. So for a non-loopback bind with no explicit
+  // allowedHosts, default OFF only when the caller has accepted the network as
+  // the boundary (allowInsecure — the keyless trusted-tailnet mode); otherwise
+  // default on, which the guard below then rejects unless allowedHosts is set.
+  const dnsProtection =
+    options.enableDnsRebindingProtection ??
+    (isLoopbackHost(host) || options.allowedHosts !== undefined || options.allowInsecure !== true);
+
+  // Silent-dead-server guard. Protection on + a non-loopback bind + no
+  // allowedHosts means the only allowlist we could synthesize is the bound
+  // address — which no real client ever sends as Host (especially a wildcard),
+  // so every request would be rejected on the Host check while the port sits
+  // open: a server that looks up and is uniformly dead. Fail loud at
+  // construction instead, matching the exposure guard's deliberate-choice
+  // posture. (Catches both the default-on and an explicit
+  // enableDnsRebindingProtection:true path.)
+  if (dnsProtection && !isLoopbackHost(host) && !options.allowedHosts?.length) {
+    throw new Error(
+      `Refusing to bind ${host} with DNS-rebinding protection on and no allowedHosts: ` +
+        `a non-loopback bind can't be auto-allowlisted (a wildcard like 0.0.0.0 is never a ` +
+        `client's Host header), so every request would be rejected on the Host check while ` +
+        `the port sits open. Set allowedHosts to the host(s) clients will dial, pass ` +
+        `allowInsecure:true to rely on the network perimeter (protection off), or set ` +
+        `enableDnsRebindingProtection:false explicitly.`,
+    );
+  }
+
   const transports = new Map<string, StreamableHTTPServerTransport>();
   let boundPort = requestedPort;
 
@@ -132,10 +179,15 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
           onsessionclosed: (sid) => {
             transports.delete(sid);
           },
-          ...(options.enableDnsRebindingProtection !== undefined
-            ? { enableDnsRebindingProtection: options.enableDnsRebindingProtection }
+          enableDnsRebindingProtection: dnsProtection,
+          // When protection is on, the Host header must match an allow-listed
+          // value. Default to the bound host:port plus loopback aliases so a
+          // legitimate client (which sends Host: <bound>) passes while a
+          // rebound foreign Host is rejected. boundPort is known here — the
+          // transport is built per-session, after start() resolved the port.
+          ...(dnsProtection
+            ? { allowedHosts: options.allowedHosts ?? defaultAllowedHosts(host, boundPort) }
             : {}),
-          ...(options.allowedHosts !== undefined ? { allowedHosts: options.allowedHosts } : {}),
         });
         const adapter = createMcpServer(toMcpOptions(options));
         // Cast bridges a cross-package exactOptionalPropertyTypes mismatch: the
@@ -195,4 +247,28 @@ export function createHttpMcpServer(options: HttpMcpServerOptions): HttpMcpServe
       return boundPort;
     },
   };
+}
+
+/** A loopback bind is reachable only from the same host, so keyless is
+ *  acceptable there; any other bind is potentially network-reachable. */
+function isLoopbackHost(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    // 127.0.0.0/8 is entirely loopback.
+    /^127\./.test(host)
+  );
+}
+
+/** Host-header values to allow when DNS-rebinding protection is on: the bound
+ *  address, plus loopback aliases a local client might use. */
+function defaultAllowedHosts(host: string, port: number): string[] {
+  const hosts = new Set<string>([`${host}:${port}`]);
+  if (isLoopbackHost(host)) {
+    hosts.add(`127.0.0.1:${port}`);
+    hosts.add(`localhost:${port}`);
+    hosts.add(`[::1]:${port}`);
+  }
+  return [...hosts];
 }

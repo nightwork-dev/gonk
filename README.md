@@ -54,6 +54,7 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 
 | Package | What it is |
 | --- | --- |
+| `@gonk/utils` | Zero-dependency fs-safety primitives (`safeJoin`, atomic writes), code-split per concern (`@gonk/utils/fs`) so unbundled consumers load only what they import. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
 | `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
 | `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, metrics sinks. |

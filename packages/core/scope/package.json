@@ -37,6 +37,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@gonk/utils": "workspace:*",
     "yaml": "catalog:"
   },
   "devDependencies": {

@@ -1,6 +1,8 @@
 import { mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
+import { safeJoin } from "@gonk/utils/path";
+
 import { defaultCommandPlacement, defaultHookPlacement } from "./placement.ts";
 import type {
   ClaudeHooksFile,
@@ -131,7 +133,14 @@ export function unmaterializeClaudePlugin(opts: { outDir: string }): { removed: 
   const ordered = [...previous].sort();
   for (const rel of ordered) {
     if (rel === MATERIALIZE_MANIFEST_FILE) continue;
-    const abs = join(pluginRoot, rel);
+    // Same containment guard as the sweep: a manifest path that resolves
+    // outside the plugin root is skipped, never deleted.
+    let abs: string;
+    try {
+      abs = safeJoin(pluginRoot, rel);
+    } catch {
+      continue;
+    }
     try {
       rmSync(abs);
       removed.push(rel);
@@ -271,7 +280,15 @@ function sweepObsolete(args: {
     if (args.current.has(rel)) continue;
     if (rel === MATERIALIZE_MANIFEST_FILE) continue;
     if (!isInsideOwnedDir(rel)) continue;
-    const abs = join(args.pluginRoot, rel);
+    // Never delete outside the plugin root. A manifest carrying a traversing
+    // path (`commands/../../x` passes isInsideOwnedDir on its first segment but
+    // resolves outside) is skipped rather than honored.
+    let abs: string;
+    try {
+      abs = safeJoin(args.pluginRoot, rel);
+    } catch {
+      continue;
+    }
     try {
       rmSync(abs);
     } catch {
@@ -323,9 +340,13 @@ class WriteBuffer {
   constructor(private readonly pluginRoot: string) {}
 
   write(relPath: string, content: string): void {
+    // Confine the write to the plugin root. relPath is derived from spec data
+    // (command names, verb keys) that is only kebab-case "by convention" and
+    // never validated — a name like `../../etc/x` would otherwise escape the
+    // tree. safeJoin throws on escape rather than writing outside.
+    const abs = safeJoin(this.pluginRoot, relPath);
     const normalized = relPath.split(sep).join("/");
     this.entries.set(normalized, content);
-    const abs = join(this.pluginRoot, relPath);
     mkdirSync(dirname(abs), { recursive: true });
     writeFileSync(abs, content);
   }

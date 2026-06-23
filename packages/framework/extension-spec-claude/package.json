@@ -37,7 +37,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gonk/extension-spec": "workspace:*"
+    "@gonk/extension-spec": "workspace:*",
+    "@gonk/utils": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
