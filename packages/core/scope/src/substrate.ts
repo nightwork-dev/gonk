@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { atomicWriteJson } from "@gonk/utils/fs";
 import { isAbsolute, join, sep } from "node:path";
 
 import type { RootKind, ScopeName } from "./types.ts";
@@ -116,7 +117,7 @@ interface SubstrateStub {
 export function writeSubstrateStub(definitionHome: string, mirrorPath: string): void {
   mkdirSync(definitionHome, { recursive: true });
   const stub: SubstrateStub = { path: mirrorPath };
-  writeFileSync(join(definitionHome, SUBSTRATE_STUB_FILE), `${JSON.stringify(stub, null, 2)}\n`);
+  atomicWriteJson(join(definitionHome, SUBSTRATE_STUB_FILE), stub);
 }
 
 /** Read the substrate-redirect path from a definition home's stub, or undefined
