@@ -12,6 +12,10 @@
     "./base": {
       "types": "./dist/base.d.ts",
       "import": "./dist/base.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance.d.ts",
+      "import": "./dist/conformance.js"
     }
   },
   "types": "./dist/index.d.ts",
