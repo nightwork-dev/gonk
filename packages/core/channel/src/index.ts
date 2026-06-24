@@ -30,5 +30,3 @@ export { createMessage, extractText, parseAddress, formatAddress } from "./messa
 export type { IChannelRegistry } from "./registry.ts";
 export { ChannelRegistry } from "./registry.ts";
 
-export type { ConformancePair } from "./conformance.ts";
-export { channelConformance } from "./conformance.ts";
