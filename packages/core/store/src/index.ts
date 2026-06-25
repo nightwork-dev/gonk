@@ -28,3 +28,5 @@ export {
   BackedLogStore,
   BackedVectorStore,
 } from "./stores.ts";
+export type { LogTail, LogTailRecord, TailLogOptions } from "./fs-log-tail.ts";
+export { tailLog } from "./fs-log-tail.ts";

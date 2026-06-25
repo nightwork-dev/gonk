@@ -25,7 +25,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-03 | Pulses | ext | @gonk/pi-pulses | near | open |
 | GR-04 | Temporal awareness | core | @gonk/temporal | near | open |
 | GR-05 | Cross-harness handoff | ext | @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff | near | open |
-| GR-06 | Run the real effectiveness eval | ext | @gonk/pi-probe (program) | near | open |
+| GR-06 | Run the real effectiveness eval | ext | @gonk/pi-probe (program) | deferred | deferred |
 | GR-07 | Context-budget allocator | ext | @gonk/pi-introspect (+ injectors) | near | open |
 | GR-08 | Memory consolidation | ext | @gonk/reflector, @gonk/memory | near | open |
 | GR-09 | Cross-process store concurrency | core | @gonk/store | near | open |
@@ -37,6 +37,8 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-15 | Persona self-model | ext | @gonk/persona | near | open |
 | GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | open |
 | GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | open |
+| GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | open |
+| GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM slice shipped |
 | GR-18 | Panel of models | ext | @gonk/rlm | med | open |
 | GR-19 | Person-modeling | ext | @gonk/persona | med | open |
 | GR-20 | Context siloing | ext | @gonk/knowledge | med | open |
@@ -151,7 +153,12 @@ capture.
 
 ### GR-06 · Run the real effectiveness eval — the number, not the harness
 
-**Area:** ext · **Pkg:** @gonk/pi-probe (program) · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/pi-probe (program) · **Horizon:** deferred · **Status:** deferred
+
+> **Deferred 2026-06-24 (David + Garnet):** do not run or propose this eval until the system
+> *feels right* for both of us. We are still in unification work, not measurement. Evals measure
+> a finished-feeling thing; measuring now optimizes the wrong surface. Do not surface GR-06 as a
+> near-term action in plans until the joint "feels right" decision lifts the deferral.
 
 The bench exists; the **result does not**. The load-bearing product claim — "host+gonk beats
 host-baseline on a real task suite" — is asserted, not measured. Run the probe suite against a
@@ -346,6 +353,73 @@ the inbox. The inbox is the human surface and the phone-side meeting point with 
 Non-goals: no daemon, no cross-machine relay (rides connectivity), no second job registry, no
 LLM-only judging.
 
+**Attention-queue design scope (added 2026-06-23).** The live audit of the extension stack surfaced a parallel problem: multiple extensions have grown their own approval/attention flows — `ask_user` (synchronous), inbox (durable async), plan approvals, persist checkpoints, channel approvals, daemon reviews, curator/reflector proposals — and none compose into a single "what needs my attention right now?" surface. The supervisor tick design (above) must address this: one async human attention queue, with `ask_user` as the immediate/synchronous path and inbox as the durable async surface. Other extensions should route attention items through inbox rather than growing bespoke queues. The target UX is a unified work/attention view with typed rows (`[approval]`, `[job running]`, `[work blocked]`, `[curator proposal]`) and consistent actions (inspect, approve/reject, cancel/retry, dismiss).
+
+### GR-43 · Unified recall surface — one query across all memory substrates
+
+**Area:** ext · **Pkg:** @gonk/recall (new) · **Horizon:** near · **Status:** open
+
+Right now the agent must reach four different tools — `memory_recall`, `knowledge_search`,
+`self_model_list`, and trace/triple queries — to pull context from substrates that are conceptually
+the same thing: *what do I know that's relevant here?* Each substrate has its own schema, its own
+ranking heuristic, and its own tool call. The agent has to decide which to reach for, and auto-
+injection uses entirely separate plumbing from the agent's own on-demand retrieval.
+
+**The design.** One `context_query` (or `gonk_recall`) tool queries across: curated memory, session
+/ episodic history, authored knowledge pages, self-model claims, temporal triples, traces, and skill
+metadata. Results are returned as a single ranked set with **source labels** — `[memory/curated]`,
+`[memory/session]`, `[knowledge]`, `[self-model/private]`, `[self-model/shared]`, `[triple]`,
+`[trace]` — so the agent knows the provenance without knowing the substrate. Write tools stay
+per-substrate (writes are intentional; reads are where the unification buys anything).
+
+Auto-injection uses the same ranking layer, making it **debuggable**: `context_query` with a `dry`
+flag returns the injection candidate set and explains why each was or wasn't surfaced — the same
+transparency problem that makes passive injection hard to tune is solved by using the same pipe.
+
+**Package ownership.** A new `@gonk/recall` package owns the cross-substrate query and ranking;
+each substrate stays in its own package and exposes a typed adapter interface (`RecallAdapter`).
+This is a clean boundary: the query surface has no storage, only routing and scoring.
+
+**Open design questions:**
+- Name: `context_query` / `gonk_recall` / `know` — the name affects how the agent reaches for it.
+- v1 sources: curated memory + knowledge pages + self-model claims first (the three authored/durable
+  substrates); traces and triples as a v2 once the ranking is validated.
+- Cross-substrate ranking: TF-IDF per source + a source-weight layer controlled by
+  `tool_visibility`-style policy, not hard-coded constants.
+- Dry-season gate: wire one job with traces instrumented; if the agent's tool-reach frequency
+  changes, keep; otherwise cut before adding breadth.
+
+### GR-44 · Async multi-agent execution — async delegates + design tail
+
+**Area:** core+ext · **Pkg:** @gonk/comms, @gonk/work-items, @gonk/jobs, @gonk/rlm, @gonk/pi-subagent · **Horizon:** med · **Status:** partial · async RLM slice shipped
+
+Several primitives have shipped independently to solve adjacent slices of the same problem — how does a gonk agent dispatch workers, continue doing other things, and collect results — and the first RLM-backed async slice has now shipped. The remaining work is the cross-primitive design tail, not the basic "don't block the parent session for RLM delegates" path.
+
+- **`@gonk/pi-subagent`** (Phase 1, shipped) — blocking child-proc spawn per task; the orchestrating agent hands off and waits. Works for linear handoff; fails for parallelism. `dispatchDetachedSubagentToAttention` now accepts a `WatchRegistry` + `watchNote` so callers that wire it into a live path get the same one-shot wake behavior as `dispatchDetached`; production callers still need to pass the registry.
+- **`@gonk/work-items`** — durable goal + evidence + inbox model with a supervisor tick (GR-17). The right shape for async; not yet fully connected to subagent dispatch.
+- **`@gonk/jobs`** — execution substrate under work-items; `dispatchDetached({ watch })` auto-registers one-shot wakes by default, with `watch:false`/omitted registry as the batch opt-out.
+- **`@gonk/comms`** — cross-session addressing (GR-02). The same-machine wake/push path is live via `pi-comms` WakeLoop; cross-machine transport remains additive channel work.
+- **`@gonk/rlm`** — async delegate slice shipped: `rlm_query` is async-by-default for non-lazy queries; `rlm_pipeline` has a detached job runner and is async-by-default; sealed `rlm_compose` has a detached job runner, returns `{jobId, runId}`, writes the supervised workspace, and is async-by-default. `composeAgent`/`agentId` intentionally remains synchronous until a real ToolContext/depth/scope/signal ferry exists.
+- **GR-01 (session decoupling)** — a process-independent session is the precondition for any persistent worker model.
+
+**Shipped user stories (2026-06-24):**
+1. As an agent, when I call `rlm_query` without an explicit `async:false` or `lazy:true`, the work dispatches as a watched background job and wakes me on completion instead of blocking the session.
+2. As an agent, when I call `rlm_pipeline` without an explicit `async:false` or `lazy:true`, the pipeline dispatches as a watched background job, persists its stage outputs to `job_status`, and wakes me on completion.
+3. As an agent, when I call sealed `rlm_compose`, I immediately get `{jobId, runId}`; I can inspect/guide the run via supervisor tools while it works, and the terminal draft lands in the shared job record.
+4. As an integrator wiring detached subagents into attention/work-item flows, I can pass a `WatchRegistry` and get a one-shot wake on terminal status without a separate `job_watch` call.
+
+**Remaining gap.** The broad cross-primitive target model is still not finished: *orchestrating agent emits N persona/task workers → workers run (possibly across sessions/processes) → orchestrator collects results without blocking its own context*. The default RLM delegate path no longer blocks, but persona-scoped compose (`composeAgent`/`agentId`) and pi-subagent Phase 2 still need one coherent seam for ToolContext/depth/scope/signal, dispatch, collection, and wake semantics.
+
+**Remaining user stories / design pass output:**
+1. A map of what each primitive actually owns and where the boundaries are now vs. where they should be.
+2. A target model for persona-scoped async execution: likely work-items as the dispatch surface, jobs as execution, comms as the result-delivery channel, and RLM's pipeline shape as orchestration — but the ToolContext/depth/scope/signal ferry must be explicit, not guessed.
+3. A decision on `@gonk/pi-subagent` Phase 2: rebase on the async model or deprecate in favor of work-item/RLM dispatch.
+4. GR-01 (session decoupling) as a hard prerequisite for workers that outlive or move beyond their launching process.
+
+**Design direction to evaluate.** RLM (`rlm_compose`, `rlm_pipeline`, `runRLM`) has been the most effective thing in the stack and is largely shipped. The question is whether subagents should be a feature *of* RLM rather than a separate system: each RLM worker node is already a bounded task with its own sub-client; making that node persona-scoped and process-isolated is a short step. RLM's coordinator already owns fan-out, ordering, and result collection — the piece that `pi-subagent`'s blocking model lacks. This is the pattern Claude Code's Agent tool uses: the pipeline manages concurrency, subagents are just worker slots. Evaluating RLM-as-subagent-host should be the primary question of the design pass, not a new execution spine to build.
+
+Non-goal: don't build more surface on top of the current blocking `pi-subagent` model while this is unresolved. Linear delegation works fine; stop there until the design pass maps the RLM path.
+
 ---
 
 ## Medium term
@@ -498,15 +572,20 @@ harvest through the crash-replay-safe path). Plus a sandbox spike wrapping flue'
 `SessionEnv`, and a reciprocal **HTTP-MCP** server exposing gonk capabilities to flue agents (logic
 exists; re-transport from stdio).
 
-### GR-32 · RLM v2
+### GR-32 · RLM — remaining tail items
 
 **Area:** ext · **Pkg:** @gonk/rlm · **Horizon:** long · **Status:** open
 
+Core shipped (v0.3.0): `rlm_compose`, `rlm_pipeline`, `runRLM`, runner, cache (fs + store), trace writers, JS worker sandbox. The async delegate slice in GR-44 shipped for `rlm_query`, `rlm_pipeline`, and sealed `rlm_compose` (watched detached jobs; compose returns `{jobId, runId}`). RLM is the most effective execution primitive in the stack and the likely host for persona-scoped subagent dispatch (see GR-44). Remaining:
+
+- **RLM feedback Finding 1 / P0 — `subLLM(snippet, query)` sends both context and task** (`wi-20260624-223629-1a81d1`). Today the trace records both fields but the submodel prompt may only receive the snippet. Acceptance: fake subclient proves single and batched subcalls include both snippet/context and query/task.
+- **RLM feedback Finding 2 / P1 — make lazy large-context support honest** (`wi-20260624-223652-3d513f`). Either implement true streaming file/glob/session lazy reads + metadata identity, or reword docs/tool descriptions so `lazy:true` does not imply no full materialization.
+- **RLM feedback Finding 3 / P1 — explicit terminal status/finalization contract** (`wi-20260624-223652-21fc77`). `runRLM` should report `completed`/`finalized`/`root_failed`/`max_iterations`/`timeout`, with optional `submit_result`, instead of an empty answer looking successful.
+- **RLM feedback Finding 4 / P2 — typed traces for runtime contract facts** (`wi-20260624-223652-a0dbb7`). Trace what prompt the submodel saw, source identity/lazy strategy, finalization, and terminal status while keeping existing trace writers compatible.
+- **RLM feedback Finding 5 / P2 — explicit timeout state metadata** (`wi-20260624-223652-65b169`). Snippet timeout results should say `statePreserved:false` and carry enough metadata for the root agent/trace to reason about state loss.
 - **OOLONG-Pairs benchmark run** — the one task where RLM uniquely shines vs vanilla frontier
-  models; a credible v1 verification claim. Deferred until the dataset is wired (no synthetic
+  models; a credible verification claim. Deferred until the dataset is wired (no synthetic
   harness without a real eval target).
-- **True disk/sqlite-streaming for lazy sources** — per-file offset maps for glob, paginated sqlite
-  reads for session, UTF-8-safe range decoding. Unlocks corpora that exceed memory.
 - **`rlm_pipeline` routing/branching** — full routing (named branches, conditional fan-out) beyond
   the current skip predicate; a separate design with recursion concerns. Waits for a concrete need.
 
@@ -533,8 +612,11 @@ WebSocket realtime STT provider.
 
 - **[GR-35]** (ext) **Cron / scheduler** — add when a concrete consumer commits (the gap-map's scheduled-agents row is
   the promotion signal).
-- **[GR-36]** (core) **Observability / metrics export** — a `MetricsSink` exists; an OpenTelemetry exporter would be
-  straightforward.
+- **[GR-36]** (core) **Observability / metrics export** — **Area:** core · **Pkg:** @gonk/core (MetricsSink), @gonk/traces, @gonk/pi-insights · **Horizon:** maybe · **Status:** open
+
+  `MetricsSink` exists in `@gonk/core` with no exporter. `@gonk/traces` captures per-session tool call records. `@gonk/pi-insights` exposes 30-day historical analytics (`insights_tools`, `insights_cost`, `insights_summary`). What's missing is the **usage telemetry spine**: a unified view of what tools agents are actually reaching for (vs. what's wired and visible), costs across the session and historically, and a feedback path into the curator when tools are underused.
+
+  The design intent (2026-06-23): telemetry on usage is how you discover that a wired tool is effectively an orphan — visible, defined, never called. A `session_stats` surface (added to `@gonk/pi-introspect`) provides the live view; `insights_tools` provides the historical view; the curator reads zero-reach signals and proposes skills or prompt nudges to surface underused tools. An OpenTelemetry exporter over `MetricsSink` remains a nice-to-have for external dashboards but is not the load-bearing piece.
 - **[GR-37]** (ext) **Chat-platform gateways** (Telegram / Slack / Discord) — *surfaces* on top of the connectivity
   layer, not standalone integrations: once a host is addressable, a chat gateway is one more
   participant. Reference: pi-clawa's Discord gateway is a clean worked example of the relay spine
