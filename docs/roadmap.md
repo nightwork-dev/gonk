@@ -19,31 +19,35 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 
 | ID | Title | Area | Pkg | Horizon | Status |
 | --- | --- | --- | --- | --- | --- |
-| GR-02a | Channel address/identity primitive | core | @gonk/channel | near | open |
-| GR-01 | Session decoupling | ext | @gonk/harness-run (infra) | near | open |
-| GR-02b | Cross-agent communication | ext | @gonk/comms, @gonk/pi-comms | near | open |
-| GR-03 | Pulses | ext | @gonk/pi-pulses | near | open |
-| GR-04 | Temporal awareness | core | @gonk/temporal | near | open |
-| GR-05 | Cross-harness handoff | ext | @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff | near | open |
+| GR-02a | Channel address/identity primitive | core | @gonk/channel | near | shipped |
+| GR-01 | Session decoupling | ext | @gonk/harness-run (infra) | near | partial · harness-run spawn/tmux infra shipped; full detach/reattach session UX remains |
+| GR-02b | Cross-agent communication | ext | @gonk/comms, @gonk/pi-comms | near | partial · DM/inbox/presence/wake shipped; channels/broadcast/cross-host remain |
+| GR-03 | Pulses | ext | @gonk/pi-pulses | near | partial · rung-0 pulse engine shipped; escalation/pruning ladder remains |
+| GR-04 | Temporal awareness | core | @gonk/temporal | near | shipped |
+| GR-05 | Cross-harness handoff | ext | @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff | near | partial · Pi→Claude handoff tooling shipped; round-trip/cross-machine remains |
 | GR-06 | Run the real effectiveness eval | ext | @gonk/pi-probe (program) | deferred | deferred |
-| GR-07 | Context-budget allocator | ext | @gonk/pi-introspect (+ injectors) | near | open |
-| GR-08 | Memory consolidation | ext | @gonk/reflector, @gonk/memory | near | open |
-| GR-09 | Cross-process store concurrency | core | @gonk/store | near | open |
-| GR-10 | Per-model prompt profiles | ext | @gonk/model-picker, @gonk/pi-provider-policy | near | open |
+| GR-07 | Context-budget allocator | ext | @gonk/pi-introspect (+ injectors) | near | partial · introspection/tool-visibility shipped; prompt-budget allocator remains |
+| GR-08 | Memory consolidation | ext | @gonk/reflector, @gonk/memory | near | partial · turn-hook reflector/work-item path shipped; compaction/progressive consolidation remains |
+| GR-09 | Cross-process store concurrency | core | @gonk/store | near | partial · append-fold/log-tail shipped; compaction lock remains |
+| GR-10 | Per-model prompt profiles | ext | @gonk/model-picker, @gonk/pi-provider-policy | near | partial · model picker/provider policy shipped; prompt-profile injection remains |
 | GR-11 | Checkpoints / rewind | ext | pi (fork/navigateTree) + git ref | near | open |
 | GR-12 | Lorebook | ext | (new capability) | near | open |
-| GR-13 | Provider-aware voice cloning | ext | @gonk/pi-voice, @gonk/voice-tts | near | open |
-| GR-14 | Durable knowing | ext | @gonk/knowledge, @gonk/persona | near | open |
-| GR-15 | Persona self-model | ext | @gonk/persona | near | open |
-| GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | open |
-| GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | open |
+| GR-13 | Provider-aware voice cloning | ext | @gonk/pi-voice, @gonk/voice-tts | near | partial · voice sample capture/pin shipped; consuming clone-capable TTS provider remains |
+| GR-14 | Durable knowing | ext | @gonk/knowledge, @gonk/persona | near | partial · knowledge/self-model/passive-injection evaluator shipped; live hook/autotune remains |
+| GR-15 | Persona self-model | ext | @gonk/persona | near | partial · self-model store/tools/injection shipped; cultivation loop tail remains |
+| GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | partial · autotune/traces/curator bridge shipped; live closed-loop tuning remains |
+| GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | partial · work-items/inbox/attention_read shipped; supervisor dispatch sweep remains |
 | GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | partial · recall_read shipped + host-wired |
-| GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | open |
+| GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | partial · Claude comms MCP/presence slice shipped; full parity remains |
 | GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
 | GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify | near | design |
+| GR-51 | Persisted tool-visibility delta | ext | @gonk/pi-introspect | near | shipped |
+| GR-52 | Interface scaffold — socket-connected UIs on extensions | ext | (new interface-kit) + tool-registry adapters | med | open |
+| GR-53 | Agent-authored React playground — live preview + static export | ext | (new playground) | med | open |
+| GR-54 | Codex adapter — detect + wrap Codex MCPs into gonk's ecosystem | ext | (new codex-adapter) + tool-registry import | med | open |
 | GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
-| GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | open |
-| GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM slice shipped |
+| GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | design-only · spec exists; no attach-to-any-running-agent tools found |
+| GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM, tmux dispatch, wake coalescing, and delegation hardening shipped |
 | GR-18 | Panel of models | ext | @gonk/rlm | med | open |
 | GR-19 | Person-modeling | ext | @gonk/persona | med | open |
 | GR-20 | Context siloing | ext | @gonk/knowledge | med | open |
@@ -82,7 +86,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 
 ### GR-01 · Session decoupling from the terminal process
 
-**Area:** ext · **Pkg:** @gonk/harness-run (infra) · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/harness-run (infra) · **Horizon:** near · **Status:** partial · harness-run spawn/tmux infra shipped; full detach/reattach session UX remains
 
 **Behavior.** A session keeps running and stays resumable after the launching terminal/process
 closes; you can detach and reattach from anywhere.
@@ -93,7 +97,7 @@ different shell; the same detach/reattach works for at least one non-terminal en
 
 ### GR-02b · Cross-agent communication — inbox · DM · channel
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms · **Horizon:** near · **Status:** open · **Depends:** GR-02a
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms · **Horizon:** near · **Status:** partial · DM/inbox/presence/wake shipped; channels/broadcast/cross-host remain · **Depends:** GR-02a
 
 **Split — core primitive `GR-02a` (the `@gonk/channel` address/identity layer, stays in core) + this entry `GR-02b` (the inbox/DM/channel *behavior* over it, extensions).**
 
@@ -113,7 +117,7 @@ project's typed envelope is worth borrowing for the wake-vs-inject distinction.
 
 ### GR-03 · Pulses — scheduled and ambient self-directed wakes
 
-**Area:** ext · **Pkg:** @gonk/pi-pulses · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/pi-pulses · **Horizon:** near · **Status:** partial · rung-0 pulse engine shipped; escalation/pruning ladder remains
 
 **Behavior.** An agent wakes itself on a schedule (or ambient cadence) and does one useful thing
 between user turns, visibly (as a session message). It runs cheap by default and escalates to a
@@ -130,7 +134,7 @@ Code) riding the model-picker / handoff seams; fed by a living curiosity/sparks 
 
 ### GR-04 · Temporal awareness — wall-clock vs. session time vs. turn count
 
-**Area:** core · **Pkg:** @gonk/temporal · **Horizon:** near · **Status:** open
+**Area:** core · **Pkg:** @gonk/temporal · **Horizon:** near · **Status:** shipped
 
 **Behavior.** The agent knows and can act on how much wall-clock time has passed, how long the
 session has run, how many turns deep it is, and how long it has been idle.
@@ -141,7 +145,7 @@ idle-at-high-context agent defers instead of waking), proven in a test with cont
 
 ### GR-05 · Cross-harness handoff — resume a session across Pi ↔ Claude Code ↔ Codex
 
-**Area:** ext · **Pkg:** @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff · **Horizon:** near · **Status:** partial · Pi→Claude handoff tooling shipped; round-trip/cross-machine remains
 
 **Behavior.** The same self with the same working context continues on a different harness — a cheap
 Pi/Codex session escalates to a Claude Code turn and back — without losing the thread, including when
@@ -173,7 +177,7 @@ form of orphaned substrate (capability without evidence of benefit). Single high
 
 ### GR-07 · Context-budget allocator — the prompt-injection commons
 
-**Area:** ext · **Pkg:** @gonk/pi-introspect (+ injectors) · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/pi-introspect (+ injectors) · **Horizon:** near · **Status:** partial · introspection/tool-visibility shipped; prompt-budget allocator remains
 
 N injectors (memory recall, persona context, knowledge, growth disposition, the substrate line,
 the persist rail) write to one prompt with **no global budget and no arbiter** — collectively they
@@ -192,15 +196,11 @@ project, which independently converged on much of this stack):
   until the agent's activity calls for it, persisted into the message record so it isn't re-sent —
   don't widen the startup bolus.
 
-**Sub-issue — persisted visible-tool list shadows new defaults.** A persisted `visible:` list
-*fully replaces* the default visible set rather than layering over it, so every tool added to the
-defaults after a snapshot is written goes silently invisible to that user. Fix: make the override a
-**delta** (`defaults + adds − removes`), or warn when a persisted set diverges from current
-defaults. Make the stale-snapshot-eats-new-capabilities state structurally visible.
+The persisted visible-tool-list shadowing bug that lived here was promoted to its own item **GR-51** and shipped (delta resolution, 2026-06-26).
 
 ### GR-08 · Memory consolidation — make the reflector actually fire
 
-**Area:** ext · **Pkg:** @gonk/reflector, @gonk/memory · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/reflector, @gonk/memory · **Horizon:** near · **Status:** partial · turn-hook reflector/work-item path shipped; compaction/progressive consolidation remains
 
 The aux-harvest reflector (skills + durable memory + self-model) is **orphaned by trigger**: the
 scheduler refuses to run while `lastRunAt === 0` and nothing seeds it, and even seeded, a 2h idle
@@ -221,7 +221,7 @@ Reference (pi-clawa) — a working answer to exactly this firing problem:
 
 ### GR-09 · Cross-process store concurrency — append-fold the durable layer
 
-**Area:** core · **Pkg:** @gonk/store · **Horizon:** near · **Status:** open
+**Area:** core · **Pkg:** @gonk/store · **Horizon:** near · **Status:** partial · append-fold/log-tail shipped; compaction lock remains
 
 A single persona can be live in **several independent host processes at once** (two Pi sessions, a
 Claude session, a cron job) over one on-disk store with **no shared lock manager**. "Fresh handle
@@ -245,7 +245,7 @@ construction.
 
 ### GR-10 · Per-model prompt profiles
 
-**Area:** ext · **Pkg:** @gonk/model-picker, @gonk/pi-provider-policy · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/model-picker, @gonk/pi-provider-policy · **Horizon:** near · **Status:** partial · model picker/provider policy shipped; prompt-profile injection remains
 
 Scope-keyed `prompt.profile.<model-family>` resolved via the existing model-picker / provider-policy
 seam, with knobs mapped to real injection points (persist continuation, persona-context render,
@@ -282,7 +282,7 @@ first: one bounded entry whose firing is instantly observable before any catalog
 
 ### GR-13 · Provider-aware voice cloning
 
-**Area:** ext · **Pkg:** @gonk/pi-voice, @gonk/voice-tts · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/pi-voice, @gonk/voice-tts · **Horizon:** near · **Status:** partial · voice sample capture/pin shipped; consuming clone-capable TTS provider remains
 
 The *capture* half is done — `pi-voice` records a reference sample and persists it persona-scoped —
 but the sample is never *used*: the shipped `openai-compat` TTS provider sends voice/speed/
@@ -294,7 +294,7 @@ already exist; only the consuming provider is missing.
 
 ### GR-14 · Durable knowing — the near-term finish
 
-**Area:** ext · **Pkg:** @gonk/knowledge, @gonk/persona · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/knowledge, @gonk/persona · **Horizon:** near · **Status:** partial · knowledge/self-model/passive-injection evaluator shipped; live hook/autotune remains
 
 Two asks that look separate — **knowledge** (what the agent durably knows about the domain) and
 **theory of mind** (what it durably knows about the user) — are one substrate seen from two ends:
@@ -323,7 +323,7 @@ The knowledge surface and self-model substrate have shipped; what remains needs 
 
 ### GR-15 · Persona self-model — the cultivation loop
 
-**Area:** ext · **Pkg:** @gonk/persona · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/persona · **Horizon:** near · **Status:** partial · self-model store/tools/injection shipped; cultivation loop tail remains
 
 The layer above the optimization loops and the telos of `@gonk/persona`: a persona that develops
 interiority, taste, and a model of its collaborators over time. Unlike the loops below it, this is
@@ -347,7 +347,7 @@ Open:
 
 ### GR-16 · Self-refinement workstream
 
-**Area:** ext · **Pkg:** @gonk/autotune, @gonk/traces, @gonk/curator · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/autotune, @gonk/traces, @gonk/curator · **Horizon:** near · **Status:** partial · autotune/traces/curator bridge shipped; live closed-loop tuning remains
 
 Foundation shipped (autotune, traces, provider-gate, curator audit log, trace evaluator). Remaining
 consumers: a per-persona memory recall-threshold tuner (autotune the passive-recall hook against
@@ -363,7 +363,7 @@ autotune on — and until the balanced cohort is large enough to trust the point
 
 ### GR-17 · Long-running agent operations — the work-item / supervisor layer
 
-**Area:** ext · **Pkg:** @gonk/work-items, @gonk/reflector · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/work-items, @gonk/reflector · **Horizon:** near · **Status:** partial · work-items/inbox/attention_read shipped; supervisor dispatch sweep remains
 
 Long-running autonomy modeled as *supervised durable work items*, not a free-running daemon. A job
 is execution state; a **work item** is goal + source + scope + status + evidence + the jobs that
@@ -427,7 +427,7 @@ type-only store-dep build boundary.
 
 ### GR-47 · Claude Code comms participant parity + presence layer v0
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, Claude wrapper · **Horizon:** near · **Status:** open · **Spec:** [cc-comms-participant-presence-spec.md](../../docs.local/cc-comms-participant-presence-spec.md) · **Depends:** GR-02b
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, Claude wrapper · **Horizon:** near · **Status:** partial · Claude comms MCP/presence slice shipped; full parity remains · **Spec:** [cc-comms-participant-presence-spec.md](../../docs.local/cc-comms-participant-presence-spec.md) · **Depends:** GR-02b
 
 **Behavior.** Make Claude Code a first-class comms participant by finishing the existing
 claude-comms Slice 2: heartbeat + presence entry, `message_send`, `message_inbox`, `message_ack`,
@@ -459,6 +459,30 @@ visible channels/rooms; cross-machine transport.
 **Why.** This is the concrete closure of the original persistent-agent phone loop: an agent can buzz David's phone, David answers from the phone, and the agent sees the reply on its next turn. It also forces the right dependency: humans are never turn-live, so phone reach rides idle-peer delivery rather than a special phone side channel.
 **Done.** `message_send` to `david:signal~human` with `intent: reply_requested` and intensity `push` produces a Signal/ntfy phone notification through `@midnight/notify`; quiet-hours can lower the intensity; David's authenticated reply is authorized by GR-45 and lands in the correct agent inbox/thread; unauthorized inbound messages do not write inbox or wake an agent.
 
+### GR-51 · Persisted tool-visibility delta — stale snapshots no longer shadow new defaults
+
+**Area:** ext · **Pkg:** @gonk/pi-introspect · **Horizon:** near · **Status:** shipped
+
+The persisted `visible:` tool list now resolves as a DELTA over the code defaults (`defaults + adds − removes`, with the always-on floor un-hideable) instead of fully replacing them, so a stale snapshot can no longer silently hide tools added to the defaults after it was written; existing bare-array snapshots auto-migrate; locked in by a red-without-fix regression test. Shipped 2026-06-26, commit 6e1bef9.
+
+### GR-52 · Interface scaffold — build UIs on gonk extensions (socket-connected)
+
+**Area:** ext · **Pkg:** (new interface-kit) + @gonk/tool-registry adapters · **Horizon:** med · **Status:** open · **Adjacent:** GR-28, GR-31
+
+An easy way to stand up an interface (web UI) on top of gonk extensions: a UI connects over a socket (WS) to the live capability surface and calls the same capabilities agents do, with no hand-wired server. Rides the registry-as-projection layer — a WS/HTTP + typed-client export adapter off `@gonk/tool-registry`, so a UI is just another consumer of one capability definition (see [registry-capability-hub-spec.md](../../docs.local/registry-capability-hub-spec.md), held to its "build what a real consumer pulls" rule). A concrete consumer that pulls the hub's web-export adapter into existence.
+
+### GR-53 · Agent-authored React playground — live preview + static export
+
+**Area:** ext · **Pkg:** (new playground) · **Horizon:** med · **Status:** open · **Depends:** GR-52
+
+A "playground" built on GR-52: the agent creates and iterates on anything in React — prototypes, diagrams, visualizations, slideshows, reports — live-viewable by the user with live-update as the agent edits, then exportable as a standalone **static HTML file** the user can share. The agent authors React against the live socket surface; the user watches it update; export bakes a portable, dependency-free artifact. The interactive-artifact sibling of deadletters' static content — same "one artifact, two readers," but the artifact is a running interface.
+
+### GR-54 · Codex adapter — detect + wrap Codex MCPs into gonk's ecosystem
+
+**Area:** ext · **Pkg:** (new codex-adapter) + @gonk/tool-registry (import) + @gonk/pi-introspect · **Horizon:** med · **Status:** open · **Adjacent:** GR-31
+
+An adapter that auto-detects the MCP servers configured within Codex, connects to them, and imports their tools into gonk's `tool-registry` as first-class capabilities — so Codex's MCP tools become visible to and managed by gonk's ecosystem (the visibility coordinator, attention, the `authorization?` axis). A concrete consumer of the registry hub's **import** direction (see [registry-capability-hub-spec.md](../../docs.local/registry-capability-hub-spec.md)) — and the cleanest possible one, since MCP tools are already capability-shaped (JSON-Schema'd I/O), so the import is a near-direct map rather than a wrapper. Open detection mechanism to resolve in the spec: a Codex app-server integration vs. reading an MCP/config surface Codex may broadcast itself. Net: Codex's tool surface stops being a separate silo and becomes part of the one managed capability set.
+
 ### GR-48 · Persona self-lifecycle — request reload/restart/compaction
 
 **Area:** ext · **Pkg:** Pi harness, @gonk/persona, @gonk/work-items · **Horizon:** near · **Status:** design-pending · **Spec:** [persona-self-lifecycle-spec.md](../../docs.local/persona-self-lifecycle-spec.md) · **Adjacent:** GR-01, GR-08, GR-15, GR-17, GR-47
@@ -470,7 +494,7 @@ visible channels/rooms; cross-machine transport.
 
 ### GR-46 · Tmux session tools — human attach-to-any-agent
 
-**Area:** ext · **Pkg:** Claude wrapper, @gonk/pi-comms · **Horizon:** near · **Status:** open · **Spec:** [tmux-session-tools-spec.md](../../docs.local/tmux-session-tools-spec.md) · **Complements:** GR-47 (does NOT supersede it)
+**Area:** ext · **Pkg:** Claude wrapper, @gonk/pi-comms · **Horizon:** near · **Status:** design-only · spec exists; no attach-to-any-running-agent tools found · **Spec:** [tmux-session-tools-spec.md](../../docs.local/tmux-session-tools-spec.md) · **Complements:** GR-47 (does NOT supersede it)
 
 **Behavior.** A human-facing affordance (also usable by CC) to attach to and converse with ANY
 running agent in a tmux session — including ephemeral sub-agents and custody-tree children that have
@@ -490,7 +514,7 @@ sessions/agents.
 
 ### GR-44 · Async multi-agent execution — async delegates + design tail
 
-**Area:** core+ext · **Pkg:** @gonk/comms, @gonk/work-items, @gonk/jobs, @gonk/rlm, @gonk/pi-subagent · **Horizon:** med · **Status:** partial · async RLM slice shipped
+**Area:** core+ext · **Pkg:** @gonk/comms, @gonk/work-items, @gonk/jobs, @gonk/rlm, @gonk/pi-subagent · **Horizon:** med · **Status:** partial · async RLM, tmux dispatch, wake coalescing, and delegation hardening shipped
 
 Several primitives have shipped independently to solve adjacent slices of the same problem — how does a gonk agent dispatch workers, continue doing other things, and collect results — and the first RLM-backed async slice has now shipped. The remaining work is the cross-primitive design tail, not the basic "don't block the parent session for RLM delegates" path.
 
