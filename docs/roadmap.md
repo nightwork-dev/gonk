@@ -37,7 +37,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-15 | Persona self-model | ext | @gonk/persona | near | open |
 | GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | open |
 | GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | open |
-| GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | open |
+| GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | partial · recall_read shipped + host-wired |
 | GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | open |
 | GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
 | GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify | near | design |
@@ -309,6 +309,17 @@ The knowledge surface and self-model substrate have shipped; what remains needs 
 2. **Passive knowledge injection hook.** The knowledge capability ships pure selection only (no
    orphaned hook); a future host hook does the cue-gated injection — gated on the same
    "verify the trigger fires" discipline as everything else.
+   **Progress (2026-06-26).** The *effectiveness instrument* for this hook now exists — a dry-season
+   **experiential evaluator** (commits `d1be91b`, `9557d90`, `bda8d86`): injection receipts
+   (publish → sidecar bridge → `trace.injections[]`), a **first-person reflector** (the agent judges
+   its own turn — used / ignored / harmful — rather than an external LLM judge), per-turn behavioral
+   labels, and an offline threshold report. Grounded in lived experience, not a synthetic benchmark.
+   Knowledge selection is now **graded and absolute** (coverage-dominant, no longer top-hit-normalized
+   to ~1.0), so the `0.72` injection threshold can actually suppress a weak/tangential match. Live
+   receipt: a precise prompt injects the right page (answer used) while a tangential prompt sharing
+   only the page name is **suppressed**. Honest caveat — mechanism is proven on that receipt, but a
+   confident point-biserial over a balanced cohort still needs accumulation. The live host injection
+   hook and its autotune (GR-16) remain the open consumer.
 
 ### GR-15 · Persona self-model — the cultivation loop
 
@@ -343,6 +354,13 @@ consumers: a per-persona memory recall-threshold tuner (autotune the passive-rec
 labeled traces); a curator→autotune bridge so skill `patch` resolves to a bounded scored run before
 applying; persona prompt tuning (above).
 
+**Unblocked (2026-06-26).** The recall-threshold tuner was effectively blocked because knowledge
+relevance normalized to the top hit (~everything scored 1.0, so a labeled cohort carried no
+gradient). With graded absolute scoring shipped (GR-14) plus the autotune reader keyed on
+trace-scoped per-candidate verdicts (`recall.verdict.<traceId>.<fingerprint>`), the labeled-trace
+gradient now exists and the tuner is technically unblocked. Deferred until we choose to turn live
+autotune on — and until the balanced cohort is large enough to trust the point-biserial.
+
 ### GR-17 · Long-running agent operations — the work-item / supervisor layer
 
 **Area:** ext · **Pkg:** @gonk/work-items, @gonk/reflector · **Horizon:** near · **Status:** open
@@ -360,9 +378,11 @@ LLM-only judging.
 
 **Attention-queue design scope (added 2026-06-23).** The live audit of the extension stack surfaced a parallel problem: multiple extensions have grown their own approval/attention flows — `ask_user` (synchronous), inbox (durable async), plan approvals, persist checkpoints, channel approvals, daemon reviews, curator/reflector proposals — and none compose into a single "what needs my attention right now?" surface. The supervisor tick design (above) must address this: one async human attention queue, with `ask_user` as the immediate/synchronous path and inbox as the durable async surface. Other extensions should route attention items through inbox rather than growing bespoke queues. The target UX is a unified work/attention view with typed rows (`[approval]`, `[job running]`, `[work blocked]`, `[curator proposal]`) and consistent actions (inspect, approve/reject, cancel/retry, dismiss).
 
+**Shipped (2026-06-26) — `attention_read` v1.** The unified-read half of this design is built and **wired into the live pi host**: one `attention_read` — "what needs me right now?" — urgency-ranked across the six attention sources, terse-default + verbose, actionable, and push-capable. This is the read surface the attention-queue scope above called for; it does **not** yet include the supervisor *tick* (the deterministic sweep that advances job states, dispatches `ready` work, and routes `needs_approval` through guard tiers). Remaining here is that supervisor tick on existing idle/turn-end gates, and migrating the bespoke per-extension queues to route through this surface.
+
 ### GR-43 · Unified recall surface — one query across all memory substrates
 
-**Area:** ext · **Pkg:** @gonk/recall (new) · **Horizon:** near · **Status:** open
+**Area:** ext · **Pkg:** @gonk/recall (new) · **Horizon:** near · **Status:** partial · recall_read shipped + host-wired
 
 Right now the agent must reach four different tools — `memory_recall`, `knowledge_search`,
 `self_model_list`, and trace/triple queries — to pull context from substrates that are conceptually
@@ -385,14 +405,25 @@ transparency problem that makes passive injection hard to tune is solved by usin
 each substrate stays in its own package and exposes a typed adapter interface (`RecallAdapter`).
 This is a clean boundary: the query surface has no storage, only routing and scoring.
 
-**Open design questions:**
-- Name: `context_query` / `gonk_recall` / `know` — the name affects how the agent reaches for it.
-- v1 sources: curated memory + knowledge pages + self-model claims first (the three authored/durable
-  substrates); traces and triples as a v2 once the ranking is validated.
-- Cross-substrate ranking: TF-IDF per source + a source-weight layer controlled by
-  `tool_visibility`-style policy, not hard-coded constants.
-- Dry-season gate: wire one job with traces instrumented; if the agent's tool-reach frequency
-  changes, keep; otherwise cut before adding breadth.
+**Shipped (2026-06-26).** `@gonk/recall` exists as its own package; `recall_read` — the unified
+"what do I know that's relevant here?" read — is built and **wired into the live pi host** (visible,
+terse-default + verbose). It ranks across the knowing-stores by relevance and labels each hit with
+**provenance** (stated vs. inferred / source). Two of the original open questions are now resolved by
+the implementation: the **name** is `recall_read`, and the **cross-substrate ranking** is relevance
++ provenance over the injected source-adapters (no hard-coded per-source constants). The package was
+independently reviewed SOUND-TO-KEEP across two rounds and ships 22 passing tests, read-only, with a
+type-only store-dep build boundary.
+
+**Remaining:**
+- **v2 sources** — traces and temporal triples on top of the authored/durable substrates already
+  covered, once the ranking is validated under load.
+- **Dry-season gate (still the open validation).** Wire one real job with traces instrumented; if
+  the agent's tool-reach frequency actually changes (reaches `recall_read` instead of the four
+  substrate tools, or instead of habit), keep and widen; otherwise cut before adding breadth. The
+  behavioral consequence — not the wiring — is the keep/cut signal.
+- **Shared ranking layer for auto-injection** with the `dry` flag that explains why each candidate
+  was/wasn't surfaced (the debuggability payoff) — converging passive injection and on-demand recall
+  onto the same pipe. Adjacent to the passive-injection evaluator work under GR-14/GR-16.
 
 ### GR-47 · Claude Code comms participant parity + presence layer v0
 
