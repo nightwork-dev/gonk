@@ -46,6 +46,8 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-53 | Agent-authored React playground — live preview + static export | ext | (new playground) | med | open |
 | GR-54 | Codex adapter — detect + wrap Codex MCPs into gonk's ecosystem | ext | (new codex-adapter) + tool-registry import | med | open |
 | GR-55 | Ownership / RACI — accountability facet (extract when pulled) | ext | work-graph inline → future @gonk/ownership | med | open |
+| GR-56 | Cross-harness capability invocation — call any harness from any extension | ext | (new harness-call) + claude/codex/pi-dispatch | med | open |
+| GR-57 | Memory bridge — claude-memory works with Claude-native memory AND gonk's | ext | claude-memory + @gonk/memory + @gonk/recall | med | open |
 | GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
 | GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | design-only · spec exists; no attach-to-any-running-agent tools found |
 | GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM, tmux dispatch, wake coalescing, and delegation hardening shipped |
@@ -489,6 +491,18 @@ An adapter that auto-detects the MCP servers configured within Codex, connects t
 **Area:** ext · **Pkg:** (work-graph inline now → future @gonk/ownership) · **Horizon:** med · **Status:** open · **Adjacent:** GR-45
 
 RACI ownership over an entity — **A**ccountable / **R**esponsible / **C**onsulted / **I**nformed, principal-keyed (reuses the persona/identity vocabulary). A distinct axis from authz **permission** (may you act — GR-45) and approval **risk** (should a human sign off): the **accountability** axis (who owns the outcome). Built INLINE in the work-graph as a clean, entity-agnostic module now; **extract to a standalone `@gonk/ownership` capability when a second non-work-graph consumer pulls it** (cross-project dashboards like Nora's PM app, decision tracking, deadletters docs). Deferred-not-now deliberately — later extraction is a clean lift (entity-agnostic + principal-keyed from day one), not architecturally hard, so shipping the package before a real second consumer would be the cathedral the framework's rule forbids.
+
+### GR-56 · Cross-harness capability invocation — call any harness from any extension
+
+**Area:** ext · **Pkg:** (new harness-call primitive) + claude-dispatch / codex-dispatch · **Horizon:** med · **Status:** open · **Adjacent:** GR-05, GR-44, registry-capability-hub
+
+Instead of wrapping every capability in every harness (claude-X + codex-X + pi-X across all 27 — the cathedral), a first-class **harness-call** primitive in every harness's extension set lets any harness invoke a capability that lives in another (Claude calls pi's `rlm_query`; pi calls Claude's; Codex reaches both). The registry hub's projection idea at the **harness boundary** — a capability lives once in its native harness and is reached cross-harness, not re-wrapped. Bounds wrapper proliferation: wrap only the lightweight, high-frequency, agent-local tools natively (recall, attention, knowledge); reach everything heavier (RLM — *intentionally pi-only* — voice, browser) via the call. Formalizes today's ad-hoc shell-dispatch (dispatch-to-pi) into a primitive; the synchronous-invocation sibling of cross-harness handoff (GR-05).
+
+### GR-57 · Memory bridge — claude-memory works with Claude's native memory AND gonk's
+
+**Area:** ext · **Pkg:** claude-memory, @gonk/memory, @gonk/recall · **Horizon:** med · **Status:** open · **Adjacent:** GR-43
+
+The Claude memory/recall wrappers must integrate **both** backends, not wrap gonk's alone: Claude Code's **native file-based memory** (the per-project `memory/` dir + `MEMORY.md` index surfaced at session start) AND **`@gonk/memory`** (the episodic mirk-backed store). Claude-native memory becomes an additional **source** for the unified recall read (so "what do I know" spans both) and a **sink** for stores (reconciled, not duplicated). claude-memory is a *bridge*, not a thin wrapper — mirror recall_read's source-adapter model with a Claude-native-memory adapter, and resolve read precedence + write routing between the two. (Applies to the in-flight claude-recall / claude-memory parity work.)
 
 ### GR-48 · Persona self-lifecycle — request reload/restart/compaction
 
