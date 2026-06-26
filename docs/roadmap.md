@@ -40,6 +40,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | open |
 | GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | open |
 | GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
+| GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify | near | design |
 | GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
 | GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | open |
 | GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM slice shipped |
@@ -418,6 +419,14 @@ visible channels/rooms; cross-machine transport.
 **Behavior.** Canonicalize the comms-layer model above participant presence: address strings are label-selectors over party/instance facets (`persona`, `:via`, `~model`, `@scope`, `/session`, aliases) that resolve to sets; delivery is a separate intent × intensity decision ceilinged by recipient wake policy; external humans/channels are first-class parties/loci over the same grammar; and work-passing moves task-node custody over comms using assign/delegate/reassign/handoff/accept/decline/report/complete verbs.
 **Why.** GR-47 makes Claude Code a first-class participant, but the next layer needs one coherent design before implementation slices accrete incompatible special cases: no `@` overloading, no accidental fan-out wakes from broad selectors, no separate bus for humans/Signal/Matrix, and no orphaned work when tasks move between parties.
 **Done.** `@gonk/comms` and host plugins can resolve canonical addresses such as `garnet:pi~gpt5.5@gonk/<session>` and aliases such as `garnet-planner@gonk`; delivery requests distinguish reply obligation from interruption intensity and respect `WakePolicy`; external `:via` transports route through authenticated notify backends; and task-node custody changes preserve owner/parent/reconciliation invariants.
+
+### GR-50 · Phone reach delivery — `:via` onto `@midnight/notify`
+
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify · **Horizon:** near · **Status:** design · **Spec:** [phone-reach-delivery-spec.md](../../docs.local/phone-reach-delivery-spec.md) · **Depends:** GR-45, GR-49, idle-delivery from GR-02b/GR-47
+
+**Behavior.** Wire the comms-layer external-party model to the concrete phone transports: `david~human` is a human party reachable through `:via` endpoints such as `:signal` and `:ntfy`; egress routes through existing `@midnight/notify` backends according to delivery intensity (`silent`/`push`/`call`) ceilinged by David's wake policy; ingress receives David's phone reply through an authenticated transport receiver, gates it through GR-45 AuthZ, and deposits it in the target agent's comms inbox as a message from `david~human`.
+**Why.** This is the concrete closure of the original persistent-agent phone loop: an agent can buzz David's phone, David answers from the phone, and the agent sees the reply on its next turn. It also forces the right dependency: humans are never turn-live, so phone reach rides idle-peer delivery rather than a special phone side channel.
+**Done.** `message_send` to `david:signal~human` with `intent: reply_requested` and intensity `push` produces a Signal/ntfy phone notification through `@midnight/notify`; quiet-hours can lower the intensity; David's authenticated reply is authorized by GR-45 and lands in the correct agent inbox/thread; unauthorized inbound messages do not write inbox or wake an agent.
 
 ### GR-48 · Persona self-lifecycle — request reload/restart/compaction
 
