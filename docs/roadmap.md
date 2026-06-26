@@ -45,6 +45,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-52 | Interface scaffold — socket-connected UIs on extensions | ext | (new interface-kit) + tool-registry adapters | med | open |
 | GR-53 | Agent-authored React playground — live preview + static export | ext | (new playground) | med | open |
 | GR-54 | Codex adapter — detect + wrap Codex MCPs into gonk's ecosystem | ext | (new codex-adapter) + tool-registry import | med | open |
+| GR-55 | Ownership / RACI — accountability facet (extract when pulled) | ext | work-graph inline → future @gonk/ownership | med | open |
 | GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
 | GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | design-only · spec exists; no attach-to-any-running-agent tools found |
 | GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM, tmux dispatch, wake coalescing, and delegation hardening shipped |
@@ -482,6 +483,12 @@ A "playground" built on GR-52: the agent creates and iterates on anything in Rea
 **Area:** ext · **Pkg:** (new codex-adapter) + @gonk/tool-registry (import) + @gonk/pi-introspect · **Horizon:** med · **Status:** open · **Adjacent:** GR-31
 
 An adapter that auto-detects the MCP servers configured within Codex, connects to them, and imports their tools into gonk's `tool-registry` as first-class capabilities — so Codex's MCP tools become visible to and managed by gonk's ecosystem (the visibility coordinator, attention, the `authorization?` axis). A concrete consumer of the registry hub's **import** direction (see [registry-capability-hub-spec.md](../../docs.local/registry-capability-hub-spec.md)) — and the cleanest possible one, since MCP tools are already capability-shaped (JSON-Schema'd I/O), so the import is a near-direct map rather than a wrapper. Open detection mechanism to resolve in the spec: a Codex app-server integration vs. reading an MCP/config surface Codex may broadcast itself. Net: Codex's tool surface stops being a separate silo and becomes part of the one managed capability set.
+
+### GR-55 · Ownership / RACI — accountability facet, extract to a shared capability when pulled
+
+**Area:** ext · **Pkg:** (work-graph inline now → future @gonk/ownership) · **Horizon:** med · **Status:** open · **Adjacent:** GR-45
+
+RACI ownership over an entity — **A**ccountable / **R**esponsible / **C**onsulted / **I**nformed, principal-keyed (reuses the persona/identity vocabulary). A distinct axis from authz **permission** (may you act — GR-45) and approval **risk** (should a human sign off): the **accountability** axis (who owns the outcome). Built INLINE in the work-graph as a clean, entity-agnostic module now; **extract to a standalone `@gonk/ownership` capability when a second non-work-graph consumer pulls it** (cross-project dashboards like Nora's PM app, decision tracking, deadletters docs). Deferred-not-now deliberately — later extraction is a clean lift (entity-agnostic + principal-keyed from day one), not architecturally hard, so shipping the package before a real second consumer would be the cathedral the framework's rule forbids.
 
 ### GR-48 · Persona self-lifecycle — request reload/restart/compaction
 
