@@ -38,6 +38,10 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | open |
 | GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | open |
 | GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | open |
+| GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | open |
+| GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
+| GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
+| GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | open |
 | GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM slice shipped |
 | GR-18 | Panel of models | ext | @gonk/rlm | med | open |
 | GR-19 | Person-modeling | ext | @gonk/persona | med | open |
@@ -388,6 +392,61 @@ This is a clean boundary: the query surface has no storage, only routing and sco
   `tool_visibility`-style policy, not hard-coded constants.
 - Dry-season gate: wire one job with traces instrumented; if the agent's tool-reach frequency
   changes, keep; otherwise cut before adding breadth.
+
+### GR-47 · Claude Code comms participant parity + presence layer v0
+
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, Claude wrapper · **Horizon:** near · **Status:** open · **Spec:** [cc-comms-participant-presence-spec.md](../../docs.local/cc-comms-participant-presence-spec.md) · **Depends:** GR-02b
+
+**Behavior.** Make Claude Code a first-class comms participant by finishing the existing
+claude-comms Slice 2: heartbeat + presence entry, `message_send`, `message_inbox`, `message_ack`,
+`presence_list`, and turn-start waiting-message surfacing in the Claude wrapper/plugin path. This is
+an addition to existing `@gonk/comms` tools, not a new bus and not new tmux tooling.
+**Why.** The observed CC ↔ Pi gap is not missing substrate: Pi already has the comms tools,
+presence heartbeat, waiting-message injection, same-machine wake loop, and HTTP MCP front door. The
+Claude materializer exists, but its own source marks live Claude tool behavior / MCP exposure as
+“Slice 2” and not wired. That is why CC reaches live personas through raw tmux today.
+**Done.** A Claude Code session appears in `presence_list` with persona/host/session/cwd context,
+can DM a live Pi persona through `message_send`, can read and ack its own inbox, and sees waiting
+messages at turn start. Same-machine CC ↔ Pi coordination no longer requires raw `tmux send-keys` /
+`capture-pane`. Follow-on slices, in order: session-addressed delivery; presence-card reads;
+visible channels/rooms; cross-machine transport.
+
+### GR-49 · Comms layer canonical design — addressing, delivery, external parties, work custody
+
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs · **Horizon:** near · **Status:** design · **Spec:** [comms-layer-design-spec.md](../../docs.local/comms-layer-design-spec.md) · **Depends:** GR-02b, GR-47 · **Adjacent:** GR-05, GR-17, GR-29, GR-45
+
+**Behavior.** Canonicalize the comms-layer model above participant presence: address strings are label-selectors over party/instance facets (`persona`, `:via`, `~model`, `@scope`, `/session`, aliases) that resolve to sets; delivery is a separate intent × intensity decision ceilinged by recipient wake policy; external humans/channels are first-class parties/loci over the same grammar; and work-passing moves task-node custody over comms using assign/delegate/reassign/handoff/accept/decline/report/complete verbs.
+**Why.** GR-47 makes Claude Code a first-class participant, but the next layer needs one coherent design before implementation slices accrete incompatible special cases: no `@` overloading, no accidental fan-out wakes from broad selectors, no separate bus for humans/Signal/Matrix, and no orphaned work when tasks move between parties.
+**Done.** `@gonk/comms` and host plugins can resolve canonical addresses such as `garnet:pi~gpt5.5@gonk/<session>` and aliases such as `garnet-planner@gonk`; delivery requests distinguish reply obligation from interruption intensity and respect `WakePolicy`; external `:via` transports route through authenticated notify backends; and task-node custody changes preserve owner/parent/reconciliation invariants.
+
+### GR-48 · Persona self-lifecycle — request reload/restart/compaction
+
+**Area:** ext · **Pkg:** Pi harness, @gonk/persona, @gonk/work-items · **Horizon:** near · **Status:** design-pending · **Spec:** [persona-self-lifecycle-spec.md](../../docs.local/persona-self-lifecycle-spec.md) · **Adjacent:** GR-01, GR-08, GR-15, GR-17, GR-47
+
+**Behavior.** A long-lived persona can request lifecycle operations on its own running session: `request_reload` to refresh tools/config/plugins without losing context; `request_restart` to clear bad in-memory process state with a durable handoff; and `request_compaction` to compact its own context when it is large or stale. These are requests governed by settings (`off` / `gate` / `auto` / `schedule`), not unconditional self-destruct buttons.
+**Why.** Observed failure: Garnet's standing Pi session loaded its tool schema before `gonk-extensions` commit `687da82`; after the fix landed, fresh processes accepted `subagent(..., model:"current")`, but her live schema still rejected `model` as an additional property. A persistent persona rots against evolving code unless she can ask the harness to refresh/restart/compact at safe points instead of waiting for a human `/reload`, quit+restart, or `/compact`.
+**Done.** Slice 1 proves `request_reload`: a persona detects/request reload for stale tool schema, policy gates or schedules it, Pi executes the existing safe reload flow after the turn, and the refreshed tool schema is visible without losing session context. Later slices add `request_compaction` over Pi's existing compaction machinery and design `request_restart` with Garnet before any process-restart implementation.
+**Implementation note.** Design-pending Pi-harness work with Garnet; do not implement blindly from the roadmap entry.
+
+### GR-46 · Tmux session tools — human attach-to-any-agent
+
+**Area:** ext · **Pkg:** Claude wrapper, @gonk/pi-comms · **Horizon:** near · **Status:** open · **Spec:** [tmux-session-tools-spec.md](../../docs.local/tmux-session-tools-spec.md) · **Complements:** GR-47 (does NOT supersede it)
+
+**Behavior.** A human-facing affordance (also usable by CC) to attach to and converse with ANY
+running agent in a tmux session — including ephemeral sub-agents and custody-tree children that have
+NO persona and are NOT comms participants. Ergonomic wrappers over the raw relay:
+`send_to_session(session[, pane], message, from)`, `read_session(session[, pane], since?)`, minimal
+`await_reply`/`ack`, `list_sessions` / `list_panes`, `derive_presence` hints.
+**Why — distinct from GR-47, not obviated by it.** GR-47 gives structured, persona-addressed,
+durable channels for *standing someones*. GR-46 is the universal escape-hatch David named: "I want
+to talk to some random agent, even a nameless sub-agent." Ephemeral workers in a custody tree (GR-44)
+have no persona/comms identity, so the presence layer cannot address them — but a human can still
+want to drop into their pane and talk (Garnet's "David can talk to one child"). Complementary axes:
+human↔arbitrary-agent (GR-46) vs structured persona-comms (GR-47).
+**Done.** A human (and CC, via the same tools) can list live tmux agent sessions, send an attributed
+message, and read only-new output, for any pane — without hand-cranking `send-keys`/`capture-pane`.
+Distinct from GR-44 tmux **dispatch** (which spawns detached workers); this talks to already-running
+sessions/agents.
 
 ### GR-44 · Async multi-agent execution — async delegates + design tail
 
