@@ -21,7 +21,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | --- | --- | --- | --- | --- | --- |
 | GR-02a | Channel address/identity primitive | core | @gonk/channel | near | shipped |
 | GR-01 | Session decoupling | ext | @gonk/harness-run (infra) | near | partial · harness-run spawn/tmux infra shipped; full detach/reattach session UX remains |
-| GR-02b | Cross-agent communication | ext | @gonk/comms, @gonk/pi-comms | near | partial · DM/inbox/presence/wake shipped; channels/broadcast/cross-host remain |
+| GR-02b | Cross-agent communication | ext | @gonk/comms, @gonk/pi-comms | near | partial · DM/inbox/presence shipped (defer-only delivery); active peer-wake (wake an idle recipient) flagged NEXT (2026-06-28); channels/broadcast/cross-host remain |
 | GR-03 | Pulses | ext | @gonk/pi-pulses | near | partial · rung-0 pulse engine shipped; escalation/pruning ladder remains |
 | GR-04 | Temporal awareness | core | @gonk/temporal | near | shipped |
 | GR-05 | Cross-harness handoff | ext | @gonk/handoff, @gonk/claude-handoff, @gonk/pi-handoff | near | partial · Pi→Claude handoff tooling shipped; round-trip/cross-machine remains |
@@ -40,7 +40,7 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | partial · recall_read shipped + host-wired |
 | GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | partial · Claude comms MCP/presence slice shipped; full parity remains |
 | GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
-| GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify | near | design |
+| GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) | near | partial · @gonk/reach + reach-signal on working tree (Signal egress live, receipt-confirmed, ~61 tests); reach-matrix + authz Matrix-policy in progress; ingress parser + account-link remain |
 | GR-51 | Persisted tool-visibility delta | ext | @gonk/pi-introspect | near | shipped |
 | GR-52 | Interface scaffold — socket-connected UIs on extensions | ext | (new interface-kit) + tool-registry adapters | med | open |
 | GR-53 | Agent-authored React playground — live preview + static export | ext | (new playground) | med | open |
@@ -100,7 +100,7 @@ different shell; the same detach/reattach works for at least one non-terminal en
 
 ### GR-02b · Cross-agent communication — inbox · DM · channel
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms · **Horizon:** near · **Status:** partial · DM/inbox/presence/wake shipped; channels/broadcast/cross-host remain · **Depends:** GR-02a
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms · **Horizon:** near · **Status:** partial · DM/inbox/presence shipped (defer-only delivery); active peer-wake (wake an idle recipient) flagged NEXT (2026-06-28); channels/broadcast/cross-host remain · **Depends:** GR-02a
 
 **Split — core primitive `GR-02a` (the `@gonk/channel` address/identity layer, stays in core) + this entry `GR-02b` (the inbox/DM/channel *behavior* over it, extensions).**
 
@@ -114,6 +114,8 @@ announcement. DMs are conversational, not just task-routing.
 **Done.** Persona A DMs "the persona on project P"; B (idle) is woken or defers per policy and
 replies; A gets the reply. A channel announcement reaches its subscribers. Every message is visible
 in the recipient's inbox; none are dropped.
+
+**Gap — active peer-wake (flagged NEXT, 2026-06-28).** Delivery is currently **defer-only**: `message_send` (incl. the `claude-comms` wrapper) lands durably in the recipient's inbox and surfaces on their *next turn*, but cannot actively wake an **idle peer** now — the tool itself says "Slice 1: defer-only … waking an idle peer ships next." The self-wake substrate (a job waking its *own* originating session, via `pi-comms` `WakeLoop` + job-watch) shipped; what remains is routing a peer DM with `intent: reply_requested`/wake-policy through that same wake path so an idle *recipient* is interrupted (subject to the originator-scoped wake rules from the 2026-06-27 work — don't auto-wake non-originators). Hit live 2026-06-28: a relay to `garnet@pi` delivered to inbox but could not wake her. This is the next near-term slice.
 *Prior art:* a live HTTP feedback-inbox between two agents already coordinates real multi-step work
 async — the floor we build past; the external [pi-clawa](https://github.com/IgorWarzocha/pi-clawa)
 project's typed envelope is worth borrowing for the wake-vs-inject distinction.
@@ -454,9 +456,13 @@ visible channels/rooms; cross-machine transport.
 **Why.** GR-47 makes Claude Code a first-class participant, but the next layer needs one coherent design before implementation slices accrete incompatible special cases: no `@` overloading, no accidental fan-out wakes from broad selectors, no separate bus for humans/Signal/Matrix, and no orphaned work when tasks move between parties.
 **Done.** `@gonk/comms` and host plugins can resolve canonical addresses such as `garnet:pi~gpt5.5@gonk/<session>` and aliases such as `garnet-planner@gonk`; delivery requests distinguish reply obligation from interruption intensity and respect `WakePolicy`; external `:via` transports route through authenticated notify backends; and task-node custody changes preserve owner/parent/reconciliation invariants.
 
+**Live repro (2026-06-28) — why the `/session` selector is load-bearing, not cosmetic.** With two `garnet@pi` instances live (one in `platform/gonk`, one in `dev/ai/llm-service`), a `message_send({persona: garnet, host: pi})` intended for the gonk Garnet resolved the broad selector to a *set* and delivered to the **llm-service** Garnet instead. It surfaced there as an *actionable wake* with `status: open` addressed to `garnet@pi`, so she acted on it (acked it) before David corrected "that's not for you" — a false-consumption against the wrong instance. A broad persona+host selector with no `/session` facet can't express "the Garnet in *this* session," and the delivery layer treats the resolved set as individually actionable. The fix is the designed `/session` selector + making broad-selector delivery non-actionable-by-default (announce, don't command). Until then, instance-precise reach is impossible and David-relay is the only reliable path to a specific session.
+
 ### GR-50 · Phone reach delivery — `:via` onto `@midnight/notify`
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify · **Horizon:** near · **Status:** design · **Spec:** [phone-reach-delivery-spec.md](../../docs.local/phone-reach-delivery-spec.md) · **Depends:** GR-45, GR-49, idle-delivery from GR-02b/GR-47
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) · **Horizon:** near · **Status:** partial · **Spec:** [phone-reach-delivery-spec.md](../../docs.local/phone-reach-delivery-spec.md) · **Depends:** GR-45, GR-49, idle-delivery from GR-02b/GR-47
+
+**Progress (2026-06-27, on working tree — uncommitted).** `@gonk/reach` (transport-agnostic egress core) + `@gonk/reach-signal` built with ~61 tests passing; **Signal egress is live and receipt-confirmed**. `@gonk/reach-matrix` and the `authz` Matrix owner-policy (`createOwnerMatrixPolicy`) are in progress. **Remaining:** the authenticated ingress receiver/parser (David's phone reply → AuthZ → target inbox) and account-link. The `pnpm-lock.yaml` diff in extensions is entangled with this work — reconcile via `pnpm install` once reach lands and is committed.
 
 **Behavior.** Wire the comms-layer external-party model to the concrete phone transports: `david~human` is a human party reachable through `:via` endpoints such as `:signal` and `:ntfy`; egress routes through existing `@midnight/notify` backends according to delivery intensity (`silent`/`push`/`call`) ceilinged by David's wake policy; ingress receives David's phone reply through an authenticated transport receiver, gates it through GR-45 AuthZ, and deposits it in the target agent's comms inbox as a message from `david~human`.
 **Why.** This is the concrete closure of the original persistent-agent phone loop: an agent can buzz David's phone, David answers from the phone, and the agent sees the reply on its next turn. It also forces the right dependency: humans are never turn-live, so phone reach rides idle-peer delivery rather than a special phone side channel.
