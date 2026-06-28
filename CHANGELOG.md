@@ -2,6 +2,11 @@
 
 All notable changes to the `@gonk/*` core packages. Versions are kept in lockstep across the workspace; this file records what changed at each bump. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.0.15] — 2026-06-28
+
+### Fixed
+- `@gonk/scope`: `resolveStableSessionId` and `resolver.canonical()` now canonicalize the cwd via `realpathSync.native` (resolving symlinks + the OS-native case) through a shared `canonicalPath` helper, instead of `path.resolve` — which folds neither. On case-insensitive filesystems (macOS) and through the workspace's `platform/*` symlinks, the same physical directory previously hashed to **different** session ids, forking every session-keyed surface (cross-agent presence key, scope-tier home, comms inbox, session memory db) into parallel sets that never saw each other. This caused real cross-agent messaging/presence failures. The fallback catch is narrowed to `ENOENT`, so a genuinely-missing path falls back to `resolve` while any other error surfaces instead of silently re-forking. Existing homes under old forked ids are not auto-migrated (documented transition — id derivation has no home/root context to do it safely; the one observed fork held only an empty inbox).
+
 ## [0.0.11] — 2026-06-19
 
 ### Added

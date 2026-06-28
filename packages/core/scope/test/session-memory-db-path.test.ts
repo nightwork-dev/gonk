@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { homedir } from "node:os";
 
-import { sessionMemoryDbPath } from "../src/session-id.ts";
+import { resolveStableSessionId, sessionMemoryDbPath } from "../src/session-id.ts";
 
 // Stash the original HOME so we can restore it after each test.
 let originalHome: string | undefined;
@@ -19,6 +19,15 @@ afterEach(() => {
 });
 
 describe("sessionMemoryDbPath", () => {
+  it("preserves cwd-stable durable memory continuity across invocations", () => {
+    const cwd = "/same/workspace";
+    const homeRoot = "/home/tester";
+    const first = sessionMemoryDbPath({ sessionId: resolveStableSessionId({ cwd }), name: "triples", homeRoot });
+    const second = sessionMemoryDbPath({ sessionId: resolveStableSessionId({ cwd }), name: "triples", homeRoot });
+    expect(first).toBe(second);
+    expect(first).toContain(resolveStableSessionId({ cwd }));
+  });
+
   it("returns the correct path with explicit homeRoot", () => {
     const result = sessionMemoryDbPath({
       homeRoot: "/foo/bar",

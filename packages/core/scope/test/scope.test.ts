@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import {
   FsScopeStore,
@@ -453,6 +453,33 @@ describe("FsScopeStore — multi-root", () => {
     const link = join(tmp, "link");
     symlinkSync(real, link);
     expect(canonical(link)).toBe(canonical(real));
+  });
+
+  it("canonical folds differently-cased paths on case-insensitive filesystems", () => {
+    if (process.platform !== "darwin" && process.platform !== "win32") return;
+
+    const realDir = mkdtempSync(join(tmpdir(), "GonkScopeCase-"));
+    try {
+      const parent = dirname(realDir);
+      const name = basename(realDir);
+      const swappedName = [...name]
+        .map((ch) => {
+          const upper = ch.toUpperCase();
+          const lower = ch.toLowerCase();
+          return ch === upper ? lower : upper;
+        })
+        .join("");
+      const differentlyCased = join(parent, swappedName);
+
+      if (!existsSync(differentlyCased)) return;
+      const realStat = statSync(realDir);
+      const casedStat = statSync(differentlyCased);
+      if (realStat.dev !== casedStat.dev || realStat.ino !== casedStat.ino) return;
+
+      expect(canonical(differentlyCased)).toBe(canonical(realDir));
+    } finally {
+      rmSync(realDir, { recursive: true, force: true });
+    }
   });
 
   it("works across all five tiers including persona and session", () => {

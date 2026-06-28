@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -13,6 +13,7 @@ import {
   type ScopeStore,
 } from "./types.ts";
 import { StandardRootAdapter } from "./standard-adapter.ts";
+import { canonicalPath } from "./canonical-path.ts";
 import { resolveStableSessionId } from "./session-id.ts";
 import { SUBSTRATE_KINDS, substrateDir } from "./substrate.ts";
 
@@ -214,11 +215,7 @@ export function scanDocuments(
 // =============================================================================
 
 export function canonical(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolve(path);
-  }
+  return canonicalPath(path);
 }
 
 /** Where a capability should write its operational state for a tier.

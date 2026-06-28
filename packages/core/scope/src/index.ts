@@ -42,5 +42,6 @@ export {
   migrateAllUnder,
 } from "./migrate.ts";
 export type { MigrateOptions, MigrationSummary } from "./migrate.ts";
+export { canonicalPath } from "./canonical-path.ts";
 export { resolveStableSessionId, sessionMemoryDbPath } from "./session-id.ts";
 export type { SessionMemoryDbPathOptions } from "./session-id.ts";

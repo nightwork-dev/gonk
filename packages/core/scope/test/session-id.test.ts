@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
+import { canonicalPath } from "../src/canonical-path.ts";
+import { canonical } from "../src/resolver.ts";
 import { resolveStableSessionId } from "../src/session-id.ts";
 
 describe("resolveStableSessionId", () => {
@@ -13,6 +17,86 @@ describe("resolveStableSessionId", () => {
     const a = resolveStableSessionId({ cwd: "/foo/bar" });
     const b = resolveStableSessionId({ cwd: "/foo/bar" });
     expect(a).toBe(b);
+  });
+
+  it("unifies a real directory and a symlink to it", () => {
+    const root = mkdtempSync(join(tmpdir(), "gonk-session-id-symlink-"));
+    const realDir = join(root, "real");
+    const symlinkPath = join(root, "link");
+    try {
+      mkdirSync(realDir);
+      symlinkSync(realDir, symlinkPath, process.platform === "win32" ? "junction" : "dir");
+
+      expect(resolveStableSessionId({ cwd: realDir })).toBe(
+        resolveStableSessionId({ cwd: symlinkPath }),
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("unifies differently-cased paths on case-insensitive filesystems", () => {
+    if (process.platform !== "darwin" && process.platform !== "win32") return;
+
+    const realDir = mkdtempSync(join(tmpdir(), "GonkSessionCase-"));
+    try {
+      const parent = dirname(realDir);
+      const name = basename(realDir);
+      const swappedName = [...name]
+        .map((ch) => {
+          const upper = ch.toUpperCase();
+          const lower = ch.toLowerCase();
+          return ch === upper ? lower : upper;
+        })
+        .join("");
+      const differentlyCased = join(parent, swappedName);
+
+      if (!existsSync(differentlyCased)) return;
+      const realStat = statSync(realDir);
+      const casedStat = statSync(differentlyCased);
+      if (realStat.dev !== casedStat.dev || realStat.ino !== casedStat.ino) return;
+
+      expect(resolveStableSessionId({ cwd: realDir })).toBe(
+        resolveStableSessionId({ cwd: differentlyCased }),
+      );
+    } finally {
+      rmSync(realDir, { recursive: true, force: true });
+    }
+  });
+
+  it("canonicalPath falls back to path.resolve for non-existent paths without throwing", () => {
+    const cwd = join(tmpdir(), `gonk-session-id-missing-${process.pid}-${Date.now()}`);
+    expect(existsSync(cwd)).toBe(false);
+
+    expect(canonicalPath(cwd)).toBe(resolve(cwd));
+  });
+
+  it("falls back to path.resolve for non-existent paths without throwing", () => {
+    const cwd = join(tmpdir(), `gonk-session-id-missing-${process.pid}-${Date.now()}`);
+    expect(existsSync(cwd)).toBe(false);
+
+    const a = resolveStableSessionId({ cwd });
+    const b = resolveStableSessionId({ cwd });
+
+    expect(a).toMatch(/^pi-cwd-[0-9a-f]{12}$/);
+    expect(a).toBe(b);
+    expect(a).toBe(
+      `pi-cwd-${createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 12)}`,
+    );
+  });
+
+  it("session ids and resolver homes share the same canonical path helper", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "gonk-shared-canonical-"));
+    try {
+      const fromResolver = canonical(cwd);
+      const fromSharedHelper = canonicalPath(cwd);
+      expect(fromResolver).toBe(fromSharedHelper);
+      expect(resolveStableSessionId({ cwd })).toBe(
+        `pi-cwd-${createHash("sha256").update(fromResolver).digest("hex").slice(0, 12)}`,
+      );
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 
   it("two calls with different cwds return different ids", () => {

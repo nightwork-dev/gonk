@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
-import { join, normalize, resolve } from "node:path";
+import { join, normalize } from "node:path";
 
+import { canonicalPath } from "./canonical-path.ts";
 import { substrateDir } from "./substrate.ts";
 
 // =============================================================================
@@ -14,23 +15,32 @@ import { substrateDir } from "./substrate.ts";
 // scope session-tier home and memory writes from one invocation would be
 // invisible to the next.
 //
-// We derive the id from the canonical cwd: same dir → same session scope
-// home, regardless of pid. This is the best signal available at setup time
-// without coupling to pi-internal session paths. Cross-cwd granularity is
-// preserved.
+// We derive the id from the realpath-canonicalized cwd: symlinks are resolved
+// and the OS-native spelling/case is used where the filesystem reports one, so
+// the same physical dir maps to one session scope home regardless of pid, path
+// casing, or symlink route. If the cwd does not exist, we gracefully fall back
+// to path.resolve(cwd) so defensive/test paths still produce stable ids.
+//
+// Transition note: older releases keyed symlinked or differently-cased cwd
+// spellings separately. This function has no session-home/root context and old
+// homes carry no cwd metadata, so there is no clean, non-clobbering automatic
+// carry-forward here. Existing forked homes under the old ids may need a manual
+// one-time migration/alias to the canonical id if their data must be preserved.
 // =============================================================================
 
 /** Compute a stable session id for `ScopeEnvironment.sessionId`. Hashes the
- *  canonical cwd so identical working directories share a session-tier scope
- *  home across `pi --print` invocations. Falls back to `pi-<pid>` only when
- *  no cwd is supplied (test-only / defensive path). */
+ *  realpath-canonicalized cwd so identical working directories share a
+ *  session-tier scope home across `pi --print` invocations even when reached via
+ *  different path casing or symlinks. Falls back to `path.resolve(cwd)` when the
+ *  cwd does not exist, and to `pi-<pid>` only when no cwd is supplied (test-only
+ *  / defensive path). */
 export function resolveStableSessionId(opts: {
   cwd: string;
   pid?: number;
 }): string {
   const { cwd, pid } = opts;
   if (cwd && cwd.length > 0) {
-    const canonical = resolve(cwd);
+    const canonical = canonicalPath(cwd);
     const digest = createHash("sha256").update(canonical).digest("hex").slice(0, 12);
     return `pi-cwd-${digest}`;
   }
