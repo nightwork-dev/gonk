@@ -2,6 +2,17 @@
 
 All notable changes to the `@gonk/*` core packages. Versions are kept in lockstep across the workspace; this file records what changed at each bump. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.0.19] — 2026-06-29
+
+### Added
+- `@gonk/utils`: zero-dependency filesystem safety primitives, including browser-safe path containment and Node-only atomic writes.
+- `@gonk/store`: `tailLog` helper for reading newly-appended log entries from an offset, with regression coverage for offset advancement and malformed/truncated rows.
+
+### Fixed
+- `@gonk/tool-registry-mcp`: HTTP server startup is now fail-closed for unauthenticated remote exposure; remote serving requires an API key or explicit `allowInsecure`, with DNS-rebinding host protections for protected binds.
+- `@gonk/extension-spec-claude`: materialized writes and deletes are confined to the plugin root, preventing spec-derived `..` path traversal.
+- `@gonk/scope` and `@gonk/store`: migrated duplicated filesystem safety logic onto `@gonk/utils` with no public API change.
+
 ## [0.0.16] — 2026-06-28
 
 ### Added — session identity comes from the real session, not the cwd

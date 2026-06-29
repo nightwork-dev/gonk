@@ -1,5 +1,11 @@
 # @gonk/tool-orchestrator
 
+## 0.0.19
+
+### Patch Changes
+
+- @gonk/tool-registry@0.0.19
+
 ## 0.0.12
 
 ### Patch Changes

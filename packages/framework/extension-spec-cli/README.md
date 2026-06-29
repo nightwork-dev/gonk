@@ -28,8 +28,6 @@ Each `@gonk/pi-*` package exports a `setupCli` of this shape. `@gonk/cli`
 discovers installed extensions in `~/.gonk/extensions/` and calls each
 one's `setupCli` at startup.
 
-See the full [mapping reference](../../../docs/extension-spec-cli.md).
-
 ## Test
 
 ```bash

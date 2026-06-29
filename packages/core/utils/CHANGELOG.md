@@ -1,4 +1,4 @@
-# @gonk/store
+# @gonk/utils
 
 ## 0.0.19
 
@@ -25,21 +25,3 @@
     browser-safe path containment; `@gonk/utils/fs` is Node-only atomic writes.
   - **`@gonk/scope`**, **`@gonk/store`**: migrated onto `@gonk/utils` (no public
     API change).
-
-- 5b9d4b4: Add an fs-backed log tail helper used by the self-wake critical path.
-
-  - New `tailLog` utility for reading newly-appended log entries from an offset.
-  - Covered by regression tests for offset advancement and malformed/truncated rows.
-
-- Updated dependencies [cbfd6a4]
-  - @gonk/utils@0.0.19
-  - @gonk/scope@0.0.19
-
-## 0.0.12
-
-### Patch Changes
-
-- Add `FoldStore` — durable state as an append-only log with fold-on-read, over the existing `LogStore`. Concurrent writers append (no read-modify-write of a state blob), so independent handles over the same backing don't clobber; derive-on-wake reconciliation is a pure read, and `dedupeKey` makes a re-applied reconciliation event idempotent. `compact()` is a documented throwing stub pending a cross-process lock.
-
-- Updated dependencies []:
-  - @gonk/scope@0.0.12

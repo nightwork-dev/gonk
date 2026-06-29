@@ -1,6 +1,6 @@
 {
   "name": "@gonk/tool-orchestrator",
-  "version": "0.0.14",
+  "version": "0.0.19",
   "type": "module",
   "exports": {
     ".": {

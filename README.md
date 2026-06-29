@@ -21,6 +21,8 @@ The foundation primitives, each its own package, plus an authoring layer on top 
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
 - **Persistence** — [`@gonk/store`](packages/core/store). The same idea for *data* that scope is for *config*: KV, blob, append-log, and vector-KNN primitives a capability reads and writes without knowing — or caring — whether the backing is the filesystem, a database, or a vector index. Pure-`fs` by default, swappable underneath without touching a caller. See [docs/store-abstraction-design.md](docs/store-abstraction-design.md).
+- **Connectivity address & identity** — [`@gonk/channel`](packages/core/channel). The transport-agnostic message contract underneath cross-agent comms and the remote front doors: an address-on-the-message envelope (`persona@host#scope`), a channel registry, and a loopback reference impl.
+- **Time & activity** — [`@gonk/temporal`](packages/core/temporal). The temporal-awareness surface (wall-clock, session elapsed, turn index, idle) plus the periodic-run scheduler and persistent-presence wake/defer policy that every "should this fire now?" decision reads.
 - **Adapters** — [`@gonk/tool-registry-{cli,mcp,pi}`](packages/adapters). Each exposes the *same* registry + orchestrator to a different host, so a capability ships once and surfaces everywhere.
 - **Extension authoring** — [`@gonk/extension-spec`](packages/framework/extension-spec) (+ `-cli` / `-pi` / `-claude`). Declare a whole extension — slash commands, settings UIs, presets, and tools — as host-agnostic data, then materialize it into a CLI extension, a Pi extension, or a Claude Code plugin tree. Built on the registry and scope primitives above.
 
@@ -57,6 +59,8 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 | `@gonk/utils` | Zero-dependency fs-safety primitives (`safeJoin`, atomic writes), code-split per concern (`@gonk/utils/fs`) so unbundled consumers load only what they import. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
 | `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
+| `@gonk/channel` | Transport-agnostic connectivity primitives — the message/address contract (`persona@host#scope`), channel registry, loopback reference impl. |
+| `@gonk/temporal` | Temporal-awareness surface (wall-clock, session elapsed, turn index, idle) + periodic-run scheduler and persistent-presence wake/defer policy. |
 | `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, metrics sinks. |
 | `@gonk/tool-orchestrator` | Semantic tool selection / ranking over a registry. |
 | `@gonk/core` | A barrel over `@gonk/scope` + `@gonk/tool-registry` — one import for the common surface. |

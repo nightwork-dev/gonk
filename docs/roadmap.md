@@ -38,9 +38,9 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-16 | Self-refinement workstream | ext | @gonk/autotune, @gonk/traces, @gonk/curator | near | partial · autotune/traces/curator bridge shipped; live closed-loop tuning remains |
 | GR-17 | Long-running agent operations | ext | @gonk/work-items, @gonk/reflector | near | partial · work-items/inbox/attention_read shipped; supervisor dispatch sweep remains |
 | GR-43 | Unified recall surface | ext | @gonk/recall (new) | near | partial · recall_read shipped + host-wired |
-| GR-47 | [Claude Code comms participant parity + presence layer v0](../../docs.local/cc-comms-participant-presence-spec.md) | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | partial · Claude comms MCP/presence slice shipped; full parity remains |
-| GR-49 | [Comms layer canonical design — addressing, delivery, external parties, work custody](../../docs.local/comms-layer-design-spec.md) | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
-| GR-50 | [Phone reach delivery — `:via` onto `@midnight/notify`](../../docs.local/phone-reach-delivery-spec.md) | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) | near | partial · @gonk/reach + reach-signal on working tree (Signal egress live, receipt-confirmed, ~61 tests); reach-matrix + authz Matrix-policy in progress; ingress parser + account-link remain |
+| GR-47 | Claude Code comms participant parity + presence layer v0 | ext | @gonk/comms, @gonk/pi-comms, Claude wrapper | near | partial · Claude comms MCP/presence slice shipped; full parity remains |
+| GR-49 | Comms layer canonical design — addressing, delivery, external parties, work custody | ext | @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs | near | design |
+| GR-50 | Phone reach delivery — `:via` onto `@midnight/notify` | ext | @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) | near | partial · @gonk/reach + reach-signal on working tree (Signal egress live, receipt-confirmed, ~61 tests); reach-matrix + authz Matrix-policy in progress; ingress parser + account-link remain |
 | GR-51 | Persisted tool-visibility delta | ext | @gonk/pi-introspect | near | shipped |
 | GR-52 | Interface scaffold — socket-connected UIs on extensions | ext | (new interface-kit) + tool-registry adapters | med | open |
 | GR-53 | Agent-authored React playground — live preview + static export | ext | (new playground) | med | open |
@@ -48,8 +48,8 @@ gonk-extensions). The split is metadata you filter on, not a separate file. Mixe
 | GR-55 | Ownership / RACI — accountability facet (extract when pulled) | ext | work-graph inline → future @gonk/ownership | med | open |
 | GR-56 | Cross-harness capability invocation — call any harness from any extension | ext | (new harness-call) + claude/codex/pi-dispatch | med | open |
 | GR-57 | Memory bridge — claude-memory works with Claude-native memory AND gonk's | ext | claude-memory + @gonk/memory + @gonk/recall | med | open |
-| GR-48 | [Persona self-lifecycle — request reload/restart/compaction](../../docs.local/persona-self-lifecycle-spec.md) | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
-| GR-46 | [Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents)](../../docs.local/tmux-session-tools-spec.md) | ext | Claude wrapper, @gonk/pi-comms | near | design-only · spec exists; no attach-to-any-running-agent tools found |
+| GR-48 | Persona self-lifecycle — request reload/restart/compaction | ext | Pi harness, @gonk/persona, @gonk/work-items | near | design-pending |
+| GR-46 | Tmux session tools — human attach-to-any-agent (incl. ephemeral sub-agents) | ext | Claude wrapper, @gonk/pi-comms | near | design-only · spec exists; no attach-to-any-running-agent tools found |
 | GR-44 | Async multi-agent execution — async delegates + design tail | core+ext | comms, work-items, jobs, rlm, pi-subagent | med | partial · async RLM, tmux dispatch, wake coalescing, and delegation hardening shipped |
 | GR-18 | Panel of models | ext | @gonk/rlm | med | open |
 | GR-19 | Person-modeling | ext | @gonk/persona | med | open |
@@ -432,7 +432,7 @@ type-only store-dep build boundary.
 
 ### GR-47 · Claude Code comms participant parity + presence layer v0
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, Claude wrapper · **Horizon:** near · **Status:** partial · Claude comms MCP/presence slice shipped; full parity remains · **Spec:** [cc-comms-participant-presence-spec.md](../../docs.local/cc-comms-participant-presence-spec.md) · **Depends:** GR-02b
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, Claude wrapper · **Horizon:** near · **Status:** partial · Claude comms MCP/presence slice shipped; full parity remains · **Spec:** cc-comms-participant-presence-spec.md · **Depends:** GR-02b
 
 **Behavior.** Make Claude Code a first-class comms participant by finishing the existing
 claude-comms Slice 2: heartbeat + presence entry, `message_send`, `message_inbox`, `message_ack`,
@@ -450,7 +450,7 @@ visible channels/rooms; cross-machine transport.
 
 ### GR-49 · Comms layer canonical design — addressing, delivery, external parties, work custody
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs · **Horizon:** near · **Status:** design · **Spec:** [comms-layer-design-spec.md](../../docs.local/comms-layer-design-spec.md) · **Depends:** GR-02b, GR-47 · **Adjacent:** GR-05, GR-17, GR-29, GR-45
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/pi-comms, @gonk/work-items, @gonk/handoff, @gonk/jobs · **Horizon:** near · **Status:** design · **Spec:** comms-layer-design-spec.md · **Depends:** GR-02b, GR-47 · **Adjacent:** GR-05, GR-17, GR-29, GR-45
 
 **Behavior.** Canonicalize the comms-layer model above participant presence: address strings are label-selectors over party/instance facets (`persona`, `:via`, `~model`, `@scope`, `/session`, aliases) that resolve to sets; delivery is a separate intent × intensity decision ceilinged by recipient wake policy; external humans/channels are first-class parties/loci over the same grammar; and work-passing moves task-node custody over comms using assign/delegate/reassign/handoff/accept/decline/report/complete verbs.
 **Why.** GR-47 makes Claude Code a first-class participant, but the next layer needs one coherent design before implementation slices accrete incompatible special cases: no `@` overloading, no accidental fan-out wakes from broad selectors, no separate bus for humans/Signal/Matrix, and no orphaned work when tasks move between parties.
@@ -460,7 +460,7 @@ visible channels/rooms; cross-machine transport.
 
 ### GR-50 · Phone reach delivery — `:via` onto `@midnight/notify`
 
-**Area:** ext · **Pkg:** @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) · **Horizon:** near · **Status:** partial · **Spec:** [phone-reach-delivery-spec.md](../../docs.local/phone-reach-delivery-spec.md) · **Depends:** GR-45, GR-49, idle-delivery from GR-02b/GR-47
+**Area:** ext · **Pkg:** @gonk/comms, @gonk/authz, @gonk/voice-tts, @midnight/notify, @gonk/reach(-signal/-matrix) · **Horizon:** near · **Status:** partial · **Spec:** phone-reach-delivery-spec.md · **Depends:** GR-45, GR-49, idle-delivery from GR-02b/GR-47
 
 **Progress (2026-06-27, on working tree — uncommitted).** `@gonk/reach` (transport-agnostic egress core) + `@gonk/reach-signal` built with ~61 tests passing; **Signal egress is live and receipt-confirmed**. `@gonk/reach-matrix` and the `authz` Matrix owner-policy (`createOwnerMatrixPolicy`) are in progress. **Remaining:** the authenticated ingress receiver/parser (the owner's phone reply → AuthZ → target inbox) and account-link. The `pnpm-lock.yaml` diff in extensions is entangled with this work — reconcile via `pnpm install` once reach lands and is committed.
 
@@ -478,7 +478,7 @@ The persisted `visible:` tool list now resolves as a DELTA over the code default
 
 **Area:** ext · **Pkg:** (new interface-kit) + @gonk/tool-registry adapters · **Horizon:** med · **Status:** open · **Adjacent:** GR-28, GR-31
 
-An easy way to stand up an interface (web UI) on top of gonk extensions: a UI connects over a socket (WS) to the live capability surface and calls the same capabilities agents do, with no hand-wired server. Rides the registry-as-projection layer — a WS/HTTP + typed-client export adapter off `@gonk/tool-registry`, so a UI is just another consumer of one capability definition (see [registry-capability-hub-spec.md](../../docs.local/registry-capability-hub-spec.md), held to its "build what a real consumer pulls" rule). A concrete consumer that pulls the hub's web-export adapter into existence.
+An easy way to stand up an interface (web UI) on top of gonk extensions: a UI connects over a socket (WS) to the live capability surface and calls the same capabilities agents do, with no hand-wired server. Rides the registry-as-projection layer — a WS/HTTP + typed-client export adapter off `@gonk/tool-registry`, so a UI is just another consumer of one capability definition (see registry-capability-hub-spec.md, held to its "build what a real consumer pulls" rule). A concrete consumer that pulls the hub's web-export adapter into existence.
 
 ### GR-53 · Agent-authored React playground — live preview + static export
 
@@ -490,7 +490,7 @@ A "playground" built on GR-52: the agent creates and iterates on anything in Rea
 
 **Area:** ext · **Pkg:** (new codex-adapter) + @gonk/tool-registry (import) + @gonk/pi-introspect · **Horizon:** med · **Status:** open · **Adjacent:** GR-31
 
-An adapter that auto-detects the MCP servers configured within Codex, connects to them, and imports their tools into gonk's `tool-registry` as first-class capabilities — so Codex's MCP tools become visible to and managed by gonk's ecosystem (the visibility coordinator, attention, the `authorization?` axis). A concrete consumer of the registry hub's **import** direction (see [registry-capability-hub-spec.md](../../docs.local/registry-capability-hub-spec.md)) — and the cleanest possible one, since MCP tools are already capability-shaped (JSON-Schema'd I/O), so the import is a near-direct map rather than a wrapper. Open detection mechanism to resolve in the spec: a Codex app-server integration vs. reading an MCP/config surface Codex may broadcast itself. Net: Codex's tool surface stops being a separate silo and becomes part of the one managed capability set.
+An adapter that auto-detects the MCP servers configured within Codex, connects to them, and imports their tools into gonk's `tool-registry` as first-class capabilities — so Codex's MCP tools become visible to and managed by gonk's ecosystem (the visibility coordinator, attention, the `authorization?` axis). A concrete consumer of the registry hub's **import** direction (see registry-capability-hub-spec.md) — and the cleanest possible one, since MCP tools are already capability-shaped (JSON-Schema'd I/O), so the import is a near-direct map rather than a wrapper. Open detection mechanism to resolve in the spec: a Codex app-server integration vs. reading an MCP/config surface Codex may broadcast itself. Net: Codex's tool surface stops being a separate silo and becomes part of the one managed capability set.
 
 ### GR-55 · Ownership / RACI — accountability facet, extract to a shared capability when pulled
 
@@ -512,7 +512,7 @@ The Claude memory/recall wrappers must integrate **both** backends, not wrap gon
 
 ### GR-48 · Persona self-lifecycle — request reload/restart/compaction
 
-**Area:** ext · **Pkg:** Pi harness, @gonk/persona, @gonk/work-items · **Horizon:** near · **Status:** design-pending · **Spec:** [persona-self-lifecycle-spec.md](../../docs.local/persona-self-lifecycle-spec.md) · **Adjacent:** GR-01, GR-08, GR-15, GR-17, GR-47
+**Area:** ext · **Pkg:** Pi harness, @gonk/persona, @gonk/work-items · **Horizon:** near · **Status:** design-pending · **Spec:** persona-self-lifecycle-spec.md · **Adjacent:** GR-01, GR-08, GR-15, GR-17, GR-47
 
 **Behavior.** A long-lived persona can request lifecycle operations on its own running session: `request_reload` to refresh tools/config/plugins without losing context; `request_restart` to clear bad in-memory process state with a durable handoff; and `request_compaction` to compact its own context when it is large or stale. These are requests governed by settings (`off` / `gate` / `auto` / `schedule`), not unconditional self-destruct buttons.
 **Why.** Observed failure: a standing Pi persona session loaded its tool schema before `gonk-extensions` commit `687da82`; after the fix landed, fresh processes accepted `subagent(..., model:"current")`, but the live schema still rejected `model` as an additional property. A persistent persona rots against evolving code unless it can ask the harness to refresh/restart/compact at safe points instead of waiting for a human `/reload`, quit+restart, or `/compact`.
@@ -521,7 +521,7 @@ The Claude memory/recall wrappers must integrate **both** backends, not wrap gon
 
 ### GR-46 · Tmux session tools — human attach-to-any-agent
 
-**Area:** ext · **Pkg:** Claude wrapper, @gonk/pi-comms · **Horizon:** near · **Status:** design-only · spec exists; no attach-to-any-running-agent tools found · **Spec:** [tmux-session-tools-spec.md](../../docs.local/tmux-session-tools-spec.md) · **Complements:** GR-47 (does NOT supersede it)
+**Area:** ext · **Pkg:** Claude wrapper, @gonk/pi-comms · **Horizon:** near · **Status:** design-only · spec exists; no attach-to-any-running-agent tools found · **Spec:** tmux-session-tools-spec.md · **Complements:** GR-47 (does NOT supersede it)
 
 **Behavior.** A human-facing affordance (also usable by CC) to attach to and converse with ANY
 running agent in a tmux session — including ephemeral sub-agents and custody-tree children that have
