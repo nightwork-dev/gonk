@@ -1,4 +1,4 @@
-import { channelConformance } from "@gonk/channel/conformance";
+import { channelConformance } from "../src/conformance.ts";
 import { createInternalChannelPair } from "../src/base.ts";
 import type { ConnectAddress } from "../src/index.ts";
 
