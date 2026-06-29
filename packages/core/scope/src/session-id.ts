@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { join, normalize } from "node:path";
 
@@ -45,6 +45,18 @@ export function resolveStableSessionId(opts: {
     return `pi-cwd-${digest}`;
   }
   return `pi-${pid ?? process.pid}`;
+}
+
+/** Resolve the real per-session presence id.
+ *
+ * Presence entries must be keyed by the host's actual session id, not by the
+ * cwd-derived stable scope id. When the host cannot provide one, fall back to a
+ * unique process-prefixed UUID so two live agents in the same cwd never clobber
+ * each other in the presence directory. */
+export function resolveSessionId(opts: { explicitId?: string; pid?: number }): string {
+  const explicitId = typeof opts.explicitId === "string" ? opts.explicitId.trim() : "";
+  if (explicitId.length > 0) return explicitId;
+  return `pi-${opts.pid ?? process.pid}-${randomUUID()}`;
 }
 
 // =============================================================================

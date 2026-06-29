@@ -5,7 +5,24 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { canonicalPath } from "../src/canonical-path.ts";
 import { canonical } from "../src/resolver.ts";
-import { resolveStableSessionId } from "../src/session-id.ts";
+import { resolveSessionId, resolveStableSessionId } from "../src/session-id.ts";
+
+describe("resolveSessionId", () => {
+  it("returns a non-empty explicit id unchanged", () => {
+    expect(resolveSessionId({ explicitId: "018f2f78-0000-7000-8000-real-session" })).toBe(
+      "018f2f78-0000-7000-8000-real-session",
+    );
+  });
+
+  it("falls back to a unique pi-<pid>-<uuid> id when no explicit id exists", () => {
+    const a = resolveSessionId({ pid: 4242 });
+    const b = resolveSessionId({ pid: 4242 });
+
+    expect(a).toMatch(/^pi-4242-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(b).toMatch(/^pi-4242-[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    expect(a).not.toBe(b);
+  });
+});
 
 describe("resolveStableSessionId", () => {
   it("returns pi-cwd-<12-hex-chars> for a non-empty cwd", () => {

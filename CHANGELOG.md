@@ -2,6 +2,17 @@
 
 All notable changes to the `@gonk/*` core packages. Versions are kept in lockstep across the workspace; this file records what changed at each bump. Format follows [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.0.16] — 2026-06-28
+
+### Added — session identity comes from the real session, not the cwd
+The `0.0.15` fix de-forked the cwd hash, but the deeper error was using the cwd hash *as a session id at all* — **cwd is workspace/project scope, not session scope**, so two distinct agents (e.g. a Claude and a Pi session) in the same directory collided on one identity (presence clobber; a shared session-tier home). This release introduces the primitives for the correct model:
+- `resolveSessionId({ explicitId?, pid? })`: returns the **real** per-session id when supplied (Claude `CLAUDE_CODE_SESSION_ID`; Pi `ctx.sessionManager.getSessionId()`), else a **unique** `pi-<pid>-<uuid>` fallback — never a shared cwd hash. Used for genuinely per-conversation state (presence keys on it now, so same-cwd agents are distinct).
+- `workspaceMemoryDbPath({ cwd, name })`: a directory-home-anchored sqlite path (`<directory-home>/.agents/memory/<name>.db`) for **workspace-continuity** stores (memory/knowledge) that must survive separate invocations in one workspace while staying isolated across workspaces. Throws rather than silently producing a session-less path.
+
+`resolveStableSessionId` is retained for callers not yet migrated. The consuming extensions re-home workspace-continuity state (plan, jobs, work-items, traces, curator, memory, knowledge, …) onto the cwd-keyed **directory** tier; per-conversation state uses the real session id.
+
+**One-time transition:** state under the old cwd-hash session ids is **not** migrated and is orphaned. The id derivation has no home/root context to carry it forward safely; old homes are abandoned in place.
+
 ## [0.0.15] — 2026-06-28
 
 ### Fixed

@@ -92,6 +92,7 @@ export {
   StandardRootAdapter,
   migrateRootToStandardLayout,
   migrateAllUnder,
+  resolveSessionId,
   resolveStableSessionId,
   sessionMemoryDbPath,
 } from "@gonk/scope";

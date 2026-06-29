@@ -43,5 +43,7 @@ export {
 } from "./migrate.ts";
 export type { MigrateOptions, MigrationSummary } from "./migrate.ts";
 export { canonicalPath } from "./canonical-path.ts";
-export { resolveStableSessionId, sessionMemoryDbPath } from "./session-id.ts";
+export { resolveSessionId, resolveStableSessionId, sessionMemoryDbPath } from "./session-id.ts";
 export type { SessionMemoryDbPathOptions } from "./session-id.ts";
+export { workspaceMemoryDbPath } from "./workspace-memory-db-path.ts";
+export type { WorkspaceMemoryDbPathOptions } from "./workspace-memory-db-path.ts";
