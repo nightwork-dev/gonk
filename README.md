@@ -10,7 +10,7 @@ If you build agent tools, you write them against whatever host you're in — a C
 
 Every harness has grown strengths the others lack — [Hermes](https://github.com/nousresearch/hermes-agent)'s session-surviving memory, [Pi](https://github.com/earendil-works/pi)'s clean extension model, Claude Code's plugins, Codex's sandboxed loop — and reusing any of them today means porting it by hand to the next host. gonk is the lingua franca that makes a capability portable instead.
 
-This repo is the foundation — the registry, the scope, the host adapters, and the persistence store beneath them. The capabilities built on top (memory, persona, self-model, RLM, voice, the background curator) live in [gonk-extensions](https://github.com/nightwork-dev/gonk-extensions).
+This repo is the foundation — the registry, the scope, the host adapters, and the persistence store beneath them. Build capabilities on these primitives and they ship once, to run on any host.
 
 ## Architecture
 

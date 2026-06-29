@@ -1,7 +1,7 @@
 # Store abstraction — design
 
 > Status: **implemented.** Shipped as `@gonk/store` (core, `0.0.10`; `KvStore.entries()` added `0.0.11`)
-> and consumed by the extension capabilities (Tier 3, gonk-extensions). All three implementation
+> and consumed by the capabilities built on it. All three implementation
 > tiers in §7 landed; §4.2's relational extraction was built **in full** (memory triples + sessions,
 > knowledge, traces — each behind a capability-local interface with sqlite as the default impl and a
 > non-sqlite in-memory second impl proving the seam). §5's three-question standard and §6's usage
