@@ -33,5 +33,9 @@
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
     "directory": "packages/core/temporal"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

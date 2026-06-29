@@ -43,5 +43,9 @@
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
     "directory": "packages/core/store"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

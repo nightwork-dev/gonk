@@ -38,5 +38,9 @@
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
     "directory": "packages/adapters/tool-registry-cli"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

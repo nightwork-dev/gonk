@@ -42,5 +42,9 @@
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
     "directory": "packages/framework/extension-spec-pi"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }
