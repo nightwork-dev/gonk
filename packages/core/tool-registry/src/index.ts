@@ -37,6 +37,11 @@ export { ToolRegistry, makeBaseContext } from "./registry.ts";
 export type { ToolRegistryOptions, InvokeOptions } from "./registry.ts";
 
 export { shape, passthrough } from "./shape.ts";
+export { resolveInputJsonSchema, withJsonSchema } from "./json-schema.ts";
+export type { JsonSchema, JsonSchemaAnnotated, JsonSchemaDerivableSchema } from "./json-schema.ts";
+
+export { defineTools, mergeToolSets, createClient, assertRegisterableToolSet } from "./client.ts";
+export type { NamedToolDefinition, ClientFor, ClientTransport } from "./client.ts";
 
 export { resolveApproval, isToolTier, tierRank } from "./approval.ts";
 export type {

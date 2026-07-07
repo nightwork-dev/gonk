@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { type JsonSchema, withJsonSchema } from "./json-schema.ts";
 
 /** Tiny in-tree Standard Schema adapter — wraps a runtime type-guard
  *  function in the `~standard` shape that `ToolDefinition.input` accepts.
@@ -21,14 +22,16 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 export function shape<T>(
   check: (value: unknown) => value is T,
   message: string,
+  jsonSchema?: JsonSchema,
 ): StandardSchemaV1<unknown, T> {
-  return {
+  const schema: StandardSchemaV1<unknown, T> = {
     "~standard": {
       version: 1,
       vendor: "gonk",
       validate: (value) => (check(value) ? { value } : { issues: [{ message }] }),
     },
   };
+  return jsonSchema ? withJsonSchema(schema, jsonSchema) : schema;
 }
 
 /** Convenience: a shape that always passes (any value typed as T). Useful
