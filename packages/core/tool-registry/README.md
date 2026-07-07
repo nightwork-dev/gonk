@@ -90,3 +90,41 @@ for await (const event of r.invoke("echo", { text: "hi" }, makeBaseContext())) {
   if (event.type === "result") console.log(event.data);
 }
 ```
+
+## Projections — one definition, many surfaces
+
+Define an op once as a `ToolDefinition`; project it to whoever asks. All projections
+are zero-codegen and transport-agnostic.
+
+- **Typed client** (`createClient`, `mergeToolSets`, `defineTools`) — a client whose
+  methods infer input/output off the tool generics, no codegen and no hand-written
+  manifest. Requires the ops be carried as a statically-typed `const` tuple; a
+  duplicate name, a client-key collision, or a non-camelCase-dotted name throws at
+  construction (mirrors `register`).
+- **WebSocket** (`makeWsHandler`) — request/reply + mutation broadcast over an injected
+  emitter, no ws-library dependency.
+- **JSON Schema** (`resolveInputJsonSchema`, `withJsonSchema`) — resolves the schema a
+  machine surface advertises (override → attached annotation → `{}`; it is *trusted*,
+  not derived from the predicate).
+
+### WS authorization model — transitive authority (read this)
+
+`makeWsHandler` takes a host-injected `authorize(tool, caller, input)` policy checked
+**before dispatch** (declared-in-core / enforced-in-host, same split as `approval`).
+
+**`authorize` gates ENTRY to the requested op only.** If that op's handler composes
+another tool via `ctx.invoke(...)`, the composed call runs at the entered tool's
+authority and is **NOT re-authorized against the caller** — the registry dispatches
+composition auth-agnostically (exactly as `approval` is not re-checked on compose). So
+entering a tool grants its **transitive** authority.
+
+**Contract:** do not expose (via `authorize`) a tool whose handler composes an operation
+the caller must not reach directly. The direct entry gate always holds — a caller cannot
+invoke an unauthorized op straight — the caveat is only the indirect internal-compose
+path. A stronger guarantee (re-authorizing every composed call against the original
+caller) needs a registry-level authorize hook and is intentionally not built until a
+consumer composes across trust boundaries.
+
+Broadcast fans a succeeded op's result to **all** connected clients regardless of *their*
+authorization, so the default broadcasts only *unrestricted* writes; a host that
+broadcasts a restricted op must scope the audience at the socket layer.

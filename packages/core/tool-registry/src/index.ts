@@ -43,6 +43,9 @@ export type { JsonSchema, JsonSchemaAnnotated, JsonSchemaDerivableSchema } from 
 export { defineTools, mergeToolSets, createClient, assertRegisterableToolSet } from "./client.ts";
 export type { NamedToolDefinition, ClientFor, ClientTransport } from "./client.ts";
 
+export { makeWsHandler, InMemoryWsEmitter } from "./ws.ts";
+export type { WsRequest, WsMessage, WsEmitter, WsProjectionConfig } from "./ws.ts";
+
 export { resolveApproval, isToolTier, tierRank } from "./approval.ts";
 export type {
   ToolTier,
