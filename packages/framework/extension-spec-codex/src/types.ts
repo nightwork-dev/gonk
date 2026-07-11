@@ -40,6 +40,16 @@ export interface MaterializeCodexOptions {
    *  Defaults to one skill at `skills/gonk-<command.name>/SKILL.md`. */
   skillPlacement?: SkillPlacementPolicy;
 
+  /** Optional override for translating portable spec hooks into Codex hook
+   *  events. The result type separates cache-boundary hooks from side-effect
+   *  hooks so non-boundary placements cannot request model context output. */
+  hookPlacement?: CodexHookPlacementPolicy;
+
+  /** Command prefix referenced from generated `hooks/hooks.json` entries.
+   *  Must contain `$PLUGIN_ROOT`. Defaults to the materializer-emitted local
+   *  runner at `node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs"`. */
+  hookDispatchBinary?: string;
+
   /** Explicit skills to write. When omitted, the default derives one skill from
    *  `spec.command` if present. */
   skills?: CodexSkill[];
@@ -100,6 +110,7 @@ export interface CodexPluginManifest {
   keywords?: string[];
   skills?: string;
   mcpServers?: string;
+  hooks?: string;
   interface?: CodexPluginInterface;
   bundledContentVariant?: string;
 }
@@ -146,3 +157,65 @@ export interface SkillPlacementInput {
 }
 
 export type SkillPlacementPolicy = (input: SkillPlacementInput) => SkillPlacementResult;
+
+// =============================================================================
+// Hooks
+// =============================================================================
+
+export type CodexHookEvent =
+  | "SessionStart"
+  | "PreToolUse"
+  | "PermissionRequest"
+  | "PostToolUse"
+  | "PreCompact"
+  | "PostCompact"
+  | "UserPromptSubmit"
+  | "SubagentStart"
+  | "SubagentStop"
+  | "Stop";
+
+export interface CodexHookCommand {
+  type: "command";
+  command: string;
+  timeout?: number;
+  statusMessage?: string;
+}
+
+export interface CodexHookMatcher {
+  matcher?: string;
+  hooks: CodexHookCommand[];
+}
+
+export interface CodexHooksFile {
+  hooks: Partial<Record<CodexHookEvent, CodexHookMatcher[]>>;
+}
+
+/** Only `SessionStart` may establish model-visible context. Its `compact`
+ *  source is Codex's supported post-compaction cache boundary. */
+export interface CodexBoundaryHookPlacement {
+  kind: "boundary-context";
+  event: "SessionStart";
+  matcher: string;
+  command: CodexHookCommand;
+}
+
+/** Non-boundary hooks may observe and perform side effects, but the generated
+ *  runtime never emits prompt/developer context for them. */
+export interface CodexSideEffectHookPlacement {
+  kind: "side-effect";
+  event: Exclude<CodexHookEvent, "SessionStart" | "SubagentStart">;
+  matcher?: string;
+  command: CodexHookCommand;
+}
+
+export type CodexHookPlacement = CodexBoundaryHookPlacement | CodexSideEffectHookPlacement;
+
+export interface CodexHookPlacementInput {
+  specEvent: string;
+  specId: string;
+  dispatchBinary: string;
+}
+
+export type CodexHookPlacementPolicy = (
+  input: CodexHookPlacementInput,
+) => CodexHookPlacement[];

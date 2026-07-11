@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -39,6 +39,19 @@ function buildFixtureSpec(): ExtensionSpec {
           requires: () => false,
         },
       },
+    },
+  };
+}
+
+function buildHookFixtureSpec(): ExtensionSpec {
+  return {
+    id: "persona",
+    description: "Persona lifecycle fixture.",
+    hooks: {
+      session_start: noop,
+      before_provider_request: noop,
+      turn_complete: noop,
+      unknown_event: noop,
     },
   };
 }
@@ -132,6 +145,63 @@ describe("materializeCodexPlugin", () => {
     expect(skill).toContain('description: "Use knowledge: query, fetch, write."');
   });
 
+  it("materializes cache-safe Codex hook mappings and manifest wiring", () => {
+    mkdirSync(join(outDir, "dist"), { recursive: true });
+    writeFileSync(join(outDir, "dist", "hook-spec.cjs"), "module.exports = {};\n");
+    const manifest = materializeCodexPlugin({
+      spec: buildHookFixtureSpec(),
+      outDir,
+    });
+
+    const pluginJson = JSON.parse(
+      readFileSync(join(outDir, ".codex-plugin", "plugin.json"), "utf8"),
+    );
+    expect(pluginJson.hooks).toBe("./hooks/hooks.json");
+
+    const hooks = JSON.parse(readFileSync(join(outDir, "hooks", "hooks.json"), "utf8"));
+    expect(hooks).toEqual({
+      hooks: {
+        SessionStart: [
+          {
+            matcher: "startup|resume|clear|compact",
+            hooks: [
+              {
+                type: "command",
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona session_start',
+                timeout: 5,
+              },
+            ],
+          },
+        ],
+        Stop: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona turn_complete',
+                timeout: 5,
+              },
+            ],
+          },
+        ],
+        UserPromptSubmit: [
+          {
+            hooks: [
+              {
+                type: "command",
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona before_provider_request',
+                timeout: 5,
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(manifest.written).toContain("hooks/hooks.json");
+    expect(manifest.written).toContain("hooks/gonk-codex-hook.mjs");
+    expect(JSON.stringify(hooks)).not.toContain("unknown_event");
+  });
+
   it("refuses to write outside the plugin root when a skill name traverses", () => {
     const escapeTarget = join(tmpdir(), "codex-skill-escape", "SKILL.md");
     if (existsSync(escapeTarget)) rmSync(escapeTarget, { force: true });
@@ -182,6 +252,45 @@ describe("materializeCodexPlugin", () => {
     expect(existsSync(join(outDir, ".mcp.json"))).toBe(false);
     expect(existsSync(join(outDir, "skills", "gonk-memory", "SKILL.md"))).toBe(false);
     expect(existsSync(join(outDir, ".codex-plugin", "plugin.json"))).toBe(true);
+  });
+
+  it("sweeps obsolete generated hooks", () => {
+    mkdirSync(join(outDir, "dist"), { recursive: true });
+    writeFileSync(join(outDir, "dist", "hook-spec.cjs"), "module.exports = {};\n");
+    materializeCodexPlugin({ spec: buildHookFixtureSpec(), outDir });
+    expect(existsSync(join(outDir, "hooks", "hooks.json"))).toBe(true);
+
+    materializeCodexPlugin({ spec: { id: "headless", description: "No hooks." }, outDir });
+    expect(existsSync(join(outDir, "hooks", "hooks.json"))).toBe(false);
+    const pluginJson = JSON.parse(
+      readFileSync(join(outDir, ".codex-plugin", "plugin.json"), "utf8"),
+    );
+    expect(pluginJson.hooks).toBeUndefined();
+  });
+
+  it("refuses to activate hooks without the consumer's bundled hook spec", () => {
+    expect(() => materializeCodexPlugin({ spec: buildHookFixtureSpec(), outDir })).toThrow(
+      /dist\/hook-spec\.cjs to exist/,
+    );
+    expect(existsSync(join(outDir, "hooks", "hooks.json"))).toBe(false);
+  });
+
+  it("rejects spec ids that could alter the generated shell command", () => {
+    expect(() =>
+      materializeCodexPlugin({ spec: { id: "bad;echo-pwned", description: "bad" }, outDir }),
+    ).toThrow(/Invalid ExtensionSpec id/);
+  });
+
+  it("rejects hook dispatch overrides that are not plugin-root anchored", () => {
+    mkdirSync(join(outDir, "dist"), { recursive: true });
+    writeFileSync(join(outDir, "dist", "hook-spec.cjs"), "module.exports = {};\n");
+    expect(() =>
+      materializeCodexPlugin({
+        spec: buildHookFixtureSpec(),
+        outDir,
+        hookDispatchBinary: "gonk-codex-hook",
+      }),
+    ).toThrow(/anchored through \$PLUGIN_ROOT/);
   });
 });
 

@@ -1,8 +1,8 @@
 {
   "name": "@gonk/extension-spec-codex",
-  "version": "0.0.20",
+  "version": "0.0.24",
   "type": "module",
-  "description": "Codex materializer for @gonk/extension-spec — turns an ExtensionSpec into a Codex plugin tree (plugin.json, skills, .mcp.json).",
+  "description": "Codex materializer for @gonk/extension-spec — turns an ExtensionSpec into a Codex plugin tree (plugin.json, skills, hooks, .mcp.json).",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -15,10 +15,21 @@
     "./materialize": {
       "types": "./dist/materialize.d.ts",
       "import": "./dist/materialize.js"
+    },
+    "./placement": {
+      "types": "./dist/placement.d.ts",
+      "import": "./dist/placement.js"
+    },
+    "./run-hook": {
+      "types": "./dist/run-hook.d.ts",
+      "import": "./dist/run-hook.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "gonk-codex-hook": "./dist/bin/gonk-codex-hook.js"
+  },
   "files": [
     "dist"
   ],

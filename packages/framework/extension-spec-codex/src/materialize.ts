@@ -19,6 +19,8 @@ import type {
   MaterializeCodexOptions,
   SkillPlacementPolicy,
 } from "./types.ts";
+import { defaultCodexHookPlacement } from "./placement.ts";
+import { renderStandaloneCodexHookPolicy } from "./run-hook.ts";
 
 const MANIFEST_DIR = ".codex-plugin";
 const MANIFEST_FILE = "plugin.json";
@@ -26,6 +28,11 @@ const SKILLS_DIR = "skills";
 const SKILL_FILE = "SKILL.md";
 const MCP_FILE = ".mcp.json";
 const MATERIALIZE_MANIFEST_FILE = ".gonk-materialize.json";
+const HOOKS_DIR = "hooks";
+const HOOKS_FILE = "hooks.json";
+const HOOK_RUNNER_FILE = "gonk-codex-hook.mjs";
+const HOOK_POLICY_FILE = "gonk-codex-hook-policy.mjs";
+const HOOK_SPEC_FILE = join("dist", "hook-spec.cjs");
 
 /** Materialize an `ExtensionSpec` into a Codex plugin tree.
  *
@@ -34,6 +41,9 @@ const MATERIALIZE_MANIFEST_FILE = ".gonk-materialize.json";
  *  are removed via the `.gonk-materialize.json` sidecar. */
 export function materializeCodexPlugin(opts: MaterializeCodexOptions): MaterializationManifest {
   const pluginRoot = resolve(opts.outDir);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opts.spec.id)) {
+    throw new Error(`Invalid ExtensionSpec id for Codex materialization: ${opts.spec.id}`);
+  }
   const packageName = opts.packageName ?? opts.spec.id;
   const version = opts.version ?? "0.0.0";
   const mcpServerKey = opts.mcpServerKey ?? `gonk-${opts.spec.id}`;
@@ -44,18 +54,30 @@ export function materializeCodexPlugin(opts: MaterializeCodexOptions): Materiali
   const targets = new WriteBuffer(pluginRoot);
 
   const skills = opts.skills ?? buildDefaultSkills(opts.spec, opts.skillPlacement);
+  const hooks = buildHooksFile(opts);
   const manifest = buildPluginManifest({
     opts,
     packageName,
     version,
     hasSkills: skills.length > 0,
     hasMcp: Boolean(opts.mcpServerEntry),
+    hasHooks: Object.keys(hooks.hooks).length > 0,
   });
   targets.write(join(MANIFEST_DIR, MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
 
   if (opts.mcpServerEntry) {
     const payload = { mcpServers: { [mcpServerKey]: opts.mcpServerEntry } };
     targets.write(MCP_FILE, `${JSON.stringify(payload, null, 2)}\n`);
+  }
+  if (Object.keys(hooks.hooks).length > 0) {
+    if (!existsFile(join(pluginRoot, HOOK_SPEC_FILE))) {
+      throw new Error(
+        `Codex hooks require ${HOOK_SPEC_FILE} to exist before materialization`,
+      );
+    }
+    targets.write(join(HOOKS_DIR, HOOKS_FILE), `${JSON.stringify(hooks, null, 2)}\n`);
+    targets.write(join(HOOKS_DIR, HOOK_POLICY_FILE), renderStandaloneCodexHookPolicy());
+    targets.write(join(HOOKS_DIR, HOOK_RUNNER_FILE), renderHookRunner());
   }
 
   for (const skill of skills.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -122,6 +144,7 @@ function buildPluginManifest(args: {
   version: string;
   hasSkills: boolean;
   hasMcp: boolean;
+  hasHooks: boolean;
 }): CodexPluginManifest {
   const { opts } = args;
   const iface = buildInterface(opts);
@@ -136,7 +159,74 @@ function buildPluginManifest(args: {
   };
   if (args.hasSkills) manifest.skills = `./${SKILLS_DIR}/`;
   if (args.hasMcp) manifest.mcpServers = `./${MCP_FILE}`;
+  if (args.hasHooks) manifest.hooks = `./${HOOKS_DIR}/${HOOKS_FILE}`;
   return manifest;
+}
+
+function buildHooksFile(opts: MaterializeCodexOptions): import("./types.ts").CodexHooksFile {
+  const policy = opts.hookPlacement ?? defaultCodexHookPlacement;
+  const dispatchBinary =
+    opts.hookDispatchBinary ?? 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs"';
+  if (!dispatchBinary.includes("$PLUGIN_ROOT")) {
+    throw new Error("Codex hook dispatch commands must be anchored through $PLUGIN_ROOT");
+  }
+  const grouped: import("./types.ts").CodexHooksFile["hooks"] = {};
+  for (const specEvent of Object.keys(opts.spec.hooks ?? {}).sort()) {
+    for (const placement of policy({ specEvent, specId: opts.spec.id, dispatchBinary })) {
+      const entries = (grouped[placement.event] ??= []);
+      entries.push({
+        ...(placement.matcher !== undefined ? { matcher: placement.matcher } : {}),
+        hooks: [placement.command],
+      });
+    }
+  }
+  const hooks: import("./types.ts").CodexHooksFile["hooks"] = {};
+  for (const event of Object.keys(grouped).sort() as Array<keyof typeof grouped>) {
+    const entries = grouped[event];
+    if (entries) hooks[event] = entries;
+  }
+  return { hooks };
+}
+
+function existsFile(path: string): boolean {
+  try {
+    return statSync(path).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function renderHookRunner(): string {
+  return `#!/usr/bin/env node
+import { dispatchCodexHook } from "./gonk-codex-hook-policy.mjs";
+const specEvent = process.argv[3];
+const root = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+
+async function readStdin() {
+  if (process.stdin.isTTY) return "";
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(chunk);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function main() {
+  if (!specEvent || !root) return process.stdout.write("{}");
+  let payload = {};
+  try {
+    const raw = await readStdin();
+    if (raw.trim()) payload = JSON.parse(raw);
+  } catch {}
+  try {
+    const output = await dispatchCodexHook({ root, specEvent, payload });
+    process.stdout.write(JSON.stringify(output));
+  } catch (error) {
+    process.stderr.write(\`[gonk-codex-hook] \${error instanceof Error ? error.stack : String(error)}\\n\`);
+    process.stdout.write("{}");
+  }
+}
+
+void main();
+`;
 }
 
 function buildInterface(opts: MaterializeCodexOptions): CodexPluginInterface {
@@ -276,7 +366,7 @@ function sweepObsolete(args: {
   }
 }
 
-const OWNED_DIRS = new Set([MANIFEST_DIR, SKILLS_DIR]);
+const OWNED_DIRS = new Set([MANIFEST_DIR, SKILLS_DIR, HOOKS_DIR]);
 const OWNED_ROOT_FILES = new Set([MCP_FILE]);
 
 function isInsideOwnedDir(rel: string): boolean {
