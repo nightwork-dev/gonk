@@ -419,6 +419,28 @@ importers:
         specifier: 'catalog:'
         version: 2.1.9(@types/node@22.19.17)
 
+  packages/framework/extension-spec-codex:
+    dependencies:
+      '@gonk/extension-spec':
+        specifier: workspace:*
+        version: link:../extension-spec
+      '@gonk/utils':
+        specifier: workspace:*
+        version: link:../../core/utils
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 22.19.17
+      tsup:
+        specifier: 'catalog:'
+        version: 8.5.1(postcss@8.5.15)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: 'catalog:'
+        version: 5.9.3
+      vitest:
+        specifier: 'catalog:'
+        version: 2.1.9(@types/node@22.19.17)
+
   packages/framework/extension-spec-pi:
     dependencies:
       '@gonk/extension-spec':

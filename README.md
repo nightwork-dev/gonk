@@ -24,7 +24,7 @@ The foundation primitives, each its own package, plus an authoring layer on top 
 - **Connectivity address & identity** — [`@gonk/channel`](packages/core/channel). The transport-agnostic message contract underneath cross-agent comms and the remote front doors: an address-on-the-message envelope (`persona@host#scope`), a channel registry, and a loopback reference impl.
 - **Time & activity** — [`@gonk/temporal`](packages/core/temporal). The temporal-awareness surface (wall-clock, session elapsed, turn index, idle) plus the periodic-run scheduler and persistent-presence wake/defer policy that every "should this fire now?" decision reads.
 - **Adapters** — [`@gonk/tool-registry-{cli,mcp,pi}`](packages/adapters). Each exposes the *same* registry + orchestrator to a different host, so a capability ships once and surfaces everywhere.
-- **Extension authoring** — [`@gonk/extension-spec`](packages/framework/extension-spec) (+ `-cli` / `-pi` / `-claude`). Declare a whole extension — slash commands, settings UIs, presets, and tools — as host-agnostic data, then materialize it into a CLI extension, a Pi extension, or a Claude Code plugin tree. Built on the registry and scope primitives above.
+- **Extension authoring** — [`@gonk/extension-spec`](packages/framework/extension-spec) (+ `-cli` / `-pi` / `-claude` / `-codex`). Declare a whole extension — slash commands, settings UIs, presets, and tools — as host-agnostic data, then materialize it into a CLI extension, a Pi extension, a Claude Code plugin tree, or a Codex plugin tree. Built on the registry and scope primitives above.
 
 `@gonk/tool-orchestrator` sits on top of the registry for semantic selection (`find_tools`, `load_tool`, …) when a host carries more tools than it wants visible at once.
 
@@ -71,6 +71,7 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 | `@gonk/extension-spec-cli` | Materialize an ExtensionSpec into a CLI extension (subcommands, settings prompts, presets). |
 | `@gonk/extension-spec-pi` | Materialize an ExtensionSpec into a Pi extension (tools, slash command, settings TUI). |
 | `@gonk/extension-spec-claude` | Materialize an ExtensionSpec into a Claude Code plugin tree (plugin.json, commands, hooks). |
+| `@gonk/extension-spec-codex` | Materialize an ExtensionSpec into a Codex plugin tree (plugin.json, skills, MCP config). |
 
 ## Develop
 
