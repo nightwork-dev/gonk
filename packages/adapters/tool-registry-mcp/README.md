@@ -88,6 +88,61 @@ check off, so you don't pass `--allowed-hosts` there.
 
 `hints.mcp.mcpName` overrides the advertised name. `hints.mcp.annotations` are mapped to MCP's `*Hint` fields (`readOnly` → `readOnlyHint`, etc.).
 
+## Development switchboard: one MCP registration, many worktrees
+
+`@gonk/tool-registry-mcp/dev` adds a deliberately small **local** router for
+development. Point Codex, Claude Code, or another MCP client at the router once;
+then change which worktree answers *new* MCP sessions without reinstalling a
+plugin or editing host configuration.
+
+```json
+{
+  "version": 1,
+  "active": "tapestry-review",
+  "environments": [
+    {
+      "id": "tapestry-main",
+      "repo": "/Users/me/Dev/apps/tapestry",
+      "branch": "main",
+      "endpoint": "http://127.0.0.1:4173/mcp",
+      "database": "/Users/me/.local/share/tapestry/tapestry.db"
+    },
+    {
+      "id": "tapestry-review",
+      "repo": "/Users/me/Dev/apps/worktrees/tapestry-review",
+      "branch": "feat/story-review",
+      "endpoint": "http://127.0.0.1:4179/mcp",
+      "database": "/tmp/tapestry-review.db"
+    }
+  ]
+}
+```
+
+Run the switchboard and register this one stable URL with a host:
+
+```bash
+gonk-mcp-dev serve --config ~/.config/gonk/dev-mcp.json --port 8810
+# host configuration: http://127.0.0.1:8810/mcp
+
+gonk-mcp-dev list
+gonk-mcp-dev current
+gonk-mcp-dev use tapestry-main
+```
+
+The router reads the manifest at every **new** MCP initialization. Existing MCP
+sessions stay pinned to their original target, even after `use`, so a reconnect
+is explicit and safe rather than silently moving a live agent across code or
+data. Every proxied response carries `X-Gonk-Dev-*` identity headers. Tool
+descriptions and results for anything not declared `readOnlyHint` also include
+the active code checkout, branch, and database target. This is intentionally
+conservative: a tool with no read-only declaration is treated as potentially
+write-capable.
+
+The switchboard does not run app code itself. Each environment must first expose
+its own Gonk `ToolRegistry` through `createHttpMcpServer`; this keeps the
+transport reusable for Tapestry, Deadletters, and future applications, while
+keeping code target and data target separate in the manifest.
+
 ## Tool input schema
 
 Pulled from `tool.inputJsonSchema` (typebox values are valid JSON Schemas). When absent, the adapter advertises `{ type: "object", additionalProperties: true }`.

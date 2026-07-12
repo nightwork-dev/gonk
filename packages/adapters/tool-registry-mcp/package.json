@@ -10,12 +10,17 @@
     "./http": {
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js"
+    },
+    "./dev": {
+      "types": "./dist/dev/index.d.ts",
+      "import": "./dist/dev/index.js"
     }
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "gonk-mcp-http": "./dist/http/cli.js"
+    "gonk-mcp-http": "./dist/http/cli.js",
+    "gonk-mcp-dev": "./dist/dev/cli.js"
   },
   "files": [
     "dist"
