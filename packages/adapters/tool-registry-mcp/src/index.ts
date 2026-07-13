@@ -24,6 +24,8 @@ import type { Orchestrator } from "@gonk/tool-orchestrator";
 
 export type WriteToolPolicy = "warn" | "require-allowlist" | "permissive";
 
+export type McpToolContext = Partial<Pick<ToolContext, "cwd" | "env" | "scope" | "host">>;
+
 export interface McpAdapterOptions {
   serverName: string;
   serverVersion: string;
@@ -43,6 +45,12 @@ export interface McpAdapterOptions {
    *  Pi adapter forwards scope. Optional: servers that expose only
    *  scope-free tools may omit it. */
   scope?: ToolContext["scope"];
+  /** Add trusted request-scoped context after the transport has authenticated
+   *  the caller. This is the MCP equivalent of the WS adapter's makeContext
+   *  seam: identity comes from the host, never from tool input. */
+  makeContext?: (
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
+  ) => McpToolContext | Promise<McpToolContext>;
 }
 
 export interface McpAdapter {
@@ -137,12 +145,14 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         };
       }
 
+      const requestContext = await options.makeContext?.(extra);
       const baseCtx = {
         ...makeBaseContext({
           signal: extra.signal,
           log: makeMcpLogger(server),
         }),
         ...(options.scope ? { scope: options.scope } : {}),
+        ...requestContext,
       };
       const stream = isOrchestrator(options.source)
         ? options.source.invoke(tool.name, request.params.arguments ?? {}, baseCtx)

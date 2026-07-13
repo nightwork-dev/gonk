@@ -80,6 +80,42 @@ check off, so you don't pass `--allowed-hosts` there.
 | Remote, with a password | `gonk-mcp-http --host 0.0.0.0 --api-key <key> --allowed-hosts <name:port>` |
 | Remote, on a trusted private network | `gonk-mcp-http --host 0.0.0.0 --allow-insecure` |
 
+### Mount inside an existing web application
+
+Applications that already own their HTTP server should mount MCP in that
+framework instead of starting a second listener. `createWebMcpHandler` accepts
+and returns Web-standard request objects, so it works directly in TanStack
+Start, Hono, Workers, Bun, and similar routers:
+
+```ts
+import { createWebMcpHandler } from "@gonk/tool-registry-mcp/http";
+
+const mcp = createWebMcpHandler({
+  source: registry,
+  serverName: "my-app",
+  serverVersion: "0.1.0",
+  apiKey: process.env.MCP_API_KEY,
+  makeContext: () => ({
+    host: { invoker: "agent", profileId: "automation" },
+  }),
+});
+
+// TanStack Start server route
+export const Route = createFileRoute("/mcp")({
+  server: {
+    handlers: {
+      GET: ({ request }) => mcp.handle(request),
+      POST: ({ request }) => mcp.handle(request),
+      DELETE: ({ request }) => mcp.handle(request),
+    },
+  },
+});
+```
+
+`makeContext` runs for every tool call after transport authentication and is
+the place to inject trusted `ctx.host` identity. Caller class and profile must
+never be accepted from a tool's input payload.
+
 ## What it advertises
 
 - With an `Orchestrator`, only `activeSet()` tools (always + committed pins).

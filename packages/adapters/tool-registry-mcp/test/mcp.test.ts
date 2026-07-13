@@ -234,6 +234,30 @@ describe("createMcpServer", () => {
     expect(seen.read).toBe("SENTINEL");
   });
 
+  it("injects trusted request context into ctx.host", async () => {
+    let host: unknown;
+    const r = new ToolRegistry();
+    r.register({
+      name: "whoami",
+      description: "returns the authenticated host context",
+      input: passthrough(),
+      handler: async (_input: unknown, ctx) => {
+        host = ctx.host;
+        return { data: ctx.host };
+      },
+    });
+    const principal = { invoker: "agent", profileId: "sol" };
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeContext: () => ({ host: principal }),
+    });
+    const client = await pair(adapter);
+    await client.callTool({ name: "whoami", arguments: {} });
+    expect(host).toEqual(principal);
+  });
+
   it("leaves ctx.scope undefined when no scope option is given", async () => {
     const seen: { had: boolean } = { had: true };
     const r = new ToolRegistry();
