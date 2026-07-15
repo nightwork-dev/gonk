@@ -165,13 +165,29 @@ export function makeWsHandler<Caller = unknown>(
       const outcome = await collectOutcome(registry.invoke(req.op, req.input, ctx));
       if (!outcome.ok) return errorMsg(req.reqId, outcome.message);
 
-      if (config.emitter && shouldBroadcast(tool, req.caller)) {
-        config.emitter.broadcast({ type: "broadcast", op: req.op, payload: outcome.data });
+      // The mutation has COMMITTED (outcome.ok). A failure in the broadcast policy
+      // or emitter must NOT surface as a client-facing error for a write that
+      // already succeeded — return the result and log the broadcast failure for the
+      // host to observe (monitoring), never mask the success.
+      if (config.emitter) {
+        try {
+          if (shouldBroadcast(tool, req.caller)) {
+            config.emitter.broadcast({ type: "broadcast", op: req.op, payload: outcome.data });
+          }
+        } catch (broadcastErr) {
+          ctx.log.warn(
+            `ws projection: broadcast for succeeded op ${req.op} failed: ${
+              broadcastErr instanceof Error ? broadcastErr.message : String(broadcastErr)
+            }`,
+          );
+        }
       }
       return resultMsg(req.reqId, outcome.data);
     } catch (err) {
-      // authorize / makeContext / dispatch threw — a boundary returns an error
-      // reply rather than rejecting (no unhandled rejection for the host).
+      // authorize / makeContext / dispatch threw BEFORE the op committed — a
+      // pre-dispatch boundary returns an error reply rather than rejecting (no
+      // unhandled rejection for the host). Post-commit broadcast failures are
+      // handled inline above and never reach here.
       return errorMsg(req.reqId, err instanceof Error ? err.message : String(err));
     }
   };

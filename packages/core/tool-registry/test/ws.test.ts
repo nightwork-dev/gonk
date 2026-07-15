@@ -161,7 +161,10 @@ describe("registry → WS projection", () => {
       .resolves.toEqual({ type: "error", reqId: "m", message: "ctx build failed" });
   });
 
-  it("shouldBroadcast throwing (emitter present) → error reply, no broadcast", async () => {
+  it("shouldBroadcast throwing (post-commit) → result still returned, broadcast suppressed", async () => {
+    // The mutation has COMMITTED. A broadcast-policy failure must NOT mask the
+    // success as a client-facing error — the caller gets its result, nothing fans
+    // out. (Regression: previously the outer catch turned this into an error reply.)
     const emitter = new InMemoryWsEmitter();
     const registry = new ToolRegistry();
     registry.register([tool("draft.propose", { readOnly: false })]);
@@ -171,8 +174,21 @@ describe("registry → WS projection", () => {
       emitter,
     });
     await expect(handle({ op: "draft.propose", reqId: "sb", caller: "agent", input: {} }))
-      .resolves.toEqual({ type: "error", reqId: "sb", message: "policy boom" });
+      .resolves.toMatchObject({ type: "result", reqId: "sb", result: { ok: "draft.propose" } });
     expect(emitter.sent).toHaveLength(0);
+  });
+
+  it("emitter.broadcast throwing (post-commit) → result still returned", async () => {
+    // Same guarantee for the emitter itself failing after a committed mutation.
+    const throwingEmitter = { broadcast: () => { throw new Error("socket gone"); } };
+    const registry = new ToolRegistry();
+    registry.register([tool("draft.propose", { readOnly: false })]);
+    const handle = makeWsHandler(registry, {
+      authorize: () => true,
+      emitter: throwingEmitter,
+    });
+    await expect(handle({ op: "draft.propose", reqId: "eb", caller: "agent", input: {} }))
+      .resolves.toMatchObject({ type: "result", reqId: "eb", result: { ok: "draft.propose" } });
   });
 
   it("authorize receives the request input (input-aware policy)", async () => {
