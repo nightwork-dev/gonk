@@ -30,6 +30,10 @@
     "./approval": {
       "types": "./dist/approval.d.ts",
       "import": "./dist/approval.js"
+    },
+    "./async-dispatch": {
+      "types": "./dist/async-dispatch.d.ts",
+      "import": "./dist/async-dispatch.js"
     }
   },
   "main": "./dist/index.js",

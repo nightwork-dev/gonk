@@ -46,6 +46,9 @@ export type { NamedToolDefinition, ClientFor, ClientTransport } from "./client.t
 export { makeWsHandler, InMemoryWsEmitter } from "./ws.ts";
 export type { WsRequest, WsMessage, WsEmitter, WsProjectionConfig } from "./ws.ts";
 
+export { dispatchDetachedWithWait } from "./async-dispatch.ts";
+export type { DispatchDetachedWithWaitOptions } from "./async-dispatch.ts";
+
 export { resolveApproval, isToolTier, tierRank } from "./approval.ts";
 export type {
   ToolTier,

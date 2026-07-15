@@ -54,6 +54,8 @@ import type { ToolDefinition } from "@gonk/tool-registry/types";   // types only
 import { ToolRegistry } from "@gonk/tool-registry/registry";
 import { ToolError } from "@gonk/tool-registry/errors";
 import { inMemorySink, consoleSink } from "@gonk/tool-registry/metrics";
+import { resolveApproval } from "@gonk/tool-registry/approval";
+import { dispatchDetachedWithWait } from "@gonk/tool-registry/async-dispatch";
 ```
 
 ## Conditional registration
@@ -128,3 +130,29 @@ consumer composes across trust boundaries.
 Broadcast fans a succeeded op's result to **all** connected clients regardless of *their*
 authorization, so the default broadcasts only *unrestricted* writes; a host that
 broadcasts a restricted op must scope the audience at the socket layer.
+
+## Async dispatch — detach-by-default, wait opt-in
+
+`dispatchDetachedWithWait` (from `@gonk/tool-registry/async-dispatch`) is the tool-layer
+combinator for heavy (minutes-scale) tools: dispatch a **detached** worker and return a job
+handle immediately, unless the caller opts INTO blocking with `wait`/`sync`. It is a pure
+combinator over injected closures — it owns no dispatch mechanism (that's `@gonk/jobs`
+`dispatchDetached`) and no result shape (the consumer renders both branches):
+
+```ts
+handler: async (input, ctx) =>
+  dispatchDetachedWithWait({
+    input,                                   // { wait?, sync? } — caller's opt-in
+    kind: "subagent",
+    asyncDispatch: () => launchDetached(...), // → { jobId, ... }; omit ⇒ inline fallback
+    runInline: () => runNow(...),             // the blocking path
+    renderInline: (r) => ({ data: r }),
+    renderAsync: (d) => ({ data: { jobId: d.jobId, workItemId: d.workItemId } }),
+  });
+```
+
+Detached is the default so a heavy tool never silently blocks the parent; `wait: true` is the
+opt-out for a caller that genuinely needs the result inline (e.g. a review gate). When no
+`asyncDispatch` is wired the call degrades to inline and flags `ranSyncFallback` to
+`renderInline`. Used by the delegation cluster (`subagent`, `consult`) and the heavy-tool
+consumers (`image_generate`, `rlm_*`, `harness_dispatch`).
