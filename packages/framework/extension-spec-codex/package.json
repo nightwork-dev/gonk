@@ -1,6 +1,6 @@
 {
   "name": "@gonk/extension-spec-codex",
-  "version": "0.0.24",
+  "version": "1.0.0",
   "type": "module",
   "description": "Codex materializer for @gonk/extension-spec — turns an ExtensionSpec into a Codex plugin tree (plugin.json, skills, hooks, .mcp.json).",
   "exports": {

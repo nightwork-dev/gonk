@@ -1,5 +1,11 @@
 # @gonk/temporal
 
+## 1.0.0
+
+### Patch Changes
+
+- @gonk/store@1.0.0
+
 ## 0.0.19
 
 ### Patch Changes

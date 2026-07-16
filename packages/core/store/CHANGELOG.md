@@ -1,5 +1,12 @@
 # @gonk/store
 
+## 1.0.0
+
+### Patch Changes
+
+- @gonk/scope@1.0.0
+- @gonk/utils@1.0.0
+
 ## 0.0.19
 
 ### Patch Changes

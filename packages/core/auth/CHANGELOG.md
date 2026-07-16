@@ -1,4 +1,4 @@
-# @gonk/core
+# @gonk/auth
 
 ## 1.0.0
 
@@ -16,28 +16,3 @@
   The short-lived MCP `authorize({ tool, input, request, approval })` callback has
   been removed. Authenticated MCP consumers must provide `makeAuthContext`;
   consent and risk decisions belong in the registry `ApprovalProvider`.
-
-### Patch Changes
-
-- Updated dependencies [369b951]
-- Updated dependencies [cd3152e]
-- Updated dependencies [4c3e116]
-  - @gonk/auth@1.0.0
-  - @gonk/tool-registry@1.0.0
-  - @gonk/scope@1.0.0
-
-## 0.0.19
-
-### Patch Changes
-
-- Updated dependencies [cbfd6a4]
-  - @gonk/scope@0.0.19
-  - @gonk/tool-registry@0.0.19
-
-## 0.0.12
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @gonk/tool-registry@0.0.12
-  - @gonk/scope@0.0.12
