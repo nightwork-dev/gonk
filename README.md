@@ -10,15 +10,22 @@ If you build agent tools, you write them against whatever host you're in — a C
 
 Every harness has grown strengths the others lack — [Hermes](https://github.com/nousresearch/hermes-agent)'s session-surviving memory, [Pi](https://github.com/earendil-works/pi)'s clean extension model, Claude Code's plugins, Codex's sandboxed loop — and reusing any of them today means porting it by hand to the next host. gonk is the lingua franca that makes a capability portable instead.
 
-This repo is the foundation — the registry, the scope, the host adapters, and the persistence store beneath them. Build capabilities on these primitives and they ship once, to run on any host.
+This repo is the foundation — identity and authorization, deterministic context
+compilation, the registry, scope, host adapters, and persistence beneath them.
+Build capabilities on these primitives and they ship once, to run on any host.
 
 ## Architecture
 
-<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
+<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, context, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
 
 The foundation primitives, each its own package, plus an authoring layer on top of them:
 
 - **Authentication and authorization** — [`@gonk/auth`](packages/core/auth). Transport-independent effective-subject and delegation contracts, opaque session/persistent-grant binding keys, authorization policy inputs, and redacted security receipts. Hosts prove identity; Gonk carries and enforces it without importing a provider SDK.
+- **Context compilation** — [`@gonk/context`](packages/core/context). Registered
+  contributors nominate serializable candidates; Core authorizes discovery before
+  resolution, reauthorizes authoritative use, deduplicates canonical resources,
+  budgets deterministically, and returns either a sendable artifact or a blocked
+  result with a content-free receipt.
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
 - **Persistence** — [`@gonk/store`](packages/core/store). The same idea for *data* that scope is for *config*: KV, blob, append-log, and vector-KNN primitives a capability reads and writes without knowing — or caring — whether the backing is the filesystem, a database, or a vector index. Pure-`fs` by default, swappable underneath without touching a caller. See [docs/store-abstraction-design.md](docs/store-abstraction-design.md).
@@ -59,6 +66,7 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 | --- | --- |
 | `@gonk/utils` | Zero-dependency fs-safety primitives (`safeJoin`, atomic writes), code-split per concern (`@gonk/utils/fs`) so unbundled consumers load only what they import. |
 | `@gonk/auth` | Transport-independent authenticated principal, delegation, authorization, session-binding, grant-binding, redaction, and security-receipt contracts. |
+| `@gonk/context` | Authorized deterministic context compilation: serializable candidates, in-process contributors, discovery/use policy gates, canonical deduplication, token budgeting, blocked required-context results, and redacted domain receipts. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
 | `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
 | `@gonk/channel` | Transport-agnostic connectivity primitives — the message/address contract (`persona@host#scope`), channel registry, loopback reference impl. |
