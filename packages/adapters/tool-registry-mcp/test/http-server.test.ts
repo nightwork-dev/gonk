@@ -8,7 +8,12 @@ import { afterEach, describe, expect, it } from "vitest";
 
 /** POST JSON to 127.0.0.1:port with an explicit (possibly foreign) Host header,
  *  bypassing fetch's forbidden-header filtering. Resolves the status code. */
-function rawPost(port: number, path: string, host: string, body: unknown): Promise<number> {
+function rawPost(
+  port: number,
+  path: string,
+  host: string,
+  body: unknown
+): Promise<number> {
   return new Promise((resolve, reject) => {
     const payload = JSON.stringify(body);
     const req = request(
@@ -27,7 +32,7 @@ function rawPost(port: number, path: string, host: string, body: unknown): Promi
       (res) => {
         res.resume();
         resolve(res.statusCode ?? 0);
-      },
+      }
     );
     req.on("error", reject);
     req.end(payload);
@@ -49,7 +54,9 @@ function makeRegistry(): ToolRegistry {
       properties: { text: { type: "string" } },
       required: ["text"],
     },
-    handler: async (input: { text: string }) => ({ data: { echoed: input.text } }),
+    handler: async (input: { text: string }) => ({
+      data: { echoed: input.text },
+    }),
   });
   r.register({
     name: "add",
@@ -60,7 +67,9 @@ function makeRegistry(): ToolRegistry {
       properties: { a: { type: "number" }, b: { type: "number" } },
       required: ["a", "b"],
     },
-    handler: async (input: { a: number; b: number }) => ({ data: { sum: input.a + input.b } }),
+    handler: async (input: { a: number; b: number }) => ({
+      data: { sum: input.a + input.b },
+    }),
   });
   return r;
 }
@@ -73,12 +82,15 @@ afterEach(async () => {
   for (const s of servers.splice(0)) await s.stop().catch(() => {});
 });
 
-async function start(over: Partial<HttpMcpServerOptions> = {}): Promise<{ url: string }> {
+async function start(
+  over: Partial<HttpMcpServerOptions> = {}
+): Promise<{ url: string }> {
   const server = createHttpMcpServer({
     source: makeRegistry(),
     serverName: "gonk-mcp-http-test",
     serverVersion: "0",
     port: 0,
+    allowUnrestrictedTools: true,
     ...over,
   });
   await server.start();
@@ -86,11 +98,14 @@ async function start(over: Partial<HttpMcpServerOptions> = {}): Promise<{ url: s
   return { url: `http://127.0.0.1:${server.port}/mcp` };
 }
 
-async function connect(url: string, headers?: Record<string, string>): Promise<Client> {
+async function connect(
+  url: string,
+  headers?: Record<string, string>
+): Promise<Client> {
   const client = new Client({ name: "test-client", version: "0" });
   const transport = new StreamableHTTPClientTransport(
     new URL(url),
-    headers ? { requestInit: { headers } } : undefined,
+    headers ? { requestInit: { headers } } : undefined
   );
   // Same cross-package exactOptional cast as the server side (SDK not built strict).
   await client.connect(transport as Transport);
@@ -104,13 +119,18 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     const client = await connect(url);
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(["add", "echo"]);
-    expect(tools.find((t) => t.name === "echo")?.inputSchema.type).toBe("object");
+    expect(tools.find((t) => t.name === "echo")?.inputSchema.type).toBe(
+      "object"
+    );
   });
 
   it("tools/call executes a real tool through the real handler path", async () => {
     const { url } = await start();
     const client = await connect(url);
-    const res = await client.callTool({ name: "add", arguments: { a: 2, b: 3 } });
+    const res = await client.callTool({
+      name: "add",
+      arguments: { a: 2, b: 3 },
+    });
     expect(res.isError).toBeFalsy();
     expect(res.structuredContent).toEqual({ sum: 5 });
   });
@@ -140,8 +160,16 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     const { url } = await start();
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Mcp-Session-Id": "does-not-exist" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      headers: {
+        "Content-Type": "application/json",
+        "Mcp-Session-Id": "does-not-exist",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      }),
     });
     expect(res.status).toBe(404);
   });
@@ -151,7 +179,12 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/list",
+        params: {},
+      }),
     });
     expect(res.status).toBe(400);
   });
@@ -162,7 +195,12 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { pad: huge } }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "initialize",
+        params: { pad: huge },
+      }),
     });
     expect(res.status).toBe(413);
   });
@@ -175,7 +213,10 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     expect((await b.listTools()).tools.length).toBeGreaterThan(0);
     await a.close();
     // b still works after a closed
-    expect((await b.callTool({ name: "add", arguments: { a: 1, b: 1 } })).structuredContent).toEqual({
+    expect(
+      (await b.callTool({ name: "add", arguments: { a: 1, b: 1 } }))
+        .structuredContent
+    ).toEqual({
       sum: 2,
     });
   });
@@ -187,8 +228,20 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
         serverName: "t",
         serverVersion: "0",
         host: "0.0.0.0",
-      }),
+        allowUnrestrictedTools: true,
+      })
     ).toThrow(/unauthenticated/i);
+  });
+
+  it("refuses authenticated HTTP exposure without an explicit authorization policy", () => {
+    expect(() =>
+      createHttpMcpServer({
+        source: makeRegistry(),
+        serverName: "t",
+        serverVersion: "0",
+        apiKey: "k3y",
+      })
+    ).toThrow(/makeAuthContext|allowUnrestrictedTools/);
   });
 
   it("allows a non-loopback bind with no key when allowInsecure is set", async () => {
@@ -199,6 +252,7 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
       host: "0.0.0.0",
       port: 0,
       allowInsecure: true,
+      allowUnrestrictedTools: true,
     });
     await server.start();
     servers.push(server);
@@ -214,10 +268,24 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
       port: 0,
       apiKey: "k3y",
       allowedHosts: ["mybox.tail-scale.ts.net:8080"],
+      allowUnrestrictedTools: true,
     });
     await server.start();
     servers.push(server);
     expect(server.port).toBeGreaterThan(0);
+  });
+
+  it("allows a protected non-loopback bind with a host authenticator", () => {
+    const server = createHttpMcpServer({
+      source: makeRegistry(),
+      serverName: "t",
+      serverVersion: "0",
+      host: "0.0.0.0",
+      authenticate: () => null,
+      allowedHosts: ["mybox.tail-scale.ts.net:8080"],
+      allowUnrestrictedTools: true,
+    });
+    expect(server).toBeDefined();
   });
 
   it("refuses a protected non-loopback bind with no allowedHosts (would silently reject every request)", () => {
@@ -232,7 +300,8 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
         serverVersion: "0",
         host: "0.0.0.0",
         apiKey: "k3y",
-      }),
+        allowUnrestrictedTools: true,
+      })
     ).toThrow(/allowedHosts/);
   });
 
@@ -247,7 +316,8 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
         host: "0.0.0.0",
         apiKey: "k3y",
         allowedHosts: [],
-      }),
+        allowUnrestrictedTools: true,
+      })
     ).toThrow(/allowedHosts/);
   });
 
@@ -261,7 +331,8 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
         host: "0.0.0.0",
         apiKey: "k3y",
         enableDnsRebindingProtection: true,
-      }),
+        allowUnrestrictedTools: true,
+      })
     ).toThrow(/allowedHosts/);
   });
 
@@ -276,6 +347,7 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
       host: "0.0.0.0",
       port: 0,
       allowInsecure: true,
+      allowUnrestrictedTools: true,
     });
     expect(server).toBeDefined();
   });
@@ -290,7 +362,11 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
       jsonrpc: "2.0",
       id: 1,
       method: "initialize",
-      params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "x", version: "0" } },
+      params: {
+        protocolVersion: "2025-03-26",
+        capabilities: {},
+        clientInfo: { name: "x", version: "0" },
+      },
     });
     expect(status).toBeGreaterThanOrEqual(400);
   });
@@ -302,7 +378,11 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
         name: "danger_write",
         description: "a write tool",
         input: passthrough(),
-        inputJsonSchema: { type: "object", properties: {}, additionalProperties: true },
+        inputJsonSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: true,
+        },
         capabilities: { writesFs: true },
         handler: async () => ({ data: { ok: true } }),
       });
@@ -311,10 +391,17 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     // default policy (require-allowlist) -> write tool NOT advertised
     const gated = await start({ source: writeReg() });
     const c1 = await connect(gated.url);
-    expect((await c1.listTools()).tools.map((t) => t.name)).not.toContain("danger_write");
+    expect((await c1.listTools()).tools.map((t) => t.name)).not.toContain(
+      "danger_write"
+    );
     // explicit allowlist -> advertised
-    const open = await start({ source: writeReg(), allowlist: ["danger_write"] });
+    const open = await start({
+      source: writeReg(),
+      allowlist: ["danger_write"],
+    });
     const c2 = await connect(open.url);
-    expect((await c2.listTools()).tools.map((t) => t.name)).toContain("danger_write");
+    expect((await c2.listTools()).tools.map((t) => t.name)).toContain(
+      "danger_write"
+    );
   });
 });

@@ -14,10 +14,11 @@ This repo is the foundation — the registry, the scope, the host adapters, and 
 
 ## Architecture
 
-<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: tool-registry, tool-orchestrator, scope, and store." width="880"></p>
+<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
 
 The foundation primitives, each its own package, plus an authoring layer on top of them:
 
+- **Authentication and authorization** — [`@gonk/auth`](packages/core/auth). Transport-independent effective-subject and delegation contracts, opaque session/persistent-grant binding keys, authorization policy inputs, and redacted security receipts. Hosts prove identity; Gonk carries and enforces it without importing a provider SDK.
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
 - **Persistence** — [`@gonk/store`](packages/core/store). The same idea for *data* that scope is for *config*: KV, blob, append-log, and vector-KNN primitives a capability reads and writes without knowing — or caring — whether the backing is the filesystem, a database, or a vector index. Pure-`fs` by default, swappable underneath without touching a caller. See [docs/store-abstraction-design.md](docs/store-abstraction-design.md).
@@ -57,15 +58,16 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 | Package | What it is |
 | --- | --- |
 | `@gonk/utils` | Zero-dependency fs-safety primitives (`safeJoin`, atomic writes), code-split per concern (`@gonk/utils/fs`) so unbundled consumers load only what they import. |
+| `@gonk/auth` | Transport-independent authenticated principal, delegation, authorization, session-binding, grant-binding, redaction, and security-receipt contracts. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
 | `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
 | `@gonk/channel` | Transport-agnostic connectivity primitives — the message/address contract (`persona@host#scope`), channel registry, loopback reference impl. |
 | `@gonk/temporal` | Temporal-awareness surface (wall-clock, session elapsed, turn index, idle) + periodic-run scheduler and persistent-presence wake/defer policy. |
-| `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, metrics sinks. |
-| `@gonk/tool-orchestrator` | Semantic tool selection / ranking over a registry. |
-| `@gonk/core` | A barrel over `@gonk/scope` + `@gonk/tool-registry` — one import for the common surface. |
+| `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, policy/resource/approval enforcement, metrics, and redacted audit receipts. |
+| `@gonk/tool-orchestrator` | Semantic tool selection / ranking over a registry, with principal-aware meta-tool discovery. |
+| `@gonk/core` | A barrel over `@gonk/auth` + `@gonk/scope` + `@gonk/tool-registry` — one import for the common surface. |
 | `@gonk/tool-registry-cli` | Expose a registry/orchestrator over a CLI. |
-| `@gonk/tool-registry-mcp` | Expose a registry/orchestrator over the Model Context Protocol (stdio + `./http`). |
+| `@gonk/tool-registry-mcp` | Expose a registry/orchestrator over MCP (stdio + `./http`) with principal-filtered discovery, registry authorization, and stateful HTTP session binding. |
 | `@gonk/tool-registry-pi` | Adapt registry tools to `@earendil-works/pi-agent-core` AgentTools. |
 | `@gonk/extension-spec` | Declarative, host-agnostic extension spec — slash commands, settings, presets, and tools as data. |
 | `@gonk/extension-spec-cli` | Materialize an ExtensionSpec into a CLI extension (subcommands, settings prompts, presets). |

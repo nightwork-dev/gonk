@@ -21,6 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@gonk/auth": "workspace:*",
     "@gonk/scope": "workspace:*",
     "@gonk/tool-registry": "workspace:*"
   },
@@ -31,7 +32,7 @@
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "Barrel over the gonk foundation — the typed tool registry (@gonk/tool-registry) and the five-tier scope system (@gonk/scope) under one import. `import { ToolRegistry, createScope } from \"@gonk/core\"`. Import the focused package directly for a tighter dependency.",
+  "description": "Barrel over the gonk foundation — authenticated principal contracts, the typed tool registry, and the five-tier scope system under one import. Import the focused package directly for a tighter dependency.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

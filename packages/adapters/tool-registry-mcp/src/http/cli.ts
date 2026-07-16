@@ -38,10 +38,15 @@ function parseArgs(argv: readonly string[]): CliArgs {
     const a = argv[i];
     const next = argv[i + 1];
     if (a === "--host" && next) (args.host = next), i++;
-    else if (a === "--port" && next) (args.port = Number.parseInt(next, 10)), i++;
+    else if (a === "--port" && next)
+      (args.port = Number.parseInt(next, 10)), i++;
     else if (a === "--api-key" && next) (args.apiKey = next), i++;
     else if (a === "--allowed-hosts" && next)
-      (args.allowedHosts = next.split(",").map((h) => h.trim()).filter(Boolean)), i++;
+      (args.allowedHosts = next
+        .split(",")
+        .map((h) => h.trim())
+        .filter(Boolean)),
+        i++;
     else if (a === "--allow-insecure") args.allowInsecure = true;
   }
   return args;
@@ -56,8 +61,14 @@ async function main(): Promise<void> {
     name: "gonk_health",
     description: "Liveness + version for this gonk HTTP-MCP endpoint.",
     input: passthrough(),
-    inputJsonSchema: { type: "object", properties: {}, additionalProperties: false },
-    handler: async () => ({ data: { ok: true, server: "gonk-mcp-http", version: "0.0.0" } }),
+    inputJsonSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    handler: async () => ({
+      data: { ok: true, server: "gonk-mcp-http", version: "0.0.0" },
+    }),
   });
 
   const options: HttpMcpServerOptions = {
@@ -66,6 +77,7 @@ async function main(): Promise<void> {
     serverVersion: "0.0.0",
     host,
     port: args.port ?? DEFAULT_PORT,
+    allowUnrestrictedTools: true,
   };
   const key = args.apiKey ?? process.env.GONK_MCP_HTTP_KEY;
   if (key) options.apiKey = key;
@@ -74,12 +86,16 @@ async function main(): Promise<void> {
 
   const server = createHttpMcpServer(options);
   await server.start();
-  process.stderr.write(`gonk-mcp-http listening on http://${host}:${server.port}/mcp\n`);
+  process.stderr.write(
+    `gonk-mcp-http listening on http://${host}:${server.port}/mcp\n`
+  );
 }
 
 void main().catch((err) => {
   // The security-posture guard (non-loopback bind, no key) throws here — surface
   // it as a clean CLI error rather than an unhandled rejection.
-  process.stderr.write(`gonk-mcp-http: ${err instanceof Error ? err.message : String(err)}\n`);
+  process.stderr.write(
+    `gonk-mcp-http: ${err instanceof Error ? err.message : String(err)}\n`
+  );
   process.exit(1);
 });

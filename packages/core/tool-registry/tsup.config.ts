@@ -9,6 +9,8 @@ export default defineConfig({
     metrics: "src/metrics.ts",
     shape: "src/shape.ts",
     approval: "src/approval.ts",
+    outcome: "src/outcome.ts",
+    security: "src/security.ts",
     "async-dispatch": "src/async-dispatch.ts",
   },
   format: ["esm"],

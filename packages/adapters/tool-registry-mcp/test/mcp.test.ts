@@ -3,6 +3,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
+import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
 import { ToolRegistry, type ToolDefinition } from "@gonk/tool-registry";
 import { createOrchestrator } from "@gonk/tool-orchestrator";
 
@@ -18,11 +19,38 @@ function passthrough<T>(): StandardSchemaV1<unknown, T> {
   };
 }
 
-async function pair(adapter: ReturnType<typeof createMcpServer>): Promise<Client> {
+async function pair(
+  adapter: ReturnType<typeof createMcpServer>
+): Promise<Client> {
   const [clientT, serverT] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: "test-client", version: "0" }, { capabilities: {} });
+  const client = new Client(
+    { name: "test-client", version: "0" },
+    { capabilities: {} }
+  );
   await Promise.all([client.connect(clientT), adapter.connect(serverT)]);
   return client;
+}
+
+function authenticatedPrincipal(): AuthenticatedPrincipal {
+  return {
+    id: "principal:user-1",
+    kind: "human",
+    identity: {
+      issuer: "https://accounts.example",
+      subject: "user-1",
+      method: "oauth",
+    },
+    workspaceId: "workspace-1",
+    roles: ["member"],
+    scopes: [],
+  };
+}
+
+function auth(authorize: AuthContext["authorize"]): AuthContext {
+  return {
+    principal: authenticatedPrincipal(),
+    authorize,
+  };
 }
 
 describe("createMcpServer", () => {
@@ -37,9 +65,15 @@ describe("createMcpServer", () => {
         properties: { text: { type: "string" } },
         required: ["text"],
       },
-      handler: async (input: { text: string }) => ({ data: { echoed: input.text } }),
+      handler: async (input: { text: string }) => ({
+        data: { echoed: input.text },
+      }),
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
 
     const result = await client.listTools();
@@ -59,10 +93,17 @@ describe("createMcpServer", () => {
         display: `echoed: ${input.text}`,
       }),
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
 
-    const result = await client.callTool({ name: "echo", arguments: { text: "hi" } });
+    const result = await client.callTool({
+      name: "echo",
+      arguments: { text: "hi" },
+    });
     expect(result.isError).toBeUndefined();
     expect(result.content).toEqual([{ type: "text", text: "echoed: hi" }]);
     expect(result.structuredContent).toEqual({ echoed: "hi" });
@@ -70,7 +111,11 @@ describe("createMcpServer", () => {
 
   it("returns isError for unknown tool", async () => {
     const r = new ToolRegistry();
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "ghost", arguments: {} });
     expect(result.isError).toBe(true);
@@ -86,7 +131,11 @@ describe("createMcpServer", () => {
         throw new Error("kaboom");
       },
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "boom", arguments: {} });
     expect(result.isError).toBe(true);
@@ -97,11 +146,31 @@ describe("createMcpServer", () => {
   it("respects activeSet when given an Orchestrator (only always tools advertised)", async () => {
     const r = new ToolRegistry();
     r.register([
-      { name: "a", description: "a", visibility: "always", input: passthrough(), handler: async () => ({ data: 1 }) },
-      { name: "b", description: "b", visibility: "on-demand", input: passthrough(), handler: async () => ({ data: 2 }) },
+      {
+        name: "a",
+        description: "a",
+        visibility: "always",
+        input: passthrough(),
+        handler: async () => ({ data: 1 }),
+      },
+      {
+        name: "b",
+        description: "b",
+        visibility: "on-demand",
+        input: passthrough(),
+        handler: async () => ({ data: 2 }),
+      },
     ] as ToolDefinition[]);
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: orch });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: orch,
+    });
     const client = await pair(adapter);
 
     const before = await client.listTools();
@@ -116,9 +185,26 @@ describe("createMcpServer", () => {
   it("require-allowlist hides write tools not in allowlist", async () => {
     const r = new ToolRegistry();
     r.register([
-      { name: "writer-a", description: "a", input: passthrough(), capabilities: { writesFs: true }, handler: async () => ({ data: 1 }) },
-      { name: "writer-b", description: "b", input: passthrough(), capabilities: { writesFs: true }, handler: async () => ({ data: 2 }) },
-      { name: "reader", description: "r", input: passthrough(), handler: async () => ({ data: 3 }) },
+      {
+        name: "writer-a",
+        description: "a",
+        input: passthrough(),
+        capabilities: { writesFs: true },
+        handler: async () => ({ data: 1 }),
+      },
+      {
+        name: "writer-b",
+        description: "b",
+        input: passthrough(),
+        capabilities: { writesFs: true },
+        handler: async () => ({ data: 2 }),
+      },
+      {
+        name: "reader",
+        description: "r",
+        input: passthrough(),
+        handler: async () => ({ data: 3 }),
+      },
     ] as ToolDefinition[]);
     const adapter = createMcpServer({
       serverName: "test",
@@ -130,7 +216,10 @@ describe("createMcpServer", () => {
     const client = await pair(adapter);
 
     const list = await client.listTools();
-    expect(list.tools.map((t) => t.name).sort()).toEqual(["reader", "writer-a"]);
+    expect(list.tools.map((t) => t.name).sort()).toEqual([
+      "reader",
+      "writer-a",
+    ]);
 
     const blocked = await client.callTool({ name: "writer-b", arguments: {} });
     expect(blocked.isError).toBe(true);
@@ -151,14 +240,27 @@ describe("createMcpServer", () => {
         ],
       }),
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "rich", arguments: {} });
-    const content = result.content as Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
+    const content = result.content as Array<{
+      type: string;
+      text?: string;
+      data?: string;
+      mimeType?: string;
+    }>;
     expect(content[0]).toMatchObject({ type: "text", text: "# title" });
     expect(content[1]).toMatchObject({ type: "text" });
     expect(content[1]?.text).toContain("```ts");
-    expect(content[2]).toMatchObject({ type: "image", mimeType: "image/png", data: "AAA" });
+    expect(content[2]).toMatchObject({
+      type: "image",
+      mimeType: "image/png",
+      data: "AAA",
+    });
   });
 
   it("filters duplex tools from listTools and rejects calls", async () => {
@@ -178,7 +280,11 @@ describe("createMcpServer", () => {
         handler: async () => ({ data: 2 }),
       },
     ] as ToolDefinition[]);
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     const list = await client.listTools();
     expect(list.tools.map((t) => t.name)).toEqual(["echo"]);
@@ -192,10 +298,18 @@ describe("createMcpServer", () => {
       name: "annotated",
       description: "annotated",
       input: passthrough(),
-      hints: { mcp: { annotations: { readOnly: true, destructive: false, idempotent: true } } },
+      hints: {
+        mcp: {
+          annotations: { readOnly: true, destructive: false, idempotent: true },
+        },
+      },
       handler: async () => ({ data: 1 }),
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     const list = await client.listTools();
     expect(list.tools[0]?.annotations).toMatchObject({
@@ -228,7 +342,10 @@ describe("createMcpServer", () => {
       scope: fakeScope,
     });
     const client = await pair(adapter);
-    const result = await client.callTool({ name: "needs_scope", arguments: {} });
+    const result = await client.callTool({
+      name: "needs_scope",
+      arguments: {},
+    });
     expect(result.isError ?? false).toBe(false);
     expect(seen.scope).toBe(fakeScope);
     expect(seen.read).toBe("SENTINEL");
@@ -270,9 +387,200 @@ describe("createMcpServer", () => {
         return { data: {} };
       },
     });
-    const adapter = createMcpServer({ serverName: "test", serverVersion: "0", source: r });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
     const client = await pair(adapter);
     await client.callTool({ name: "probe_scope", arguments: {} });
     expect(seen.had).toBe(false);
+  });
+
+  it("filters discovery per principal and makes hidden calls indistinguishable from missing tools", async () => {
+    const r = new ToolRegistry();
+    r.register([
+      {
+        name: "visible",
+        description: "visible",
+        input: passthrough(),
+        handler: async () => ({ data: { visible: true } }),
+      },
+      {
+        name: "hidden",
+        description: "hidden",
+        input: passthrough(),
+        handler: async () => ({ data: { leaked: true } }),
+      },
+    ] as ToolDefinition[]);
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeAuthContext: () =>
+        auth((request) => ({
+          outcome: request.resource.target === "hidden" ? "deny" : "allow",
+          reason: request.resource.target === "hidden" ? "hidden" : "allowed",
+        })),
+    });
+    const client = await pair(adapter);
+    const emptyClient = await pair(
+      createMcpServer({
+        serverName: "test-empty",
+        serverVersion: "0",
+        source: new ToolRegistry(),
+      })
+    );
+
+    const list = await client.listTools();
+    expect(list.tools.map((tool) => tool.name)).toEqual(["visible"]);
+    const hidden = await client.callTool({ name: "hidden", arguments: {} });
+    const missing = await emptyClient.callTool({
+      name: "hidden",
+      arguments: {},
+    });
+    expect(hidden).toEqual(missing);
+    expect(hidden).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "Unknown tool: hidden" }],
+    });
+  });
+
+  it("fails discovery closed when policy returns a malformed decision", async () => {
+    const r = new ToolRegistry();
+    r.register({
+      name: "hidden",
+      description: "hidden",
+      input: passthrough(),
+      handler: async () => ({ data: { leaked: true } }),
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeAuthContext: () =>
+        auth((() => ({
+          outcome: "allow",
+        })) as unknown as AuthContext["authorize"]),
+    });
+    const client = await pair(adapter);
+
+    expect((await client.listTools()).tools).toEqual([]);
+    expect(
+      await client.callTool({ name: "hidden", arguments: {} })
+    ).toMatchObject({
+      isError: true,
+      content: [{ type: "text", text: "Unknown tool: hidden" }],
+    });
+  });
+
+  it("returns approval-required as a completed structured MCP error", async () => {
+    let handled = false;
+    const r = new ToolRegistry({
+      security: {
+        requestId: () => "request-1",
+        approvalProvider: {
+          decide: () => ({
+            outcome: "required",
+            reason: "Ask the user",
+            approvalRequestId: "approval-1",
+            expiresAt: "2026-07-16T20:00:00.000Z",
+          }),
+        },
+      },
+    });
+    r.register({
+      name: "dangerous",
+      description: "dangerous",
+      input: passthrough(),
+      approval: "exec",
+      handler: async () => {
+        handled = true;
+        return { data: { ran: true } };
+      },
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeAuthContext: () =>
+        auth(() => ({
+          outcome: "allow",
+          reason: "allowed",
+        })),
+    });
+    const client = await pair(adapter);
+
+    const result = await client.callTool({
+      name: "dangerous",
+      arguments: {},
+    });
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "APPROVAL_REQUIRED",
+          message: "Approval required",
+          details: {
+            requestId: "request-1",
+            approvalRequestId: "approval-1",
+            toolName: "dangerous",
+            approvalTier: "exec",
+            reason: "Ask the user",
+            resource: { kind: "tool", target: "dangerous" },
+          },
+        },
+      },
+    });
+    expect(handled).toBe(false);
+  });
+
+  it("combines discovery auth with invocation context auth using both-must-allow semantics", async () => {
+    let handled = false;
+    const r = new ToolRegistry();
+    r.register({
+      name: "combined",
+      description: "combined",
+      input: passthrough(),
+      handler: async () => {
+        handled = true;
+        return { data: { ok: true } };
+      },
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeAuthContext: () =>
+        auth(() => ({
+          outcome: "allow",
+          reason: "transport allowed",
+        })),
+      makeContext: () => ({
+        auth: auth((request) => ({
+          outcome: request.action === "tool.invoke" ? "deny" : "allow",
+          reason: "invocation context denied",
+        })),
+      }),
+    });
+    const client = await pair(adapter);
+
+    expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
+      "combined",
+    ]);
+    const result = await client.callTool({
+      name: "combined",
+      arguments: {},
+    });
+    expect(result).toMatchObject({
+      isError: true,
+      structuredContent: {
+        error: {
+          code: "AUTHORIZATION_DENIED",
+          message: "invocation context denied",
+        },
+      },
+    });
+    expect(handled).toBe(false);
   });
 });

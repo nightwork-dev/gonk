@@ -1,23 +1,12 @@
 {
-  "name": "@gonk/tool-orchestrator",
+  "name": "@gonk/auth",
   "version": "0.0.20",
   "type": "module",
+  "description": "Transport-independent authenticated principal, authorization, security-key, receipt, and redaction contracts for Gonk hosts and adapters.",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
-    },
-    "./types": {
-      "types": "./dist/types.d.ts",
-      "import": "./dist/types.js"
-    },
-    "./meta-tools": {
-      "types": "./dist/meta-tools.d.ts",
-      "import": "./dist/meta-tools.js"
-    },
-    "./explain": {
-      "types": "./dist/explain.d.ts",
-      "import": "./dist/explain.js"
     }
   },
   "main": "./dist/index.js",
@@ -32,22 +21,17 @@
     "test:watch": "vitest",
     "clean": "rm -rf dist"
   },
-  "dependencies": {
-    "@gonk/tool-registry": "workspace:*",
-    "@standard-schema/spec": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "Composes ToolRegistry instances into a principal-aware catalog with discovery, ranking, introspection, and pin lifecycle.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
-    "directory": "packages/core/tool-orchestrator"
+    "directory": "packages/core/auth"
   },
   "publishConfig": {
     "access": "public",

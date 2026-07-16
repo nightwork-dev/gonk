@@ -29,6 +29,8 @@ What the handler gets:
 - `log: Logger` — structured logger; tools should never write stdout/stderr directly
 - `cwd: string`, `env: Readonly<...>`
 - `scope?: ScopeStore` — five-tier scope (from `@gonk/scope`), bound by adapters that support it
+- `auth?: AuthContext` — trusted effective subject/delegation and the policy
+  callback enforced for discovery, root invocation, and every composed child
 - `invoke(name, input)` — cross-tool composition, cycle-detected, runs through the same dispatch path
 - `callStack: readonly string[]` — names of tools currently on the call stack
 - `input?: AsyncIterable<InputChunk>` — bidirectional stream for duplex tools (audio, interactive sessions)
@@ -56,7 +58,64 @@ import { ToolError } from "@gonk/tool-registry/errors";
 import { inMemorySink, consoleSink } from "@gonk/tool-registry/metrics";
 import { resolveApproval } from "@gonk/tool-registry/approval";
 import { dispatchDetachedWithWait } from "@gonk/tool-registry/async-dispatch";
+import { collectToolOutcome } from "@gonk/tool-registry/outcome";
+import type {
+  ToolResourceResolver,
+  ApprovalProvider,
+} from "@gonk/tool-registry/security";
 ```
+
+## Authenticated dispatch
+
+Authentication stays outside the registry. A host or adapter validates its
+credential, builds an `AuthenticatedPrincipal` and `AuthContext`, then supplies
+that context to `makeBaseContext({ auth })`.
+
+When `ctx.auth` is present, dispatch:
+
+1. authorizes `tool.discover` before input validation, so hidden and missing
+   root tools have the same result;
+2. validates input;
+3. resolves any declared authoritative application resource through the
+   registry's `ToolResourceResolver`;
+4. authorizes `tool.invoke`;
+5. resolves approval through the optional `ApprovalProvider`;
+6. emits separate redacted authorization and approval receipts;
+7. invokes the handler only after every required gate allows.
+
+Composed `ctx.invoke()` calls retain the original principal, request id, and
+call stack and are independently re-authorized. A required approval is a
+completed non-executing `APPROVAL_REQUIRED` error event with structured,
+redacted details; the registry never suspends a transport request while a human
+decides.
+
+```ts
+import {
+  ToolRegistry,
+  makeBaseContext,
+} from "@gonk/tool-registry";
+
+const registry = new ToolRegistry({
+  security: {
+    resourceResolver,
+    approvalProvider,
+    auditSink,
+    mandatoryAudit: true,
+  },
+});
+
+for await (const event of registry.invoke(
+  "review.annotate",
+  input,
+  makeBaseContext({ auth }),
+)) {
+  // ...
+}
+```
+
+Trusted internal callers may deliberately omit `ctx.auth`; that legacy path
+remains distinguishable from an authenticated human and emits no human
+security receipts.
 
 ## Conditional registration
 
@@ -109,23 +168,16 @@ are zero-codegen and transport-agnostic.
   machine surface advertises (override → attached annotation → `{}`; it is *trusted*,
   not derived from the predicate).
 
-### WS authorization model — transitive authority (read this)
+### WS authorization model
 
 `makeWsHandler` takes a host-injected `authorize(tool, caller, input)` policy checked
 **before dispatch** (declared-in-core / enforced-in-host, same split as `approval`).
 
-**`authorize` gates ENTRY to the requested op only.** If that op's handler composes
-another tool via `ctx.invoke(...)`, the composed call runs at the entered tool's
-authority and is **NOT re-authorized against the caller** — the registry dispatches
-composition auth-agnostically (exactly as `approval` is not re-checked on compose). So
-entering a tool grants its **transitive** authority.
-
-**Contract:** do not expose (via `authorize`) a tool whose handler composes an operation
-the caller must not reach directly. The direct entry gate always holds — a caller cannot
-invoke an unauthorized op straight — the caveat is only the indirect internal-compose
-path. A stronger guarantee (re-authorizing every composed call against the original
-caller) needs a registry-level authorize hook and is intentionally not built until a
-consumer composes across trust boundaries.
+The WebSocket projection's legacy `authorize(tool, caller, input)` callback
+still gates only the requested entry operation. Hosts that need the stronger
+registry contract should normalize `caller` into an `AuthContext` and dispatch
+with `makeBaseContext({ auth })`; registry authorization then covers both the
+root tool and every composed `ctx.invoke()` child.
 
 Broadcast fans a succeeded op's result to **all** connected clients regardless of *their*
 authorization, so the default broadcasts only *unrestricted* writes; a host that

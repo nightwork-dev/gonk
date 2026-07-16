@@ -1,6 +1,8 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import type { AuthContext } from "@gonk/auth";
 import type { ScopeStore } from "@gonk/scope";
 import type { ToolApproval } from "./approval.ts";
+import type { ToolAuthorizationResource } from "./security.ts";
 
 // =============================================================================
 // Logger / Context
@@ -75,6 +77,11 @@ export interface ToolContext {
    *
    *  Forwarded through `ctx.invoke()` like every other field. */
   host?: unknown;
+
+  /** Transport-authenticated principal plus the host/Gonk authorization policy.
+   *  Canonical registry dispatch rechecks this context for root and composed
+   *  invocations. Raw credentials never belong here. */
+  auth?: AuthContext;
 }
 
 // =============================================================================
@@ -153,7 +160,12 @@ export type Display = string | DisplayBlock[];
 // =============================================================================
 
 export type ToolEvent<T = unknown> =
-  | { type: "log"; level: "debug" | "info" | "warn" | "error"; message: string; meta?: unknown }
+  | {
+      type: "log";
+      level: "debug" | "info" | "warn" | "error";
+      message: string;
+      meta?: unknown;
+    }
   | { type: "progress"; percent?: number; message?: string }
   | { type: "data"; chunk: unknown }
   | { type: "result"; data: T; display?: Display }
@@ -169,7 +181,10 @@ export type ToolHandlerReturn<T> =
   | Promise<ToolResult<T>>
   | AsyncIterable<ToolEvent<T>>;
 
-export type ToolHandler<I, O> = (input: I, ctx: ToolContext) => ToolHandlerReturn<O>;
+export type ToolHandler<I, O> = (
+  input: I,
+  ctx: ToolContext
+) => ToolHandlerReturn<O>;
 
 // =============================================================================
 // Visibility
@@ -187,14 +202,12 @@ export type ToolVisibility =
 // Tool definition
 // =============================================================================
 
-/** Self-declared authorization metadata — *who* may invoke this tool. Declared
- *  in core and enforced by a host gate (e.g. `@gonk/pi-guard`): the same
- *  declare-here / enforce-there split as `approval`. All fields are optional and
- *  free-form strings (no baked-in role/level union) so each host defines its own
- *  vocabulary. Declared-not-enforced and backward-compatible — a tool that omits
- *  it behaves exactly as before. Intended consumer: the cross-agent comms /
- *  multi-user trust layer (a tool's required role, the callers allowed to invoke
- *  it). */
+/** Self-declared authorization metadata — *who* may invoke this tool. The
+ *  registry includes it in the canonical tool authorization resource; the
+ *  injected `AuthContext` policy interprets the host-defined vocabulary.
+ *  All fields remain optional and free-form so Gonk does not bake in a role
+ *  hierarchy. A trusted invocation with no `ctx.auth` remains backward
+ *  compatible and does not claim to be authenticated. */
 export interface ToolAuthorization {
   /** Minimum authorization level required to invoke (host-defined vocabulary). */
   authLevel?: string;
@@ -274,10 +287,14 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *  that don't set it behave exactly as before. */
   approval?: ToolApproval;
 
-  /** Self-declared authorization — *who* may invoke this tool. Declared in core,
-   *  enforced by a host gate (`@gonk/pi-guard`), the same split as `approval`.
-   *  Optional, free-form strings, backward-compatible. */
+  /** Self-declared authorization — *who* may invoke this tool. Registry
+   *  discovery and invocation policies receive this metadata through the
+   *  canonical tool resource. Optional, free-form, and backward-compatible. */
   authorization?: ToolAuthorization;
+
+  /** Declares that authenticated invocation requires an authoritative
+   *  application resource projection after input validation. */
+  authorizationResource?: ToolAuthorizationResource;
 
   /** Registration-time predicate. When false, `ToolRegistry.register()`
    *  skips the tool — it's not stored, not advertised in `list_tools` /
@@ -340,7 +357,12 @@ export type ToolLatencyClass = "instant" | "seconds" | "minutes";
 export type CapabilityState =
   | { status: "ready"; detail?: string }
   | { status: "degraded"; detail: string; fix: string }
-  | { status: "needs-setup"; detail: string; fix: string; settingsKeys?: string[] };
+  | {
+      status: "needs-setup";
+      detail: string;
+      fix: string;
+      settingsKeys?: string[];
+    };
 
 /** A capability's self-report. `probe` is a no-arg closure over the bound
  *  scope (matching `ToolDefinition.requires` / `capabilityFor`), re-evaluated

@@ -34,6 +34,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "catalog:",
+    "@gonk/auth": "workspace:*",
     "@gonk/tool-registry": "workspace:*",
     "@gonk/tool-orchestrator": "workspace:*"
   },

@@ -15,6 +15,12 @@ Composes one or more `ToolRegistry` instances into a single catalog with discove
   - `load_tool` — pin a tool for the rest of the session
   - `unload_tool` — unpin
 
+When `ToolContext.auth` is present, all six discovery/introspection meta-tools
+authorize `tool.discover` against canonical tool names before returning names,
+descriptions, schemas, rankings, or changing pins. Targeting a hidden tool has
+the same result as targeting a missing tool and does not mutate pin state.
+Trusted no-auth local invocation preserves the legacy full-catalog behavior.
+
 ## Search & ranking
 
 `find_tools` uses BM25 with weighted fields: name (3×), category (2×), description/tags/keywords (1×). Constants: k1=1.2, b=0.75. The default ranker (`bm25Search`) is exported and pluggable — pass a custom `search` function to `createOrchestrator` to replace it. `legacySubstringSearch` is exported as a fallback for callers that need simple substring matching.

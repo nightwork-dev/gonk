@@ -1,3 +1,7 @@
+import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+
+import type { AuthAuditSink } from "@gonk/auth";
+
 import type { McpAdapterOptions } from "../index.ts";
 
 /** Options for the streamable-HTTP MCP server. Extends the stdio adapter's
@@ -15,6 +19,19 @@ export interface HttpMcpServerOptions extends McpAdapterOptions {
    *  on a loopback bind, or on a non-loopback bind when `allowInsecure` is set —
    *  see `allowInsecure`. */
   apiKey?: string;
+  /** Stable client identity used for the synthetic static-bearer principal. */
+  staticBearerClientId?: string;
+  /** Host-owned authentication adapter. Return SDK AuthInfo with a validated
+   *  `AuthenticatedPrincipal` in
+   *  `extra[GONK_AUTH_INFO_PRINCIPAL]`. */
+  authenticate?: (
+    request: Request
+  ) => AuthInfo | null | Promise<AuthInfo | null>;
+  /** Optional redacted sink for rejected cross-principal session reuse. */
+  sessionAuditSink?: AuthAuditSink;
+  /** Explicit trusted-service mode that authorizes every registry action after
+   *  authentication. Prefer makeAuthContext for product policy. */
+  allowUnrestrictedTools?: boolean;
   /** Acknowledge that a non-loopback bind with no `apiKey` exposes
    *  unauthenticated tool execution to the network. Without this, binding a
    *  non-loopback host (e.g. `0.0.0.0`) with no key throws at construction
@@ -45,6 +62,9 @@ export interface HttpMcpServerOptions extends McpAdapterOptions {
    *  so without it every request is rejected on the Host check. Set it to the
    *  name(s) clients will actually dial. */
   allowedHosts?: string[];
+  /** Allowed `Origin` header values when the SDK transport's origin protection
+   *  is enabled. */
+  allowedOrigins?: string[];
 }
 
 export interface HttpMcpServer {

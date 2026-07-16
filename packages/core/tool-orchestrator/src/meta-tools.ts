@@ -1,4 +1,10 @@
-import { shape, type ToolDefinition, type ToolResult } from "@gonk/tool-registry";
+import {
+  shape,
+  toolAuthorizationResource,
+  type ToolContext,
+  type ToolDefinition,
+  type ToolResult,
+} from "@gonk/tool-registry";
 
 import { explainTool, type ExplainResult } from "./explain.ts";
 import type { Orchestrator } from "./types.ts";
@@ -24,32 +30,31 @@ interface ListInput {
   visibility?: "always" | "on-demand";
 }
 
-const listInputSchema = shape<ListInput>(
-  (v): v is ListInput => {
-    if (!v || typeof v !== "object") return v === undefined;
-    const o = v as Record<string, unknown>;
-    return (
-      isOptionalString(o.category) &&
-      isOptionalString(o.tag) &&
-      (o.visibility === undefined || o.visibility === "always" || o.visibility === "on-demand")
-    );
-  },
-  "expected { category?, tag?, visibility? }",
-);
+const listInputSchema = shape<ListInput>((v): v is ListInput => {
+  if (!v || typeof v !== "object") return v === undefined;
+  const o = v as Record<string, unknown>;
+  return (
+    isOptionalString(o.category) &&
+    isOptionalString(o.tag) &&
+    (o.visibility === undefined ||
+      o.visibility === "always" ||
+      o.visibility === "on-demand")
+  );
+}, "expected { category?, tag?, visibility? }");
 
 interface FindInput {
   query: string;
   limit?: number;
 }
 
-const findInputSchema = shape<FindInput>(
-  (v): v is FindInput => {
-    if (!v || typeof v !== "object") return false;
-    const o = v as Record<string, unknown>;
-    return typeof o.query === "string" && (o.limit === undefined || typeof o.limit === "number");
-  },
-  "expected { query: string, limit?: number }",
-);
+const findInputSchema = shape<FindInput>((v): v is FindInput => {
+  if (!v || typeof v !== "object") return false;
+  const o = v as Record<string, unknown>;
+  return (
+    typeof o.query === "string" &&
+    (o.limit === undefined || typeof o.limit === "number")
+  );
+}, "expected { query: string, limit?: number }");
 
 interface NameOnlyInput {
   name: string;
@@ -57,8 +62,10 @@ interface NameOnlyInput {
 
 const nameOnlySchema = shape<NameOnlyInput>(
   (v): v is NameOnlyInput =>
-    !!v && typeof v === "object" && typeof (v as { name?: unknown }).name === "string",
-  "expected { name: string }",
+    !!v &&
+    typeof v === "object" &&
+    typeof (v as { name?: unknown }).name === "string",
+  "expected { name: string }"
 );
 
 // =============================================================================
@@ -78,9 +85,9 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       pi: { piName: "list_tools" },
       mcp: { annotations: { readOnly: true, idempotent: true } },
     },
-    handler: async (input) => {
+    handler: async (input, ctx) => {
       const all = orch.allTools();
-      const filtered = all.filter((t) => {
+      const matching = all.filter((t) => {
         if (input.category && t.category !== input.category) return false;
         if (input.tag && !(t.tags ?? []).includes(input.tag)) return false;
         if (input.visibility) {
@@ -88,14 +95,19 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
         }
         return true;
       });
+      const filtered = await filterDiscoverable(matching, ctx);
       const tools = filtered.map(summarize);
-      return { data: { tools }, display: renderList(tools) } satisfies ToolResult;
+      return {
+        data: { tools },
+        display: renderList(tools),
+      } satisfies ToolResult;
     },
   };
 
   const find: ToolDefinition<FindInput, { results: RankedSummary[] }> = {
     name: "find_tools",
-    description: "Search tools by keyword, tag, or name. Uses BM25 ranking weighted by name (3×), category (2×), and description/tags/keywords (1×). Returns ranked matches.",
+    description:
+      "Search tools by keyword, tag, or name. Uses BM25 ranking weighted by name (3×), category (2×), and description/tags/keywords (1×). Returns ranked matches.",
     visibility: "always",
     category: "meta",
     tags: ["meta", "discovery", "search"],
@@ -104,14 +116,25 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       pi: { piName: "find_tools" },
       mcp: { annotations: { readOnly: true, idempotent: true } },
     },
-    handler: async (input) => {
-      const ranked = orch.search(input.query, input.limit !== undefined ? { limit: input.limit } : {});
-      const results: RankedSummary[] = ranked.map((r) => ({
+    handler: async (input, ctx) => {
+      const searchOptions =
+        input.limit !== undefined ? { limit: input.limit } : {};
+      const ranked = ctx.auth
+        ? await filterRankedDiscoverable(
+            orch.search(input.query, { limit: orch.allTools().length }),
+            ctx
+          )
+        : orch.search(input.query, searchOptions);
+      const limited = ctx.auth ? ranked.slice(0, input.limit ?? 20) : ranked;
+      const results: RankedSummary[] = limited.map((r) => ({
         ...summarize(r.tool),
         score: r.score,
         reason: r.reason ?? "",
       }));
-      return { data: { results }, display: renderRanked(results) } satisfies ToolResult;
+      return {
+        data: { results },
+        display: renderRanked(results),
+      } satisfies ToolResult;
     },
   };
 
@@ -126,9 +149,11 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       pi: { piName: "get_tool" },
       mcp: { annotations: { readOnly: true, idempotent: true } },
     },
-    handler: async (input) => {
+    handler: async (input, ctx) => {
       const all = orch.allTools().find((t) => t.name === input.name);
-      if (!all) return { data: { tool: null }, display: `No such tool: ${input.name}` };
+      if (!all || !(await canDiscover(all, ctx))) {
+        return { data: { tool: null }, display: `No such tool: ${input.name}` };
+      }
       const detail = detailize(all, orch.visibilityOf(all.name));
       return {
         data: { tool: detail },
@@ -149,21 +174,23 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       pi: { piName: "load_tool" },
       mcp: { annotations: { readOnly: false, idempotent: true } },
     },
-    handler: async (input) => {
-      if (!orch.allTools().some((t) => t.name === input.name)) {
+    handler: async (input, ctx) => {
+      const tool = orch.allTools().find((t) => t.name === input.name);
+      if (!tool || !(await canDiscover(tool, ctx))) {
         return { data: { queued: "" }, display: `No such tool: ${input.name}` };
       }
-      orch.pin(input.name);
+      orch.pin(tool.name);
       return {
-        data: { queued: input.name },
-        display: `Queued ${input.name} for activation. Active after next commit.`,
+        data: { queued: tool.name },
+        display: `Queued ${tool.name} for activation. Active after next commit.`,
       } satisfies ToolResult;
     },
   };
 
   const unload: ToolDefinition<NameOnlyInput, { queued: string }> = {
     name: "unload_tool",
-    description: "Unpin a previously pinned tool. Takes effect at the next commit.",
+    description:
+      "Unpin a previously pinned tool. Takes effect at the next commit.",
     visibility: "always",
     category: "meta",
     tags: ["meta", "pin"],
@@ -172,7 +199,22 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       pi: { piName: "unload_tool" },
       mcp: { annotations: { readOnly: false, idempotent: true } },
     },
-    handler: async (input) => {
+    handler: async (input, ctx) => {
+      if (ctx.auth) {
+        const tool = orch.allTools().find((t) => t.name === input.name);
+        if (!tool || !(await canDiscover(tool, ctx))) {
+          return {
+            data: { queued: "" },
+            display: `No such tool: ${input.name}`,
+          };
+        }
+        orch.unpin(tool.name);
+        return {
+          data: { queued: tool.name },
+          display: `Queued unpin of ${tool.name}.`,
+        } satisfies ToolResult;
+      }
+
       orch.unpin(input.name);
       return {
         data: { queued: input.name },
@@ -206,14 +248,18 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     inputJsonSchema: {
       type: "object",
       properties: {
-        name: { type: "string", minLength: 1, description: "Tool name to explain." },
+        name: {
+          type: "string",
+          minLength: 1,
+          description: "Tool name to explain.",
+        },
       },
       required: ["name"],
       additionalProperties: false,
     },
-    handler: async (input) => {
+    handler: async (input, ctx) => {
       const t = orch.allTools().find((x) => x.name === input.name);
-      if (!t) {
+      if (!t || !(await canDiscover(t, ctx))) {
         return {
           data: { error: "TOOL_NOT_FOUND" } as ExplainResult,
           display: `No such tool: ${input.name}`,
@@ -228,6 +274,49 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
   };
 
   return [list, find, get, load, unload, explain] as ToolDefinition[];
+}
+
+async function filterDiscoverable(
+  tools: ToolDefinition[],
+  ctx: ToolContext
+): Promise<ToolDefinition[]> {
+  if (!ctx.auth) return tools;
+
+  const visible: ToolDefinition[] = [];
+  for (const tool of tools) {
+    if (await canDiscover(tool, ctx)) visible.push(tool);
+  }
+  return visible;
+}
+
+async function filterRankedDiscoverable<T extends { tool: ToolDefinition }>(
+  ranked: T[],
+  ctx: ToolContext
+): Promise<T[]> {
+  if (!ctx.auth) return ranked;
+
+  const visible: T[] = [];
+  for (const result of ranked) {
+    if (await canDiscover(result.tool, ctx)) visible.push(result);
+  }
+  return visible;
+}
+
+async function canDiscover(
+  tool: ToolDefinition,
+  ctx: ToolContext
+): Promise<boolean> {
+  if (!ctx.auth) return true;
+
+  try {
+    const decision = await ctx.auth.authorize({
+      action: "tool.discover",
+      resource: toolAuthorizationResource(tool),
+    });
+    return decision.outcome === "allow" && typeof decision.reason === "string";
+  } catch {
+    return false;
+  }
 }
 
 // =============================================================================

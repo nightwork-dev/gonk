@@ -12,8 +12,9 @@ const adapter = createMcpServer({
   serverName: "todo",
   serverVersion: "0.1.0",
   source: orchestrator,
-  writeToolPolicy: "warn",        // | "require-allowlist" | "permissive"
+  writeToolPolicy: "warn", // | "require-allowlist" | "permissive"
   allowlist: ["safe-write-tool"], // only used with require-allowlist
+  makeAuthContext: (request) => policy.authContextFor(request.authInfo),
 });
 
 await adapter.connect(new StdioServerTransport());
@@ -26,8 +27,8 @@ The same registry can be served over HTTP — `createHttpMcpServer(...)`, or the
 
 ### Just this computer — the default, no setup
 
-Out of the box it listens on `127.0.0.1` (also called *loopback* or
-*localhost*) — an address that **only programs on this same computer** can reach.
+Out of the box it listens on `127.0.0.1` (also called _loopback_ or
+_localhost_) — an address that **only programs on this same computer** can reach.
 Nothing else on your network or the internet can see it, so no password is
 needed.
 
@@ -38,7 +39,7 @@ gonk-mcp-http                      # → http://127.0.0.1:8808/mcp
 ### From somewhere else — remote (another laptop, your phone, a server, a Tailscale network)
 
 To reach the server from anything other than this computer, you have to bind it
-to a *network address* (commonly `0.0.0.0`, meaning "every address this machine
+to a _network address_ (commonly `0.0.0.0`, meaning "every address this machine
 has"). The moment you do that, **anyone who can reach the port could run your
 tools** — so the server will not start that way silently. You make two choices:
 
@@ -63,7 +64,7 @@ If you bind to a network address with **neither**, the server refuses to start
 instead of exposing your tools to the world unauthenticated.
 
 **2. What address will callers dial?** When a key is set, a safety check
-(*DNS-rebinding protection* — it stops a malicious web page from quietly driving
+(_DNS-rebinding protection_ — it stops a malicious web page from quietly driving
 a server on your machine) stays on. It can't guess your machine's public name,
 and `0.0.0.0` is never what a caller actually types, so you must list the
 name(s) callers use with `--allowed-hosts` (e.g. the machine's hostname and
@@ -74,27 +75,45 @@ check off, so you don't pass `--allowed-hosts` there.
 
 ### The whole thing in three lines
 
-| You want… | Run |
-| --- | --- |
-| Local only | `gonk-mcp-http` |
-| Remote, with a password | `gonk-mcp-http --host 0.0.0.0 --api-key <key> --allowed-hosts <name:port>` |
-| Remote, on a trusted private network | `gonk-mcp-http --host 0.0.0.0 --allow-insecure` |
+| You want…                            | Run                                                                        |
+| ------------------------------------ | -------------------------------------------------------------------------- |
+| Local only                           | `gonk-mcp-http`                                                            |
+| Remote, with a password              | `gonk-mcp-http --host 0.0.0.0 --api-key <key> --allowed-hosts <name:port>` |
+| Remote, on a trusted private network | `gonk-mcp-http --host 0.0.0.0 --allow-insecure`                            |
 
 ### Mount inside an existing web application
 
 Applications that already own their HTTP server should mount MCP in that
 framework instead of starting a second listener. `createWebMcpHandler` accepts
 and returns Web-standard request objects, so it works directly in TanStack
-Start, Hono, Workers, Bun, and similar routers:
+Start, Hono, Bun, and similar Node-compatible routers:
 
 ```ts
+import { GONK_AUTH_INFO_PRINCIPAL } from "@gonk/tool-registry-mcp";
 import { createWebMcpHandler } from "@gonk/tool-registry-mcp/http";
 
 const mcp = createWebMcpHandler({
   source: registry,
   serverName: "my-app",
   serverVersion: "0.1.0",
-  apiKey: process.env.MCP_API_KEY,
+  authenticate: async (request) => {
+    const session = await appAuth.verify(request);
+    if (!session) return null;
+    const principal = principalForSession(session);
+    return {
+      token: session.accessToken,
+      clientId: session.clientId,
+      scopes: [...principal.scopes],
+      expiresAt: principal.expiresAt,
+      extra: {
+        [GONK_AUTH_INFO_PRINCIPAL]: principal,
+      },
+    };
+  },
+  makeAuthContext: (request) =>
+    appPolicy.authContextFor(
+      request.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]
+    ),
   makeContext: () => ({
     host: { invoker: "agent", profileId: "automation" },
   }),
@@ -112,15 +131,48 @@ export const Route = createFileRoute("/mcp")({
 });
 ```
 
-`makeContext` runs for every tool call after transport authentication and is
-the place to inject trusted `ctx.host` identity. Caller class and profile must
-never be accepted from a tool's input payload.
+The host owns credential/session/JWT validation. Its SDK `AuthInfo.extra`
+carries the already-normalized `AuthenticatedPrincipal`; the adapter validates
+that shape, builds the registry auth context, filters discovery, and pins each
+stateful MCP session to `securityContextKey(principal)`. Refreshed roles, scopes,
+or expiry may continue on the same session, while a changed effective subject,
+delegated actor, tenant/workspace, or delegated actor session gets the same
+unknown-session response as a missing session and cannot disturb the legitimate
+session.
+
+Do not authenticate an agent-only MCP route with an ambient browser cookie.
+Use an Eve/audience-bound bearer or equivalent credential that browser
+JavaScript cannot silently reuse. Direct browser chat routes and agent MCP
+routes are separate security audiences.
+
+Set `sessionAuditSink` to receive a redacted `session-binding` security receipt
+when a valid credential attempts to reuse a session under a different security
+context. The receipt identifies only the attempted principal and opaque key; it
+does not expose the MCP session id or the legitimate session owner.
+
+`makeContext` remains the invocation-only place for other trusted host context.
+Caller identity must never be accepted from tool input.
+
+For simple deployments, `apiKey` remains supported and synthesizes a stable
+service principal. A custom `authenticate` callback must return a structurally
+valid Gonk principal in `AuthInfo.extra`. Delegated principals must carry
+`actorSessionId` before they can initialize or reuse a stateful MCP session.
+
+The mountable handler does not infer listener safety: credential-free use
+requires explicit `allowInsecure: true`. `makeAuthContext` is the authenticated
+policy seam; omitting it requires explicit `allowUnrestrictedTools: true`.
+Those two flags are deliberate trusted-development/service modes, not defaults.
+Gonk does not synthesize an identity for an older callback shape:
+authenticated discovery and invocation must share a real principal and
+`AuthContext`.
 
 ## What it advertises
 
 - With an `Orchestrator`, only `activeSet()` tools (always + committed pins).
 - With a raw `ToolRegistry`, all tools.
 - Either way, **duplex tools are filtered** — MCP is request/response.
+- With an auth context, `tools/list` includes only tools allowed by
+  `tool.discover`; direct calls to hidden tools look like missing tools.
 
 `hints.mcp.mcpName` overrides the advertised name. `hints.mcp.annotations` are mapped to MCP's `*Hint` fields (`readOnly` → `readOnlyHint`, etc.).
 
@@ -128,7 +180,7 @@ never be accepted from a tool's input payload.
 
 `@gonk/tool-registry-mcp/dev` adds a deliberately small **local** router for
 development. Point Codex, Claude Code, or another MCP client at the router once;
-then change which worktree answers *new* MCP sessions without reinstalling a
+then change which worktree answers _new_ MCP sessions without reinstalling a
 plugin or editing host configuration.
 
 ```json

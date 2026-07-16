@@ -7,12 +7,21 @@ import * as core from "../src/index.ts";
 // present AND that a re-exported primitive actually works end-to-end.
 
 describe("@gonk/core barrel", () => {
+  it("re-exports the auth surface", () => {
+    expect(typeof core.securityContextKey).toBe("function");
+    expect(typeof core.persistentGrantKey).toBe("function");
+    expect(typeof core.isAuthenticatedPrincipal).toBe("function");
+    expect(typeof core.redactAuthzResource).toBe("function");
+  });
+
   it("re-exports the tool-registry surface", () => {
     expect(typeof core.ToolRegistry).toBe("function");
     expect(typeof core.makeBaseContext).toBe("function");
     expect(typeof core.shape).toBe("function");
     expect(typeof core.passthrough).toBe("function");
     expect(typeof core.ToolError).toBe("function");
+    expect(typeof core.collectToolOutcome).toBe("function");
+    expect(typeof core.toolAuthorizationResource).toBe("function");
   });
 
   it("re-exports the scope surface", () => {
@@ -30,7 +39,11 @@ describe("@gonk/core barrel", () => {
       name: "ping",
       description: "barrel smoke test",
       input: core.passthrough(),
-      inputJsonSchema: { type: "object", properties: {}, additionalProperties: false },
+      inputJsonSchema: {
+        type: "object",
+        properties: {},
+        additionalProperties: false,
+      },
       handler: async () => ({ data: { ok: true } }),
     });
     expect(reg.list().map((t) => t.name)).toContain("ping");

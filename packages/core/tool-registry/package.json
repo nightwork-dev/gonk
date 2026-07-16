@@ -31,6 +31,14 @@
       "types": "./dist/approval.d.ts",
       "import": "./dist/approval.js"
     },
+    "./outcome": {
+      "types": "./dist/outcome.d.ts",
+      "import": "./dist/outcome.js"
+    },
+    "./security": {
+      "types": "./dist/security.d.ts",
+      "import": "./dist/security.js"
+    },
     "./async-dispatch": {
       "types": "./dist/async-dispatch.d.ts",
       "import": "./dist/async-dispatch.js"
@@ -49,6 +57,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@gonk/auth": "workspace:*",
     "@standard-schema/spec": "catalog:"
   },
   "peerDependencies": {
@@ -66,7 +75,7 @@
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
-  "description": "Core tool definition shape, registry, and dispatch path. Harness-agnostic — the same ToolDefinition runs through CLI, MCP, and Pi adapters.",
+  "description": "Harness-agnostic typed tool definitions and secure dispatch with Standard Schema validation, composed invocation, authorization, approval, metrics, and audit receipts.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",

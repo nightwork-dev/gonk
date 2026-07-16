@@ -31,23 +31,49 @@ export { ToolError, ERROR_CODES } from "./errors.ts";
 export type { ErrorCode } from "./errors.ts";
 
 export type { InvocationMetric, MetricsSink, InMemorySink } from "./metrics.ts";
-export { noopSink, consoleSink, inMemorySink, compositeSink } from "./metrics.ts";
+export {
+  noopSink,
+  consoleSink,
+  inMemorySink,
+  compositeSink,
+} from "./metrics.ts";
 
 export { ToolRegistry, makeBaseContext } from "./registry.ts";
 export type { ToolRegistryOptions, InvokeOptions } from "./registry.ts";
 
 export { shape, passthrough } from "./shape.ts";
 export { resolveInputJsonSchema, withJsonSchema } from "./json-schema.ts";
-export type { JsonSchema, JsonSchemaAnnotated, JsonSchemaDerivableSchema } from "./json-schema.ts";
+export type {
+  JsonSchema,
+  JsonSchemaAnnotated,
+  JsonSchemaDerivableSchema,
+} from "./json-schema.ts";
 
-export { defineTools, mergeToolSets, createClient, assertRegisterableToolSet } from "./client.ts";
-export type { NamedToolDefinition, ClientFor, ClientTransport } from "./client.ts";
+export {
+  defineTools,
+  mergeToolSets,
+  createClient,
+  assertRegisterableToolSet,
+} from "./client.ts";
+export type {
+  NamedToolDefinition,
+  ClientFor,
+  ClientTransport,
+} from "./client.ts";
 
 export { makeWsHandler, InMemoryWsEmitter } from "./ws.ts";
-export type { WsRequest, WsMessage, WsEmitter, WsProjectionConfig } from "./ws.ts";
+export type {
+  WsRequest,
+  WsMessage,
+  WsEmitter,
+  WsProjectionConfig,
+} from "./ws.ts";
 
 export { dispatchDetachedWithWait } from "./async-dispatch.ts";
 export type { DispatchDetachedWithWaitOptions } from "./async-dispatch.ts";
+
+export { collectToolOutcome } from "./outcome.ts";
+export type { CollectToolOutcomeOptions, ToolOutcome } from "./outcome.ts";
 
 export { resolveApproval, isToolTier, tierRank } from "./approval.ts";
 export type {
@@ -57,3 +83,21 @@ export type {
   ToolApprovalObject,
   ResolvedApproval,
 } from "./approval.ts";
+
+export {
+  redactAuthorizationResources,
+  toolAuthorizationResource,
+  validateResolvedResource,
+} from "./security.ts";
+export type {
+  ApprovalDecision,
+  ApprovalGrantBinding,
+  ApprovalProvider,
+  ApprovalRequest,
+  ApprovalRequiredDetails,
+  ToolApprovalGrant,
+  ToolAuthorizationResource,
+  ToolRegistrySecurityOptions,
+  ToolResourceResolutionRequest,
+  ToolResourceResolver,
+} from "./security.ts";

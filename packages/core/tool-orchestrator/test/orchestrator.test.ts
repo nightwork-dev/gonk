@@ -20,7 +20,10 @@ function passthrough<T>(): StandardSchemaV1<unknown, T> {
   };
 }
 
-function tool(name: string, opts: Partial<ToolDefinition> = {}): ToolDefinition {
+function tool(
+  name: string,
+  opts: Partial<ToolDefinition> = {}
+): ToolDefinition {
   return {
     name,
     description: opts.description ?? `tool ${name}`,
@@ -30,6 +33,8 @@ function tool(name: string, opts: Partial<ToolDefinition> = {}): ToolDefinition 
     ...(opts.tags ? { tags: opts.tags } : {}),
     ...(opts.keywords ? { keywords: opts.keywords } : {}),
     ...(opts.category ? { category: opts.category } : {}),
+    ...(opts.authorization ? { authorization: opts.authorization } : {}),
+    ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
   };
 }
 
@@ -37,6 +42,56 @@ async function collect(stream: AsyncIterable<ToolEvent>): Promise<ToolEvent[]> {
   const out: ToolEvent[] = [];
   for await (const e of stream) out.push(e);
   return out;
+}
+
+const META_TOOL_NAMES = new Set([
+  "list_tools",
+  "find_tools",
+  "get_tool",
+  "load_tool",
+  "unload_tool",
+  "tool_explain",
+]);
+
+function authenticatedContext(
+  principalId: string,
+  discoverable: ReadonlySet<string>,
+  throwFor: ReadonlySet<string> = new Set(),
+  onDiscover?: (target: string, metadata: unknown) => void
+) {
+  return makeBaseContext({
+    auth: {
+      principal: {
+        id: principalId,
+        kind: "human",
+        identity: {
+          issuer: "test",
+          subject: principalId,
+          method: "session",
+        },
+        roles: [],
+        scopes: [],
+      },
+      authorize: async (request) => {
+        if (request.action !== "tool.discover") {
+          return { outcome: "allow", reason: "test permits invocation" };
+        }
+        const target = request.resource.target ?? "";
+        onDiscover?.(target, request.resource.metadata);
+        if (throwFor.has(target))
+          throw new Error(`policy failure for ${target}`);
+        return discoverable.has(target) || META_TOOL_NAMES.has(target)
+          ? {
+              outcome: "allow",
+              reason: `${principalId} may discover ${target}`,
+            }
+          : {
+              outcome: "deny",
+              reason: `${principalId} may not discover ${target}`,
+            };
+      },
+    },
+  });
 }
 
 describe("Orchestrator", () => {
@@ -48,13 +103,23 @@ describe("Orchestrator", () => {
       tool("b-ondemand", { visibility: "on-demand" }),
       tool("c-ondemand", { visibility: "on-demand" }),
     ]);
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
 
-    expect(orch.activeSet().map((t) => t.name)).toEqual(["a-always", "z-always"]);
+    expect(orch.activeSet().map((t) => t.name)).toEqual([
+      "a-always",
+      "z-always",
+    ]);
 
     orch.pin("c-ondemand");
     orch.pin("b-ondemand");
-    expect(orch.activeSet().map((t) => t.name)).toEqual(["a-always", "z-always"]);
+    expect(orch.activeSet().map((t) => t.name)).toEqual([
+      "a-always",
+      "z-always",
+    ]);
 
     await orch.commitPins();
     expect(orch.activeSet().map((t) => t.name)).toEqual([
@@ -71,7 +136,11 @@ describe("Orchestrator", () => {
       tool("a", { visibility: "on-demand" }),
       tool("b", { visibility: "on-demand" }),
     ]);
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
 
     orch.pin("a");
     orch.pin("b");
@@ -90,7 +159,11 @@ describe("Orchestrator", () => {
   it("re-pinning an unpinned tool cancels the tombstone", async () => {
     const r = new ToolRegistry();
     r.register(tool("a", { visibility: "on-demand" }));
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
 
     orch.pin("a");
     await orch.commitPins();
@@ -107,8 +180,16 @@ describe("Orchestrator", () => {
       visibility: "on-demand",
       hints: { mcp: { visibility: "always" }, pi: { visibility: "on-demand" } },
     });
-    const mcp = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
-    const pi = createOrchestrator({ registries: [r], scope: "pi", registerMetaTools: false });
+    const mcp = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
+    const pi = createOrchestrator({
+      registries: [r],
+      scope: "pi",
+      registerMetaTools: false,
+    });
     expect(mcp.activeSet().map((t) => t.name)).toEqual(["hybrid"]);
     expect(pi.activeSet().map((t) => t.name)).toEqual([]);
   });
@@ -122,7 +203,11 @@ describe("Orchestrator", () => {
       tool("tasklist", { description: "manage todo items", tags: ["todo"] }),
       tool("watch-clock"),
     ]);
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
     const results = orch.search("todo");
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]?.tool.name).toBe("todo"); // name token match wins over body match
@@ -134,8 +219,15 @@ describe("Orchestrator", () => {
       tool("a", { keywords: ["alpha"] }),
       tool("b", { keywords: ["alpha"] }),
     ]);
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
-    const results = orch.recommend({ recentText: ["mention alpha"], activeTools: ["a"] });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
+    const results = orch.recommend({
+      recentText: ["mention alpha"],
+      activeTools: ["a"],
+    });
     expect(results.map((r) => r.tool.name)).toEqual(["b"]);
   });
 
@@ -152,7 +244,9 @@ describe("Orchestrator", () => {
     expect(r.has("unload_tool")).toBe(true);
     expect(r.has("get_tool")).toBe(true);
 
-    const events = await collect(orch.invoke("find_tools", { query: "thing" }, makeBaseContext()));
+    const events = await collect(
+      orch.invoke("find_tools", { query: "thing" }, makeBaseContext())
+    );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
     const data = (result as { data: { results: { name: string }[] } }).data;
@@ -164,7 +258,9 @@ describe("Orchestrator", () => {
     r.register(tool("payload", { visibility: "on-demand" }));
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
-    await collect(orch.invoke("load_tool", { name: "payload" }, makeBaseContext()));
+    await collect(
+      orch.invoke("load_tool", { name: "payload" }, makeBaseContext())
+    );
     expect(orch.activeSet().map((t) => t.name)).not.toContain("payload");
 
     await orch.commitPins();
@@ -207,7 +303,11 @@ describe("Orchestrator", () => {
   it("markUsed records timestamps reachable via usedSince", async () => {
     const r = new ToolRegistry();
     r.register(tool("a", { visibility: "always" }));
-    const orch = createOrchestrator({ registries: [r], scope: "mcp", registerMetaTools: false });
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
     const before = Date.now();
     orch.markUsed("a");
     expect(orch.usedSince(before - 1)).toContain("a");
@@ -225,8 +325,192 @@ describe("Orchestrator", () => {
       registerMetaTools: false,
     });
 
-    const events = await collect(orch.invoke("only-in-2", {}, makeBaseContext()));
-    expect(events[0]).toMatchObject({ type: "result", data: { name: "only-in-2" } });
+    const events = await collect(
+      orch.invoke("only-in-2", {}, makeBaseContext())
+    );
+    expect(events[0]).toMatchObject({
+      type: "result",
+      data: { name: "only-in-2" },
+    });
+  });
+});
+
+describe("principal-aware meta-tool discovery", () => {
+  it("filters list_tools and find_tools independently for different principals", async () => {
+    const r = new ToolRegistry();
+    r.register([
+      tool("shared-report", {
+        description: "classified report shared with both users",
+      }),
+      tool("alice-report", { description: "classified report for alice" }),
+      tool("bob-report", { description: "classified report for bob" }),
+    ]);
+    const orch = createOrchestrator({ registries: [r], scope: "mcp" });
+    const alice = authenticatedContext(
+      "alice",
+      new Set(["shared-report", "alice-report"])
+    );
+    const bob = authenticatedContext(
+      "bob",
+      new Set(["shared-report", "bob-report"])
+    );
+
+    const aliceList = await collect(orch.invoke("list_tools", {}, alice));
+    const bobList = await collect(orch.invoke("list_tools", {}, bob));
+    const aliceListed = (
+      aliceList.find((event) => event.type === "result") as {
+        data: { tools: { name: string }[] };
+      }
+    ).data.tools.map((entry) => entry.name);
+    const bobListed = (
+      bobList.find((event) => event.type === "result") as {
+        data: { tools: { name: string }[] };
+      }
+    ).data.tools.map((entry) => entry.name);
+
+    expect(aliceListed.filter((name) => name.endsWith("-report"))).toEqual([
+      "alice-report",
+      "shared-report",
+    ]);
+    expect(bobListed.filter((name) => name.endsWith("-report"))).toEqual([
+      "bob-report",
+      "shared-report",
+    ]);
+
+    const aliceFind = await collect(
+      orch.invoke("find_tools", { query: "classified" }, alice)
+    );
+    const bobFind = await collect(
+      orch.invoke("find_tools", { query: "classified" }, bob)
+    );
+    const aliceFound = (
+      aliceFind.find((event) => event.type === "result") as {
+        data: { results: { name: string }[] };
+      }
+    ).data.results.map((entry) => entry.name);
+    const bobFound = (
+      bobFind.find((event) => event.type === "result") as {
+        data: { results: { name: string }[] };
+      }
+    ).data.results.map((entry) => entry.name);
+
+    expect(new Set(aliceFound)).toEqual(
+      new Set(["shared-report", "alice-report"])
+    );
+    expect(new Set(bobFound)).toEqual(new Set(["shared-report", "bob-report"]));
+  });
+
+  it("treats hidden get/load/unload/explain targets as unknown without mutating pins", async () => {
+    const r = new ToolRegistry();
+    r.register(
+      tool("admin-console", {
+        authorization: { requiredRole: "admin" },
+        capabilities: { network: true },
+      })
+    );
+    const orch = createOrchestrator({ registries: [r], scope: "mcp" });
+    const discoveryRequests: {
+      target: string;
+      metadata: unknown;
+    }[] = [];
+    const user = authenticatedContext(
+      "user",
+      new Set(),
+      new Set(),
+      (target, metadata) => {
+        discoveryRequests.push({ target, metadata });
+      }
+    );
+
+    orch.pin("admin-console");
+    await orch.commitPins();
+
+    const getEvents = await collect(
+      orch.invoke("get_tool", { name: "admin-console" }, user)
+    );
+    const getResult = getEvents.find((event) => event.type === "result") as {
+      data: { tool: unknown };
+      display?: unknown;
+    };
+    expect(getResult.data).toEqual({ tool: null });
+    expect(getResult.display).toBe("No such tool: admin-console");
+
+    const loadEvents = await collect(
+      orch.invoke("load_tool", { name: "admin-console" }, user)
+    );
+    const loadResult = loadEvents.find((event) => event.type === "result") as {
+      data: { queued: string };
+      display?: unknown;
+    };
+    expect(loadResult.data).toEqual({ queued: "" });
+    expect(loadResult.display).toBe("No such tool: admin-console");
+
+    const unloadEvents = await collect(
+      orch.invoke("unload_tool", { name: "admin-console" }, user)
+    );
+    const unloadResult = unloadEvents.find(
+      (event) => event.type === "result"
+    ) as {
+      data: { queued: string };
+      display?: unknown;
+    };
+    expect(unloadResult.data).toEqual({ queued: "" });
+    expect(unloadResult.display).toBe("No such tool: admin-console");
+    expect(orch.pendingPins()).toEqual({ add: [], remove: [] });
+    expect(orch.committedPins()).toEqual(["admin-console"]);
+
+    const explainEvents = await collect(
+      orch.invoke("tool_explain", { name: "admin-console" }, user)
+    );
+    const explainResult = explainEvents.find(
+      (event) => event.type === "result"
+    ) as {
+      data: Record<string, unknown>;
+      display?: unknown;
+    };
+    expect(explainResult.data).toEqual({ error: "TOOL_NOT_FOUND" });
+    expect(explainResult.display).toBe("No such tool: admin-console");
+
+    const targetRequests = discoveryRequests.filter(
+      ({ target }) => target === "admin-console"
+    );
+    expect(targetRequests).toHaveLength(4);
+    expect(targetRequests[0]?.metadata).toEqual({
+      authorization: { requiredRole: "admin" },
+      capabilities: { network: true },
+    });
+  });
+
+  it("fails discovery closed when policy evaluation throws", async () => {
+    const r = new ToolRegistry();
+    r.register([
+      tool("visible-tool", { description: "policy probe" }),
+      tool("policy-error-tool", { description: "policy probe" }),
+    ]);
+    const orch = createOrchestrator({ registries: [r], scope: "mcp" });
+    const ctx = authenticatedContext(
+      "user",
+      new Set(["visible-tool"]),
+      new Set(["policy-error-tool"])
+    );
+
+    const listEvents = await collect(orch.invoke("list_tools", {}, ctx));
+    const listed = (
+      listEvents.find((event) => event.type === "result") as {
+        data: { tools: { name: string }[] };
+      }
+    ).data.tools.map((entry) => entry.name);
+    expect(listed.filter((name) => name.endsWith("-tool"))).toEqual([
+      "visible-tool",
+    ]);
+
+    const getEvents = await collect(
+      orch.invoke("get_tool", { name: "policy-error-tool" }, ctx)
+    );
+    const getResult = getEvents.find((event) => event.type === "result") as {
+      data: { tool: unknown };
+    };
+    expect(getResult.data).toEqual({ tool: null });
   });
 });
 
@@ -259,7 +543,7 @@ describe("tool_explain meta-tool", () => {
     expect(r.has("tool_explain")).toBe(true);
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "rich-tool" }, makeBaseContext()),
+      orch.invoke("tool_explain", { name: "rich-tool" }, makeBaseContext())
     );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
@@ -273,7 +557,11 @@ describe("tool_explain meta-tool", () => {
     expect(data.tags).toEqual(["expensive", "rlm"]);
     expect(data.keywords).toEqual(["query", "synthesize"]);
     expect(data.relatedTo).toEqual(["other-tool"]);
-    expect(data.capabilities).toEqual({ readsFs: true, network: true, longRunning: true });
+    expect(data.capabilities).toEqual({
+      readsFs: true,
+      network: true,
+      longRunning: true,
+    });
     expect(data.hints).toEqual({ mcp: { annotations: { readOnly: true } } });
     expect(data.inputJsonSchema).toEqual(richJsonSchema);
   });
@@ -284,7 +572,7 @@ describe("tool_explain meta-tool", () => {
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "no-such-tool" }, makeBaseContext()),
+      orch.invoke("tool_explain", { name: "no-such-tool" }, makeBaseContext())
     );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
@@ -294,11 +582,13 @@ describe("tool_explain meta-tool", () => {
 
   it("omits absent optional fields rather than emitting undefined", async () => {
     const r = new ToolRegistry();
-    r.register(tool("plain", { description: "A plain tool with minimal metadata." }));
+    r.register(
+      tool("plain", { description: "A plain tool with minimal metadata." })
+    );
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "plain" }, makeBaseContext()),
+      orch.invoke("tool_explain", { name: "plain" }, makeBaseContext())
     );
     const result = events.find((e) => e.type === "result");
     const data = (result as { data: Record<string, unknown> }).data;
@@ -319,7 +609,7 @@ describe("tool_explain meta-tool", () => {
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "hybrid" }, makeBaseContext()),
+      orch.invoke("tool_explain", { name: "hybrid" }, makeBaseContext())
     );
     const result = events.find((e) => e.type === "result");
     const data = (result as { data: Record<string, unknown> }).data;

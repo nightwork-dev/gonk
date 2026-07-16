@@ -1,12 +1,46 @@
 // @gonk/core — the foundation under one import.
 //
-// A convenience barrel over the two core packages: the typed tool registry
-// (@gonk/tool-registry) and the five-tier scope system (@gonk/scope). It lets the
-// common case be `import { ToolRegistry, createScope } from "@gonk/core"`.
+// A convenience barrel over authenticated-principal contracts (@gonk/auth), the
+// typed tool registry (@gonk/tool-registry), and the five-tier scope system
+// (@gonk/scope).
 //
 // Explicit named re-exports (never `export *`, per the package conventions) so the
 // surface is auditable and tree-shakeable. Reach for the focused package
-// (@gonk/tool-registry, @gonk/scope) directly when you want a tighter dependency.
+// (@gonk/auth, @gonk/tool-registry, @gonk/scope) directly when you want a tighter
+// dependency.
+
+// ─── @gonk/auth ──────────────────────────────────────────────────────────────
+export {
+  isAuthenticatedPrincipal,
+  persistentGrantKey,
+  redactAuthzResource,
+  securityContextKey,
+} from "@gonk/auth";
+export type {
+  ApprovalReceipt,
+  AuthAuditSink,
+  AuthClaimRecord,
+  AuthClaimValue,
+  AuthContext,
+  AuthSecurityReceipt,
+  AuthenticatedIdentity,
+  AuthenticatedPrincipal,
+  AuthenticationMethod,
+  Authenticator,
+  AuthorizationDecision,
+  AuthorizationOutcome,
+  AuthorizationReceipt,
+  AuthorizationRequest,
+  AuthzAction,
+  AuthzResource,
+  AuthzResourceKind,
+  AuthzScope,
+  DelegationContext,
+  PrincipalKeyInput,
+  RedactedAuthzResource,
+  SecurityReceiptBase,
+  SessionBindingReceipt,
+} from "@gonk/auth";
 
 // ─── @gonk/tool-registry ─────────────────────────────────────────────────────
 export {
@@ -23,6 +57,10 @@ export {
   resolveApproval,
   isToolTier,
   tierRank,
+  collectToolOutcome,
+  redactAuthorizationResources,
+  toolAuthorizationResource,
+  validateResolvedResource,
 } from "@gonk/tool-registry";
 export type {
   Logger,
@@ -61,6 +99,18 @@ export type {
   ToolApprovalDecision,
   ToolApprovalObject,
   ResolvedApproval,
+  ApprovalDecision,
+  ApprovalGrantBinding,
+  ApprovalProvider,
+  ApprovalRequest,
+  ApprovalRequiredDetails,
+  CollectToolOutcomeOptions,
+  ToolApprovalGrant,
+  ToolAuthorizationResource,
+  ToolOutcome,
+  ToolRegistrySecurityOptions,
+  ToolResourceResolutionRequest,
+  ToolResourceResolver,
 } from "@gonk/tool-registry";
 
 // ─── @gonk/scope ─────────────────────────────────────────────────────────────

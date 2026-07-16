@@ -1,16 +1,30 @@
 # @gonk/core
 
-Convenience barrel over the two gonk foundation packages — the typed tool registry ([`@gonk/tool-registry`](../tool-registry)) and the five-tier scope system ([`@gonk/scope`](../scope)) — under a single import:
+Convenience barrel over three gonk foundation packages — authenticated
+principal and authorization contracts ([`@gonk/auth`](../auth)), the typed tool
+registry ([`@gonk/tool-registry`](../tool-registry)), and the five-tier scope
+system ([`@gonk/scope`](../scope)) — under a single import:
 
 ```ts
-import { ToolRegistry, createScope } from "@gonk/core";
+import {
+  securityContextKey,
+  ToolRegistry,
+  createScope,
+} from "@gonk/core";
 ```
 
 It re-exports the public surface of both packages with explicit, named, type/value-split re-exports (no `export *`), so the surface stays auditable and tree-shakeable. **Reach for the focused package directly when you want a tighter dependency** — `@gonk/core` exists for the common case where you want both at once.
 
 ## What it brings in
 
-From **`@gonk/tool-registry`**: the `ToolDefinition` shape, `ToolRegistry`, `makeBaseContext`, the schema helpers (`shape`, `passthrough`), `ToolError` + `ERROR_CODES`, the metrics sinks (`noopSink`, `consoleSink`, `inMemorySink`, `compositeSink`), approval resolution (`resolveApproval`, `ToolApproval`, `ToolTier` helpers), and the full type surface (`ToolContext`, `ToolEvent`, `ToolResult`, `ToolHandler`, `Logger`, `Display`, …).
+From **`@gonk/auth`**: the transport-independent `AuthenticatedPrincipal` and
+`AuthContext` contracts, session and persistent-grant binding keys, redacted
+authorization resources, and authorization/approval receipt types.
+
+From **`@gonk/tool-registry`**: the `ToolDefinition` shape, `ToolRegistry`,
+`makeBaseContext`, registry-level discovery/invocation authorization, resource
+resolution, approval providers, schema helpers, error types, metrics sinks, and
+the full handler/event type surface.
 
 From **`@gonk/scope`**: the five-tier scope store (`FsScopeStore`, `MemoryScopeStore`, `createScope`), root/document discovery (`findProjectRoot`, `scanDocuments`, `bindRoots`, `resolveTierHomes`), substrate helpers (`substrateDir`, `resolveNativeSubstrateHome`, the migration family), session resolution (`resolveSessionId`, `resolveStableSessionId`, `sessionMemoryDbPath`), and the type surface (`ScopeStore`, `ScopeName`, `RootKind`, `DocumentEntry`, …).
 
