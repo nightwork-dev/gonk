@@ -112,7 +112,9 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
     },
 
     search(query, options) {
-      const tools = allToolsList();
+      const tools = options?.candidates
+        ? Array.from(options.candidates)
+        : allToolsList();
       const ranked = searchRanker(query, tools);
       const limit = options?.limit ?? 20;
       return ranked.slice(0, limit);

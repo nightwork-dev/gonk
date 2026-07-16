@@ -1,8 +1,8 @@
 # @gonk/auth
 
-## 1.0.0
+## 0.1.0
 
-### Major Changes
+### Minor Changes
 
 - 369b951: Add transport-independent authenticated principals, delegation-aware session
   and persistent-grant keys, registry-level discovery and invocation
@@ -16,3 +16,11 @@
   The short-lived MCP `authorize({ tool, input, request, approval })` callback has
   been removed. Authenticated MCP consumers must provide `makeAuthContext`;
   consent and risk decisions belong in the registry `ApprovalProvider`.
+
+  Fail authenticated write and exec approvals closed when no provider is
+  configured, treat missing or malformed approval declarations as exec, and
+  support only an explicit registry approval bypass for trusted hosts.
+
+  Make `makeAuthContext` the sole MCP authorization seam, classify write-tier
+  tools for MCP allowlisting, require approval for orchestrator pin mutations,
+  and filter hidden tools before computing search scores.

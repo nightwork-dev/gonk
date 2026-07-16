@@ -48,6 +48,7 @@ function makeRegistry(): ToolRegistry {
   r.register({
     name: "echo",
     description: "echo input",
+    approval: "read",
     input: passthrough(),
     inputJsonSchema: {
       type: "object",
@@ -61,6 +62,7 @@ function makeRegistry(): ToolRegistry {
   r.register({
     name: "add",
     description: "add two numbers",
+    approval: "read",
     input: passthrough(),
     inputJsonSchema: {
       type: "object",

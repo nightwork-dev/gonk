@@ -400,8 +400,88 @@ describe("principal-aware meta-tool discovery", () => {
     expect(new Set(bobFound)).toEqual(new Set(["shared-report", "bob-report"]));
   });
 
+  it("ranks only the authorized corpus", async () => {
+    const visibleTools = [
+      tool("visible-alpha", { description: "needle alpha" }),
+      tool("visible-beta", { description: "needle beta" }),
+    ];
+    const securedRegistry = new ToolRegistry();
+    securedRegistry.register([
+      ...visibleTools,
+      tool("hidden-noise", {
+        description: "needle needle needle needle needle hidden",
+      }),
+    ]);
+    const visibleRegistry = new ToolRegistry();
+    visibleRegistry.register(visibleTools);
+    const secured = createOrchestrator({
+      registries: [securedRegistry],
+      scope: "mcp",
+    });
+    const baseline = createOrchestrator({
+      registries: [visibleRegistry],
+      scope: "mcp",
+    });
+    const context = authenticatedContext(
+      "alice",
+      new Set(["visible-alpha", "visible-beta"])
+    );
+
+    const securedEvents = await collect(
+      secured.invoke("find_tools", { query: "needle" }, context)
+    );
+    const baselineEvents = await collect(
+      baseline.invoke("find_tools", { query: "needle" }, context)
+    );
+    const results = (events: ToolEvent[]) =>
+      (
+        events.find((event) => event.type === "result") as {
+          data: { results: { name: string; score: number }[] };
+        }
+      ).data.results;
+
+    expect(results(securedEvents)).toEqual(results(baselineEvents));
+  });
+
+  it("requires approval before load_tool mutates pin state", async () => {
+    const r = new ToolRegistry({
+      security: {
+        approvalProvider: {
+          decide: () => ({
+            outcome: "required",
+            reason: "confirm pin mutation",
+            approvalRequestId: "approval-pin",
+          }),
+        },
+      },
+    });
+    r.register(tool("payload"));
+    const orch = createOrchestrator({ registries: [r], scope: "mcp" });
+    const context = authenticatedContext(
+      "alice",
+      new Set(["payload"])
+    );
+
+    const events = await collect(
+      orch.invoke("load_tool", { name: "payload" }, context)
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "error",
+      code: "APPROVAL_REQUIRED",
+      details: { approvalTier: "write" },
+    });
+    expect(orch.pendingPins()).toEqual({ add: [], remove: [] });
+  });
+
   it("treats hidden get/load/unload/explain targets as unknown without mutating pins", async () => {
-    const r = new ToolRegistry();
+    const r = new ToolRegistry({
+      security: {
+        approvalProvider: {
+          decide: () => ({ outcome: "approved" }),
+        },
+      },
+    });
     r.register(
       tool("admin-console", {
         authorization: { requiredRole: "admin" },

@@ -281,10 +281,10 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *  escalate a specific arg pattern — e.g. bash forcing `rm -rf /` to exec
    *  with `override: true`).
    *
-   *  Consumed by approval gates such as `@gonk/pi-guard`: a tool with NO
-   *  declaration is treated as the most-restrictive tier (`exec`) so unknown /
-   *  MCP / custom tools fail safe. Optional and backward-compatible — tools
-   *  that don't set it behave exactly as before. */
+   *  Authenticated registry dispatch and approval gates such as
+   *  `@gonk/pi-guard` treat NO or malformed declaration as the most-restrictive
+   *  tier (`exec`) so unknown / MCP / custom tools fail safe. Trusted internal
+   *  dispatch without `ctx.auth` remains ungated. */
   approval?: ToolApproval;
 
   /** Self-declared authorization — *who* may invoke this tool. Registry

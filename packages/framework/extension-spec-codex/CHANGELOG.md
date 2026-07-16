@@ -1,6 +1,6 @@
 # @gonk/extension-spec-codex
 
-## 1.0.0
+## 0.1.0
 
 ### Minor Changes
 
@@ -18,5 +18,5 @@
 
 ### Patch Changes
 
-- @gonk/extension-spec@1.0.0
-- @gonk/utils@1.0.0
+- @gonk/extension-spec@0.1.0
+- @gonk/utils@0.1.0

@@ -11,7 +11,6 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 import {
-  securityContextKey,
   type AuthContext,
   type AuthorizationDecision,
 } from "@gonk/auth";
@@ -19,7 +18,9 @@ import type { Orchestrator } from "@gonk/tool-orchestrator";
 import {
   collectToolOutcome,
   makeBaseContext,
+  resolveApproval,
   resolveInputJsonSchema,
+  tierRank,
   toolAuthorizationResource,
   type Display,
   type DisplayBlock,
@@ -34,7 +35,7 @@ export const GONK_AUTH_INFO_PRINCIPAL = "gonkPrincipal";
 export type WriteToolPolicy = "warn" | "require-allowlist" | "permissive";
 
 export type McpToolContext = Partial<
-  Pick<ToolContext, "cwd" | "env" | "scope" | "host" | "auth">
+  Pick<ToolContext, "cwd" | "env" | "scope" | "host">
 >;
 
 export interface McpAdapterOptions {
@@ -50,9 +51,9 @@ export interface McpAdapterOptions {
   allowlist?: string[];
   log?: Logger;
   scope?: ToolContext["scope"];
-  /** Invocation-only host context. Auth returned here is combined with
-   *  `makeAuthContext` using both-must-allow semantics. Prefer the dedicated
-   *  auth factory so discovery is secured too. */
+  /** Invocation-only non-security host context. Authentication and
+   *  authorization belong exclusively in `makeAuthContext` so discovery and
+   *  invocation cannot resolve different policy. */
   makeContext?: (
     extra: RequestHandlerExtra<ServerRequest, ServerNotification>
   ) => McpToolContext | Promise<McpToolContext>;
@@ -84,9 +85,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
     if (policy === "permissive") return tools;
     const allowed: ToolDefinition[] = [];
     for (const tool of tools) {
-      const writes = Boolean(
-        tool.capabilities?.writesFs || tool.capabilities?.network
-      );
+      const writes = isWriteTool(tool);
       if (!writes) {
         allowed.push(tool);
         continue;
@@ -96,7 +95,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         else log.warn(`Skipping write-tool ${tool.name} (not in allowlist)`);
       } else {
         log.warn(
-          `Advertising write-tool ${tool.name} (writesFs/network=true). ` +
+          `Advertising write-tool ${tool.name} (write capability or approval tier). ` +
             'Configure writeToolPolicy:"require-allowlist" to require explicit opt-in.'
         );
         allowed.push(tool);
@@ -106,15 +105,30 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
   }
 
   async function requestAuth(
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>,
-    invocationAuth?: AuthContext
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
   ): Promise<AuthContext | undefined> {
-    const contexts: AuthContext[] = [];
-    if (options.makeAuthContext) {
-      contexts.push(await options.makeAuthContext(extra));
+    return options.makeAuthContext?.(extra);
+  }
+
+  async function requestContext(
+    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+  ): Promise<McpToolContext | undefined> {
+    const context = await options.makeContext?.(extra);
+    if (
+      context &&
+      Object.prototype.hasOwnProperty.call(context as object, "auth")
+    ) {
+      throw new Error(
+        "MCP makeContext must not return auth; use makeAuthContext so tools/list and tools/call share one policy"
+      );
     }
-    if (invocationAuth) contexts.push(invocationAuth);
-    return combineAuthContexts(contexts);
+    if (!context) return undefined;
+    return {
+      ...(context.cwd === undefined ? {} : { cwd: context.cwd }),
+      ...(context.env === undefined ? {} : { env: context.env }),
+      ...(context.scope === undefined ? {} : { scope: context.scope }),
+      ...(context.host === undefined ? {} : { host: context.host }),
+    };
   }
 
   server.setRequestHandler(
@@ -123,6 +137,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
       _request,
       extra: RequestHandlerExtra<ServerRequest, ServerNotification>
     ): Promise<ListToolsResult> => {
+      await requestContext(extra);
       const auth = await requestAuth(extra);
       const candidates = applyWritePolicy(activeTools());
       const tools = auth
@@ -163,8 +178,8 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         tool,
         request.params.arguments ?? {}
       );
-      const invocationContext = await options.makeContext?.(extra);
-      const auth = await requestAuth(extra, invocationContext?.auth);
+      const invocationContext = await requestContext(extra);
+      const auth = await requestAuth(extra);
       const baseCtx = {
         ...makeBaseContext({
           signal: extra.signal,
@@ -218,38 +233,6 @@ async function filterDiscoverable(
   return tools.filter((_tool, index) => decisions[index] === true);
 }
 
-function combineAuthContexts(
-  contexts: readonly AuthContext[]
-): AuthContext | undefined {
-  if (contexts.length === 0) return undefined;
-  const [first, ...rest] = contexts;
-  if (!first) return undefined;
-  const expected = securityContextKey({ principal: first.principal });
-  for (const context of rest) {
-    if (securityContextKey({ principal: context.principal }) !== expected) {
-      throw new Error(
-        "MCP auth-context factories resolved different principals"
-      );
-    }
-  }
-  if (rest.length === 0) return first;
-  return {
-    principal: first.principal,
-    async authorize(request): Promise<AuthorizationDecision> {
-      let lastAllow: AuthorizationDecision = {
-        outcome: "allow",
-        reason: "All MCP authorization policies allowed",
-      };
-      for (const context of contexts) {
-        const decision = await authorizeSafely(context, request);
-        if (decision.outcome === "deny") return decision;
-        lastAllow = decision;
-      }
-      return lastAllow;
-    },
-  };
-}
-
 async function authorizeSafely(
   auth: AuthContext,
   request: Parameters<AuthContext["authorize"]>[0]
@@ -273,6 +256,13 @@ async function authorizeSafely(
       reason: "MCP authorization policy failed",
     };
   }
+}
+
+function isWriteTool(tool: ToolDefinition): boolean {
+  if (tool.capabilities?.writesFs || tool.capabilities?.network) return true;
+  if (typeof tool.approval === "function") return true;
+  const approval = resolveApproval(tool.approval, undefined);
+  return approval !== undefined && tierRank(approval.tier) >= tierRank("write");
 }
 
 function unknownToolResult(name: string): CallToolResult {

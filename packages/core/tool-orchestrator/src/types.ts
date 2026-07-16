@@ -64,7 +64,15 @@ export interface Orchestrator {
   /** Effective visibility in this orchestrator's scope. */
   visibilityOf(name: string): ToolVisibility;
 
-  search(query: string, opts?: { limit?: number }): RankedTool[];
+  search(
+    query: string,
+    opts?: {
+      limit?: number;
+      /** Pre-authorized corpus. Callers must filter before ranking so hidden
+       *  tools cannot affect scores or ordering. */
+      candidates?: readonly ToolDefinition[];
+    }
+  ): RankedTool[];
   recommend(ctx: RecommendationContext, opts?: { limit?: number }): RankedTool[];
 
   /** Queue a pin. Doesn't take effect until commitPins(). */

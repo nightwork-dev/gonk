@@ -1,8 +1,8 @@
 # @gonk/tool-registry-mcp
 
-## 1.0.0
+## 0.1.0
 
-### Major Changes
+### Minor Changes
 
 - 369b951: Add transport-independent authenticated principals, delegation-aware session
   and persistent-grant keys, registry-level discovery and invocation
@@ -17,7 +17,13 @@
   been removed. Authenticated MCP consumers must provide `makeAuthContext`;
   consent and risk decisions belong in the registry `ApprovalProvider`.
 
-### Minor Changes
+  Fail authenticated write and exec approvals closed when no provider is
+  configured, treat missing or malformed approval declarations as exec, and
+  support only an explicit registry approval bypass for trusted hosts.
+
+  Make `makeAuthContext` the sole MCP authorization seam, classify write-tier
+  tools for MCP allowlisting, require approval for orchestrator pin mutations,
+  and filter hidden tools before computing search scores.
 
 - 2f1429c: Add a development MCP switchboard that keeps one HTTP MCP registration stable while safely selecting among worktree environments. Add a mountable Web-standard MCP handler and trusted request-context hook so applications can expose their registry from an existing framework route instead of starting a second HTTP server.
 
@@ -26,9 +32,9 @@
 - Updated dependencies [369b951]
 - Updated dependencies [cd3152e]
 - Updated dependencies [4c3e116]
-  - @gonk/auth@1.0.0
-  - @gonk/tool-registry@1.0.0
-  - @gonk/tool-orchestrator@1.0.0
+  - @gonk/auth@0.1.0
+  - @gonk/tool-registry@0.1.0
+  - @gonk/tool-orchestrator@0.1.0
 
 ## 0.0.19
 

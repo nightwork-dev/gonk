@@ -80,6 +80,7 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     visibility: "always",
     category: "meta",
     tags: ["meta", "discovery"],
+    approval: "read",
     input: listInputSchema,
     hints: {
       pi: { piName: "list_tools" },
@@ -111,21 +112,18 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     visibility: "always",
     category: "meta",
     tags: ["meta", "discovery", "search"],
+    approval: "read",
     input: findInputSchema,
     hints: {
       pi: { piName: "find_tools" },
       mcp: { annotations: { readOnly: true, idempotent: true } },
     },
     handler: async (input, ctx) => {
-      const searchOptions =
-        input.limit !== undefined ? { limit: input.limit } : {};
-      const ranked = ctx.auth
-        ? await filterRankedDiscoverable(
-            orch.search(input.query, { limit: orch.allTools().length }),
-            ctx
-          )
-        : orch.search(input.query, searchOptions);
-      const limited = ctx.auth ? ranked.slice(0, input.limit ?? 20) : ranked;
+      const candidates = await filterDiscoverable(orch.allTools(), ctx);
+      const limited = orch.search(input.query, {
+        ...(input.limit === undefined ? {} : { limit: input.limit }),
+        candidates,
+      });
       const results: RankedSummary[] = limited.map((r) => ({
         ...summarize(r.tool),
         score: r.score,
@@ -144,6 +142,7 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     visibility: "always",
     category: "meta",
     tags: ["meta", "discovery"],
+    approval: "read",
     input: nameOnlySchema,
     hints: {
       pi: { piName: "get_tool" },
@@ -169,6 +168,7 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     visibility: "always",
     category: "meta",
     tags: ["meta", "pin"],
+    approval: "write",
     input: nameOnlySchema,
     hints: {
       pi: { piName: "load_tool" },
@@ -194,6 +194,7 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     visibility: "always",
     category: "meta",
     tags: ["meta", "pin"],
+    approval: "write",
     input: nameOnlySchema,
     hints: {
       pi: { piName: "unload_tool" },
@@ -242,6 +243,7 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
     category: "meta",
     cost: "low",
     latency: "instant",
+    approval: "read",
     tags: ["meta", "discovery", "introspection"],
     keywords: ["explain", "describe", "introspect", "schema"],
     input: nameOnlySchema,
@@ -285,19 +287,6 @@ async function filterDiscoverable(
   const visible: ToolDefinition[] = [];
   for (const tool of tools) {
     if (await canDiscover(tool, ctx)) visible.push(tool);
-  }
-  return visible;
-}
-
-async function filterRankedDiscoverable<T extends { tool: ToolDefinition }>(
-  ranked: T[],
-  ctx: ToolContext
-): Promise<T[]> {
-  if (!ctx.auth) return ranked;
-
-  const visible: T[] = [];
-  for (const result of ranked) {
-    if (await canDiscover(result.tool, ctx)) visible.push(result);
   }
   return visible;
 }

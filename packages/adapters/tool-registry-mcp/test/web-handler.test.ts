@@ -37,6 +37,7 @@ function registry(): ToolRegistry {
   tools.register({
     name: "echo",
     description: "echo input",
+    approval: "read",
     input: passthrough(),
     inputJsonSchema: {
       type: "object",

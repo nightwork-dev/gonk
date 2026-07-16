@@ -46,6 +46,12 @@ interface InvocationSecurityState {
   auth: AuthContext;
 }
 
+const DEFAULT_AUTHENTICATED_APPROVAL = Object.freeze({
+  tier: "exec" as const,
+  override: false,
+  reason: "Missing or invalid approval declaration",
+});
+
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
   private readonly metrics: MetricsSink;
@@ -297,7 +303,9 @@ export class ToolRegistry {
       return;
     }
 
-    const approval = resolveApproval(tool.approval, validated.value);
+    const approval =
+      resolveApproval(tool.approval, validated.value) ??
+      DEFAULT_AUTHENTICATED_APPROVAL;
     const resource = toolAuthorizationResource(tool, approval);
     let relatedResources: readonly AuthzResource[] | undefined;
 
@@ -412,26 +420,50 @@ export class ToolRegistry {
         return;
       }
 
-      if (approval && this.security.approvalProvider) {
+      const approvalProvider = this.security.approvalProvider;
+      const approvalEnforced = this.security.approvalMode !== "bypass";
+      if (
+        approvalEnforced &&
+        (approvalProvider !== undefined || approval.tier !== "read")
+      ) {
         let approvalDecision: ApprovalDecision;
-        try {
-          approvalDecision = await this.security.approvalProvider.decide({
-            principal: auth.principal,
-            tool,
-            input: validated.value,
-            resource,
-            ...(relatedResources === undefined ? {} : { relatedResources }),
-            approval,
-          });
-        } catch (error) {
-          baseCtx.log.error("registry approval provider failed", {
-            tool: tool.name,
-            errorType: error instanceof Error ? error.name : "UnknownError",
-          });
+        if (!approvalProvider) {
           approvalDecision = {
             outcome: "denied",
-            reason: "Approval provider failed",
+            reason: "Approval provider not configured",
           };
+        } else {
+          try {
+            const candidate = await approvalProvider.decide({
+              principal: auth.principal,
+              tool,
+              input: validated.value,
+              resource,
+              ...(relatedResources === undefined ? {} : { relatedResources }),
+              approval,
+            });
+            if (isApprovalDecision(candidate)) {
+              approvalDecision = candidate;
+            } else {
+              baseCtx.log.error(
+                "registry approval provider returned an invalid decision",
+                { tool: tool.name }
+              );
+              approvalDecision = {
+                outcome: "denied",
+                reason: "Approval provider returned an invalid decision",
+              };
+            }
+          } catch (error) {
+            baseCtx.log.error("registry approval provider failed", {
+              tool: tool.name,
+              errorType: error instanceof Error ? error.name : "UnknownError",
+            });
+            approvalDecision = {
+              outcome: "denied",
+              reason: "Approval provider failed",
+            };
+          }
         }
 
         const approvalReceipt: AuthSecurityReceipt = {
@@ -764,6 +796,35 @@ async function authorizeSafely(
       reason: "Authorization policy failed",
     };
   }
+}
+
+function isApprovalDecision(value: unknown): value is ApprovalDecision {
+  if (!value || typeof value !== "object") return false;
+  const decision = value as Record<string, unknown>;
+  const optionalString = (field: string): boolean =>
+    decision[field] === undefined || typeof decision[field] === "string";
+  if (!optionalString("reason") || !optionalString("approvalRequestId")) {
+    return false;
+  }
+  if (decision.outcome === "approved") {
+    return (
+      optionalString("grantId") &&
+      (decision.grantScope === undefined ||
+        decision.grantScope === "persistent" ||
+        decision.grantScope === "session")
+    );
+  }
+  if (decision.outcome === "denied") {
+    return typeof decision.reason === "string";
+  }
+  if (decision.outcome === "required") {
+    return (
+      typeof decision.reason === "string" &&
+      typeof decision.approvalRequestId === "string" &&
+      optionalString("expiresAt")
+    );
+  }
+  return false;
 }
 
 function securityReceiptBase(

@@ -7,7 +7,10 @@ import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
 import { ToolRegistry, type ToolDefinition } from "@gonk/tool-registry";
 import { createOrchestrator } from "@gonk/tool-orchestrator";
 
-import { createMcpServer } from "../src/index.ts";
+import {
+  createMcpServer,
+  type McpAdapterOptions,
+} from "../src/index.ts";
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -535,17 +538,18 @@ describe("createMcpServer", () => {
     expect(handled).toBe(false);
   });
 
-  it("combines discovery auth with invocation context auth using both-must-allow semantics", async () => {
-    let handled = false;
+  it("uses makeAuthContext as the sole policy while preserving host context", async () => {
     const r = new ToolRegistry();
     r.register({
-      name: "combined",
-      description: "combined",
+      name: "canonical-auth",
+      description: "canonical auth",
       input: passthrough(),
-      handler: async () => {
-        handled = true;
-        return { data: { ok: true } };
-      },
+      approval: "read",
+      handler: async (_input, ctx) => ({
+        data: {
+          invoker: (ctx.host as { invoker?: string } | undefined)?.invoker,
+        },
+      }),
     });
     const adapter = createMcpServer({
       serverName: "test",
@@ -557,30 +561,61 @@ describe("createMcpServer", () => {
           reason: "transport allowed",
         })),
       makeContext: () => ({
-        auth: auth((request) => ({
-          outcome: request.action === "tool.invoke" ? "deny" : "allow",
-          reason: "invocation context denied",
-        })),
+        host: { invoker: "agent" },
       }),
     });
     const client = await pair(adapter);
 
     expect((await client.listTools()).tools.map((tool) => tool.name)).toEqual([
-      "combined",
+      "canonical-auth",
     ]);
     const result = await client.callTool({
-      name: "combined",
+      name: "canonical-auth",
       arguments: {},
     });
-    expect(result).toMatchObject({
-      isError: true,
-      structuredContent: {
-        error: {
-          code: "AUTHORIZATION_DENIED",
-          message: "invocation context denied",
-        },
-      },
+    expect(result.structuredContent).toEqual({ invoker: "agent" });
+  });
+
+  it("rejects invocation-only auth before advertising the catalog", async () => {
+    const r = new ToolRegistry();
+    r.register({
+      name: "hidden",
+      description: "must not be advertised",
+      input: passthrough(),
+      handler: async () => ({ data: { leaked: true } }),
     });
-    expect(handled).toBe(false);
+    const makeContext = (() => ({
+      auth: auth(() => ({ outcome: "deny", reason: "hidden" })),
+    })) as unknown as NonNullable<McpAdapterOptions["makeContext"]>;
+    const client = await pair(
+      createMcpServer({
+        serverName: "test",
+        serverVersion: "0",
+        source: r,
+        makeContext,
+      })
+    );
+
+    await expect(client.listTools()).rejects.toThrow(/makeAuthContext/);
+  });
+
+  it("treats write-tier meta-tools as writes for MCP allowlisting", async () => {
+    const r = new ToolRegistry();
+    const orchestrator = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+    });
+    const client = await pair(
+      createMcpServer({
+        serverName: "test",
+        serverVersion: "0",
+        source: orchestrator,
+        writeToolPolicy: "require-allowlist",
+      })
+    );
+
+    const names = (await client.listTools()).tools.map((tool) => tool.name);
+    expect(names).not.toContain("load_tool");
+    expect(names).not.toContain("unload_tool");
   });
 });

@@ -79,7 +79,8 @@ When `ctx.auth` is present, dispatch:
 3. resolves any declared authoritative application resource through the
    registry's `ToolResourceResolver`;
 4. authorizes `tool.invoke`;
-5. resolves approval through the optional `ApprovalProvider`;
+5. normalizes missing or malformed approval declarations to `exec`, then
+   resolves write/exec approval through the configured `ApprovalProvider`;
 6. emits separate redacted authorization and approval receipts;
 7. invokes the handler only after every required gate allows.
 
@@ -116,6 +117,12 @@ for await (const event of registry.invoke(
 Trusted internal callers may deliberately omit `ctx.auth`; that legacy path
 remains distinguishable from an authenticated human and emits no human
 security receipts.
+
+Authenticated write and exec tools fail closed with `APPROVAL_DENIED` when no
+provider is configured. A trusted host that intentionally enforces consent
+outside Gonk may set `security.approvalMode: "bypass"`; the default is
+`"enforce"`. Read-tier tools need no provider unless one is installed and wants
+to make an explicit read decision.
 
 ## Conditional registration
 

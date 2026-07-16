@@ -150,8 +150,10 @@ when a valid credential attempts to reuse a session under a different security
 context. The receipt identifies only the attempted principal and opaque key; it
 does not expose the MCP session id or the legitimate session owner.
 
-`makeContext` remains the invocation-only place for other trusted host context.
-Caller identity must never be accepted from tool input.
+`makeAuthContext` is the sole authorization seam. `makeContext` remains the
+invocation-only place for non-security host data such as an invoker profile;
+returning `auth` from it is rejected before discovery. Caller identity must
+never be accepted from tool input.
 
 For simple deployments, `apiKey` remains supported and synthesizes a stable
 service principal. A custom `authenticate` callback must return a structurally
@@ -173,6 +175,9 @@ authenticated discovery and invocation must share a real principal and
 - Either way, **duplex tools are filtered** — MCP is request/response.
 - With an auth context, `tools/list` includes only tools allowed by
   `tool.discover`; direct calls to hidden tools look like missing tools.
+- Write policy recognizes write/network capabilities and `write`/`exec`
+  approval declarations. Input-dependent approval functions are treated
+  conservatively as writes for allowlisting.
 
 `hints.mcp.mcpName` overrides the advertised name. `hints.mcp.annotations` are mapped to MCP's `*Hint` fields (`readOnly` → `readOnlyHint`, etc.).
 

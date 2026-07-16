@@ -10,9 +10,10 @@
  *   - "exec":  executes code, shells out, drives a browser, spawns agents —
  *              the broad-blast-radius tier.
  *
- * A tool with NO declaration is treated as "exec" by any consumer that fails
- * safe. That default lives in the consumer (the guard), not here — this module
- * only resolves a declaration that IS present.
+ * A tool with NO declaration is treated as "exec" by authenticated registry
+ * dispatch and by any other consumer that fails safe. This module only
+ * resolves a declaration that IS present; enforcement boundaries own the
+ * fallback so trusted unauthenticated dispatch remains distinct.
  */
 
 /** Coarse danger class a tool declares for itself. Ordered least → most. */
@@ -60,7 +61,8 @@ export function tierRank(tier: ToolTier): number {
 /**
  * Resolve a tool's `approval` declaration to a normalized decision, given the
  * call's input. Returns `undefined` when the tool declared nothing — the
- * caller decides the fail-safe default (the guard uses "exec").
+ * caller decides the fail-safe default (authenticated registry dispatch and
+ * the guard use "exec").
  *
  * Tolerant of malformed declarations: a function that throws, or an object
  * with a bad `tier`, resolves to `undefined` rather than crashing the host —

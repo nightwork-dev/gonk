@@ -340,6 +340,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "parent",
         description: "parent",
+        approval: "read",
         input: passthrough(),
         handler: async (_input, ctx) => {
           let childCode: string | undefined;
@@ -352,6 +353,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "child",
         description: "child",
+        approval: "read",
         input: passthrough(),
         handler: async () => {
           childRan = true;
@@ -415,6 +417,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "parent",
         description: "parent",
+        approval: "read",
         input: passthrough(),
         handler: async (_input, ctx) => {
           const exposed = ctx.auth as
@@ -449,6 +452,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "child",
         description: "child",
+        approval: "read",
         input: passthrough(),
         handler: async () => {
           childRan = true;
@@ -505,6 +509,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "parent",
         description: "parent",
+        approval: "read",
         input: passthrough(),
         handler: async (_input, ctx) => {
           let childCode: string | undefined;
@@ -517,6 +522,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "child",
         description: "child",
+        approval: "read",
         input: passthrough(),
         handler: async () => {
           childRan = true;
@@ -575,6 +581,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "parent",
         description: "parent",
+        approval: "read",
         input: passthrough(),
         handler: async (_input, ctx) => {
           for await (const _event of ctx.invoke("child", {})) {
@@ -586,6 +593,7 @@ describe("secured ToolRegistry dispatch", () => {
       {
         name: "child",
         description: "child",
+        approval: "read",
         input: passthrough(),
         handler: async () => {
           childRan = true;
@@ -654,6 +662,115 @@ describe("secured ToolRegistry dispatch", () => {
     expect(handled).toBe(false);
   });
 
+  it("fails authenticated approval closed when no provider is configured", async () => {
+    let handled = false;
+    const registry = new ToolRegistry();
+    registry.register({
+      name: "review.write",
+      description: "write",
+      input: passthrough(),
+      approval: "write",
+      handler: async () => {
+        handled = true;
+        return { data: { ok: true } };
+      },
+    });
+
+    const events = await collect(
+      registry.invoke(
+        "review.write",
+        {},
+        securedContext(auth(() => ({ outcome: "allow", reason: "allowed" })))
+      )
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "error",
+      code: "APPROVAL_DENIED",
+      message: "Approval provider not configured",
+    });
+    expect(handled).toBe(false);
+  });
+
+  it("permits authenticated writes only with an explicit approval bypass", async () => {
+    let handled = false;
+    const registry = new ToolRegistry({
+      security: { approvalMode: "bypass" },
+    });
+    registry.register({
+      name: "trusted.write",
+      description: "trusted write",
+      input: passthrough(),
+      approval: "write",
+      handler: async () => {
+        handled = true;
+        return { data: { ok: true } };
+      },
+    });
+
+    const events = await collect(
+      registry.invoke(
+        "trusted.write",
+        {},
+        securedContext(auth(() => ({ outcome: "allow", reason: "allowed" })))
+      )
+    );
+
+    expect(events[0]).toMatchObject({ type: "result", data: { ok: true } });
+    expect(handled).toBe(true);
+  });
+
+  it.each([
+    ["missing", undefined],
+    ["malformed", { tier: "invalid" }],
+    [
+      "throwing",
+      () => {
+        throw new Error("bad declaration");
+      },
+    ],
+  ])("treats a %s approval declaration as exec", async (_label, approval) => {
+    let resolvedTier: string | undefined;
+    const registry = new ToolRegistry({
+      security: {
+        approvalProvider: {
+          decide: ({ approval: resolved }) => {
+            resolvedTier = resolved.tier;
+            return {
+              outcome: "required",
+              reason: "confirm exec",
+              approvalRequestId: "approval-default-exec",
+            };
+          },
+        },
+      },
+    });
+    registry.register({
+      name: "unknown-risk",
+      description: "unknown risk",
+      input: passthrough(),
+      ...(approval === undefined
+        ? {}
+        : { approval: approval as never }),
+      handler: async () => ({ data: { leaked: true } }),
+    });
+
+    const events = await collect(
+      registry.invoke(
+        "unknown-risk",
+        {},
+        securedContext(auth(() => ({ outcome: "allow", reason: "allowed" })))
+      )
+    );
+
+    expect(resolvedTier).toBe("exec");
+    expect(events[0]).toMatchObject({
+      type: "error",
+      code: "APPROVAL_REQUIRED",
+      details: { approvalTier: "exec" },
+    });
+  });
+
   it("keeps approval-provider exception details out of receipts and tool errors", async () => {
     const receipts: AuthSecurityReceipt[] = [];
     const logged: string[] = [];
@@ -703,6 +820,42 @@ describe("secured ToolRegistry dispatch", () => {
     });
     expect(JSON.stringify(receipts)).not.toContain("swordfish");
     expect(logged.join("\n")).not.toContain("swordfish");
+  });
+
+  it("fails closed when an approval provider returns a malformed decision", async () => {
+    let handled = false;
+    const registry = new ToolRegistry({
+      security: {
+        approvalProvider: {
+          decide: () => ({}) as never,
+        },
+      },
+    });
+    registry.register({
+      name: "review.write",
+      description: "write",
+      input: passthrough(),
+      approval: "write",
+      handler: async () => {
+        handled = true;
+        return { data: { ok: true } };
+      },
+    });
+
+    const events = await collect(
+      registry.invoke(
+        "review.write",
+        {},
+        securedContext(auth(() => ({ outcome: "allow", reason: "allowed" })))
+      )
+    );
+
+    expect(events[0]).toMatchObject({
+      type: "error",
+      code: "APPROVAL_DENIED",
+      message: "Approval provider returned an invalid decision",
+    });
+    expect(handled).toBe(false);
   });
 
   it("never calls approval when authorization denies", async () => {

@@ -99,6 +99,9 @@ export interface ToolApprovalGrant {
 export interface ToolRegistrySecurityOptions {
   resourceResolver?: ToolResourceResolver;
   approvalProvider?: ApprovalProvider;
+  /** Authenticated dispatch enforces write/exec approval by default. A trusted
+   *  host may deliberately bypass that gate, but must say so explicitly. */
+  approvalMode?: "enforce" | "bypass";
   auditSink?: AuthAuditSink;
   mandatoryAudit?: boolean;
   requestId?: () => string;

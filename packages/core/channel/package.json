@@ -1,6 +1,6 @@
 {
   "name": "@gonk/channel",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Connectivity-layer channel core: the transport contract (IChannel/BaseChannel), the address-on-the-message Message + ContentPart on Standard Schema, ConnectAddress (persona@host#scope), the ChannelRegistry, the InternalChannel loopback reference impl, and the ReconnectionManager. Built to gonk conventions (zero zod, no barrel). Slice 2 foundation of the connectivity layer.",
   "main": "./dist/index.js",

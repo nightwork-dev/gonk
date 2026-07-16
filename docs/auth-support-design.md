@@ -185,6 +185,13 @@ complete tool input, prompt, or document body. The application may persist the
 request, prompt the user, and retry; the registry does not hold an MCP or HTTP
 request open.
 
+Authenticated dispatch treats a missing or malformed approval declaration as
+`exec`. Write and exec tiers fail closed when no `ApprovalProvider` is
+installed. Trusted hosts may deliberately opt out with
+`approvalMode: "bypass"`; omission never implies bypass. Read-tier tools may run
+without a provider, while an installed provider may still make an explicit
+read decision.
+
 ## MCP and Web authentication
 
 For custom Web MCP authentication:
@@ -209,6 +216,10 @@ not silently become authorization.
 top-level `authorize({ tool, input, request, approval })` callback was removed:
 it had no typed principal or discovery contract and required a fabricated
 identity to participate in registry enforcement.
+
+`makeContext` carries non-security host data only. Returning `auth` from it is
+rejected before `tools/list` can advertise the catalog, preventing an
+invocation-only policy from creating a discovery side channel.
 
 ## Stateful Web MCP sessions
 
@@ -255,8 +266,12 @@ the next authorization decision.
 - nested tool calls retain the original principal and reauthorize;
 - authorization and approval receipts are separate and redacted;
 - approval-required is structured, completed, and non-executing;
-- all orchestrator catalog/meta-tools filter hidden tools before disclosure or
-  pin mutation;
+- all orchestrator catalog/meta-tools filter hidden tools before disclosure,
+  ranking, or pin mutation;
+- authenticated write/exec approval fails closed without a provider and
+  missing or malformed declarations default to `exec`;
+- `load_tool` and `unload_tool` are write-tier operations covered by approval
+  and MCP write allowlisting;
 - Alice's MCP session cannot be reused by Bob;
 - token/claim refresh for Alice continues when the security key is unchanged;
 - changing delegated actor session invalidates transport reuse;
