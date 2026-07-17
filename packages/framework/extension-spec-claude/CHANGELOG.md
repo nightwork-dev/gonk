@@ -1,5 +1,13 @@
 # @gonk/extension-spec-claude
 
+## 0.3.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/extension-spec@0.3.1
+  - @gonk/utils@0.3.1
+
 ## 0.3.0
 
 ### Patch Changes

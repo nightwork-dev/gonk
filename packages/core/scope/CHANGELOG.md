@@ -1,5 +1,14 @@
 # @gonk/scope
 
+## 0.3.1
+
+### Patch Changes
+
+- [`eb4179c`](https://github.com/nightwork-dev/gonk/commit/eb4179cc95ae14732ddc4ac66b398296ca31fdf0) Thanks [@abrisene](https://github.com/abrisene)! - Preserve each tier's resolved operational-state home even when document and root resolution deduplicates colliding tier paths. Explicit home overrides now remain authoritative when `cwd`, project, and global homes are the same directory.
+
+- Updated dependencies []:
+  - @gonk/utils@0.3.1
+
 ## 0.3.0
 
 ### Patch Changes
