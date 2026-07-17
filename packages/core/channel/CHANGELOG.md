@@ -1,5 +1,13 @@
 # @gonk/channel
 
+## 0.2.0
+
+### Patch Changes
+
+- Updated dependencies [[`418a514`](https://github.com/nightwork-dev/gonk/commit/418a514eb67e3fb8dbde6927e9bb4b5f12a00776)]:
+  - @gonk/tool-registry@0.2.0
+  - @gonk/scope@0.2.0
+
 ## 0.1.0
 
 ### Patch Changes

@@ -1,5 +1,12 @@
 # @gonk/temporal
 
+## 0.2.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/store@0.2.0
+
 ## 0.1.0
 
 ### Patch Changes
