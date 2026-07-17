@@ -11,12 +11,13 @@ If you build agent tools, you write them against whatever host you're in — a C
 Every harness has grown strengths the others lack — [Hermes](https://github.com/nousresearch/hermes-agent)'s session-surviving memory, [Pi](https://github.com/earendil-works/pi)'s clean extension model, Claude Code's plugins, Codex's sandboxed loop — and reusing any of them today means porting it by hand to the next host. gonk is the lingua franca that makes a capability portable instead.
 
 This repo is the foundation — identity and authorization, deterministic context
-compilation, managed skills, the registry, scope, host adapters, and persistence beneath them.
+compilation, authorized retrieval, managed skills, the registry, scope, host
+adapters, and persistence beneath them.
 Build capabilities on these primitives and they ship once, to run on any host.
 
 ## Architecture
 
-<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, context, skills, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
+<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, context, retrieval, skills, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
 
 The foundation primitives, each its own package, plus an authoring layer on top of them:
 
@@ -26,6 +27,11 @@ The foundation primitives, each its own package, plus an authoring layer on top 
   resolution, reauthorizes authoritative use, deduplicates canonical resources,
   budgets deterministically, and returns either a sendable artifact or a blocked
   result with a content-free receipt.
+- **Authorized retrieval** — [`@gonk/retrieval`](packages/core/retrieval).
+  In-process native/coordinated sources, immutable lexical index generations,
+  authorization-before-ranking, authoritative content resolution, stable
+  citations, and redacted domain receipts. See
+  [docs/retrieval-design.md](docs/retrieval-design.md).
 - **Managed skills** — [`@gonk/skills`](packages/core/skills). Canonical read contracts and a filesystem registry over the five scope tiers, with deterministic shadowing, hidden staging/archive stores, strict path handling, typed provenance/freshness, stable revisions, and a reusable conformance suite.
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
@@ -68,6 +74,7 @@ New here? The two you'll touch first are **`@gonk/tool-registry`** (define a too
 | `@gonk/utils` | Zero-dependency fs-safety primitives (`safeJoin`, atomic writes), code-split per concern (`@gonk/utils/fs`) so unbundled consumers load only what they import. |
 | `@gonk/auth` | Transport-independent authenticated principal, delegation, authorization, session-binding, grant-binding, redaction, and security-receipt contracts. |
 | `@gonk/context` | Authorized deterministic context compilation: serializable candidates, in-process contributors, discovery/use policy gates, canonical deduplication, token budgeting, blocked required-context results, and redacted domain receipts. |
+| `@gonk/retrieval` | Authorized source discovery and deterministic lexical retrieval: native/coordinated sources, immutable generations and tombstones, metadata-only hits, authoritative resolution, stable citations, and redacted domain receipts. |
 | `@gonk/skills` | Canonical managed-skill list/get/resolve/read contracts over five-tier scope, with strict visibility and path invariants, typed provenance/freshness, stable revisions, and a reusable conformance suite. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
 | `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
