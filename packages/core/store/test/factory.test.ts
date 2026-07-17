@@ -28,9 +28,7 @@ afterEach(() => {
 
 function scopeFor() {
   // A scope whose global home is the temp dir, so the factory writes there and
-  // never the real user home. cwd is kept distinct from homeRoot so the global
-  // tier isn't deduped away by the directory tier claiming the same canonical
-  // dir (which would make scope.home("global") fall back to the real homedir).
+  // never the real user home.
   return new FsScopeStore({ cwd, homeRoot: home });
 }
 
@@ -55,6 +53,14 @@ describe("createStore factory — scope resolution", () => {
     const scope = scopeFor();
     const dir = resolveStoreDir(scope, "global", "ns");
     expect(dir).toBe(join(home, ".agents", "store", "ns"));
+  });
+
+  it("keeps state inside an explicit home when cwd is that same directory", () => {
+    const scope = new FsScopeStore({ cwd: home, homeRoot: home, projectRoot: home });
+
+    expect(resolveStoreDir(scope, "global", "same-home")).toBe(
+      join(home, ".agents", "store", "same-home"),
+    );
   });
 
   it("round-trips real data through every store type via the factory", () => {

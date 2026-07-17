@@ -229,11 +229,9 @@ export function canonical(path: string): string {
  *  production state path. Default tier is `global` (the usual home for
  *  cross-session operational artifacts like scheduler state).
  *
- *  Note: `FsScopeStore.home("global")` returns undefined in the one case where a
- *  narrower tier already claimed the same canonical dir (e.g. cwd IS the user's
- *  home, so `directory` dedupes `global`). The `homedir()` fallback then resolves
- *  to that very same dir, so the result is still correct — it just arrives via the
- *  fallback rather than the tier home. */
+ *  `FsScopeStore.home()` retains resolved homes even when document/root
+ *  resolution dedupes colliding tiers, so an explicit home override remains
+ *  authoritative when (for example) cwd equals homeRoot. */
 export function scopeStateHome(scope: ScopeStore, tier: ScopeName = "global"): string {
   return scope.home(tier) ?? homedir();
 }

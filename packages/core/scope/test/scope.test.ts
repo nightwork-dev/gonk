@@ -556,4 +556,17 @@ describe("ScopeStore.home() + scopeStateHome", () => {
     // In-memory store (no home) → the documented homedir() fallback.
     expect(scopeStateHome(new MemoryScopeStore())).toBe(homedir());
   });
+
+  it("retains an explicit global home when the directory tier dedupes the same path", () => {
+    const shared = join(tmp, "shared-state-home");
+    mkdirSync(shared, { recursive: true });
+    const store = new FsScopeStore(
+      envWith({ cwd: shared, homeRoot: shared, projectRoot: shared }),
+    );
+
+    expect(store.available()).toContain("directory");
+    expect(store.available()).not.toContain("global");
+    expect(store.home("global")).toBe(canonical(shared));
+    expect(scopeStateHome(store, "global")).toBe(canonical(shared));
+  });
 });

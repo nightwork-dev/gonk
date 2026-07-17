@@ -30,10 +30,12 @@ interface TierBinding {
  *  all known roots within its scope home, plus ambient docs at the home. */
 export class FsScopeStore implements ScopeStore {
   private readonly tiers: Map<ScopeName, TierBinding>;
+  private readonly tierHomes: Map<ScopeName, string>;
 
   constructor(private readonly env: ScopeEnvironment) {
     this.tiers = new Map();
     const homes = resolveTierHomes(env);
+    this.tierHomes = homes;
     // Dedupe across tiers via canonical paths — if `directory` and `project`
     // resolve to the same dir (symlink, or cwd === project root), the
     // narrower tier wins and the broader is dropped.
@@ -219,7 +221,11 @@ export class FsScopeStore implements ScopeStore {
   }
 
   home(scope: ScopeName): string | undefined {
-    return this.tiers.get(scope)?.home;
+    // Resolution dedupes colliding tier homes so the same documents and roots
+    // are not read twice. Operational state still belongs to the requested
+    // tier, however, so retain its resolved home even when a narrower tier
+    // claimed the same canonical directory.
+    return this.tierHomes.get(scope);
   }
 
   // ---- Internals -----------------------------------------------------------
