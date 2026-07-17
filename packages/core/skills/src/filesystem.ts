@@ -82,6 +82,7 @@ import type {
   SkillLifecycle,
   SkillLifecycleJournal,
   SkillMutationFailureReason,
+  SkillMutationJournalQuery,
   SkillMutationResult,
   SkillMutationOperation,
   SkillMutationReceipt,
@@ -828,13 +829,18 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       });
       snapshot.commit();
     } catch (error) {
-      rollbackOrThrow(snapshot, error, "Activation metadata rollback failed");
-      return {
-        status: "failed",
-        id: request.id,
-        reason: "invalid",
-        message: "Activation receipt could not be persisted",
-      };
+      const durable = this.readExactActivationReceipt(securityKey, receipt);
+      if (durable) {
+        snapshot.commit();
+      } else {
+        rollbackOrThrow(snapshot, error, "Activation metadata rollback failed");
+        return {
+          status: "failed",
+          id: request.id,
+          reason: "invalid",
+          message: "Activation receipt could not be persisted",
+        };
+      }
     }
     return {
       status: "ready",
@@ -889,8 +895,12 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       kind: "mutation",
       receiptId: this.lifecycleJournal.mutationReceiptId(query),
     });
+    const fingerprint = stableFingerprint(request);
+    let result: T | undefined;
+    let hasResult = false;
     try {
-      const result = await mutate();
+      result = await mutate();
+      hasResult = true;
       if (result.status === "failed") snapshot.rollback();
       const remembered = this.remember(
         operation,
@@ -903,8 +913,50 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       if (result.status !== "failed") snapshot.commit();
       return remembered;
     } catch (error) {
+      if (
+        hasResult &&
+        result !== undefined &&
+        this.readExactMutationReceipt(query, fingerprint, scope, result)
+      ) {
+        if (result.status !== "failed") snapshot.commit();
+        return result;
+      }
       rollbackOrThrow(snapshot, error, "Skill mutation rollback failed");
       throw error;
+    }
+  }
+
+  private readExactMutationReceipt<T extends SkillMutationReceipt["result"]>(
+    query: SkillMutationJournalQuery,
+    fingerprint: string,
+    scope: SkillScope,
+    result: T
+  ): boolean {
+    try {
+      const receipt = this.lifecycleJournal.readMutation(query);
+      return (
+        receipt?.requestFingerprint === fingerprint &&
+        receipt.scope === scope &&
+        receipt.id === result.id &&
+        JSON.stringify(receipt.result) === JSON.stringify(result)
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  private readExactActivationReceipt(
+    securityContextKey: string,
+    receipt: SkillActivationReceipt
+  ): boolean {
+    try {
+      const durable = this.lifecycleJournal.readActivation({
+        securityContextKey,
+        activationId: receipt.activationId,
+      });
+      return JSON.stringify(durable) === JSON.stringify(receipt);
+    } catch {
+      return false;
     }
   }
 
@@ -1541,16 +1593,10 @@ const SKILL_TRANSACTION_MARKER = "transaction.json";
 const SKILL_TRANSACTION_LOCK = ".lock";
 
 class FilesystemSkillTransactionStore {
-  private readonly scopeStore: ReturnType<typeof createScope>;
-  private readonly homes: ReadonlyMap<ScopeName, string>;
-
   constructor(
-    env: FilesystemManagedSkillRegistryOptions["env"],
+    private readonly env: FilesystemManagedSkillRegistryOptions["env"],
     private readonly journal: SkillLifecycleJournal
-  ) {
-    this.scopeStore = createScope(env);
-    this.homes = resolveTierHomes(env);
-  }
+  ) {}
 
   begin(
     scope: SkillScope,
@@ -1558,9 +1604,9 @@ class FilesystemSkillTransactionStore {
     probe: SkillTransactionProbe
   ): FilesystemSnapshot {
     const home = this.home(scope);
-    const namespace = this.namespace(scope);
+    const namespace = this.namespace(scope, home);
     mkdirSync(namespace, { recursive: true });
-    const releaseLock = this.tryAcquireLock(scope);
+    const releaseLock = this.tryAcquireLock(scope, namespace);
     if (!releaseLock) {
       throw new Error(`Another skill transaction is active in scope: ${scope}`);
     }
@@ -1569,11 +1615,13 @@ class FilesystemSkillTransactionStore {
     try {
       for (const [index, path] of [...new Set(paths)].entries()) {
         const relativePath = safeTransactionPath(home, path);
-        const existed = existsSync(path);
-        const directory = existed && lstatSync(path).isDirectory();
+        const target = verifiedTransactionTarget(home, relativePath);
+        const targetStat = lstatIfExists(target);
+        const existed = targetStat !== undefined;
+        const directory = targetStat?.isDirectory() === true;
         const backup = String(index);
         if (existed) {
-          cpSync(path, join(root, backup), {
+          cpSync(target, join(root, backup), {
             recursive: directory,
             dereference: false,
             preserveTimestamps: true,
@@ -1603,10 +1651,11 @@ class FilesystemSkillTransactionStore {
 
   recover(): void {
     for (const scope of SCOPE_RESOLUTION_ORDER) {
-      if (!this.homes.has(scope)) continue;
-      const namespace = this.namespace(scope);
+      const home = resolveTierHomes(this.env).get(scope);
+      if (!home || !lstatIfExists(home)) continue;
+      const namespace = this.namespace(scope, home);
       if (!existsSync(namespace)) continue;
-      const releaseLock = this.tryAcquireLock(scope);
+      const releaseLock = this.tryAcquireLock(scope, namespace);
       if (!releaseLock) {
         throw new Error(`Another skill transaction is active in scope: ${scope}`);
       }
@@ -1615,15 +1664,19 @@ class FilesystemSkillTransactionStore {
           const root = join(namespace, name);
           if (!lstatSync(root).isDirectory()) continue;
           const markerPath = join(root, SKILL_TRANSACTION_MARKER);
-          if (!existsSync(markerPath)) {
+          const markerStat = lstatIfExists(markerPath);
+          if (!markerStat) {
             rmSync(root, { recursive: true, force: true });
             continue;
+          }
+          if (!markerStat.isFile() || markerStat.isSymbolicLink()) {
+            throw new Error(`Invalid pending skill transaction: ${root}`);
           }
           const marker = parseTransactionMarker(readFileSync(markerPath, "utf8"));
           if (!marker || marker.scope !== scope) {
             throw new Error(`Invalid pending skill transaction: ${root}`);
           }
-          const snapshot = persistentSnapshot(root, this.home(scope), marker);
+          const snapshot = persistentSnapshot(root, home, marker);
           if (this.isCommitted(marker)) snapshot.commit();
           else snapshot.rollback();
         }
@@ -1652,21 +1705,26 @@ class FilesystemSkillTransactionStore {
   }
 
   private home(scope: ScopeName): string {
-    const home = this.homes.get(scope);
+    const home = resolveTierHomes(this.env).get(scope);
     if (!home) throw new Error(`Cannot resolve skill transaction home: ${scope}`);
     return home;
   }
 
-  private namespace(scope: ScopeName): string {
-    return resolveStoreDir(
-      this.scopeStore,
-      scope,
-      SKILL_TRANSACTION_NAMESPACE
+  private namespace(scope: ScopeName, home: string): string {
+    return verifiedTransactionNamespace(
+      home,
+      resolveStoreDir(
+        createScope(this.env),
+        scope,
+        SKILL_TRANSACTION_NAMESPACE
+      )
     );
   }
 
-  private tryAcquireLock(scope: ScopeName): (() => void) | undefined {
-    const namespace = this.namespace(scope);
+  private tryAcquireLock(
+    scope: ScopeName,
+    namespace: string
+  ): (() => void) | undefined {
     mkdirSync(namespace, { recursive: true });
     const lockPath = join(namespace, SKILL_TRANSACTION_LOCK);
     const token = `${process.pid}:${randomUUID()}`;
@@ -1707,6 +1765,7 @@ function persistentSnapshot(
 ): FilesystemSnapshot {
   let marker = initialMarker;
   let settled = false;
+  validateTransactionTargets(home, marker.entries);
   return {
     setProbe(probe) {
       if (settled) throw new Error("Skill transaction is already settled");
@@ -1721,15 +1780,10 @@ function persistentSnapshot(
     },
     rollback() {
       if (settled) return;
-      for (const entry of [...marker.entries].reverse()) {
-        const target = join(home, entry.path);
-        safeTransactionPath(home, target);
+      const entries = prepareTransactionRollback(root, home, marker.entries);
+      for (const { entry, target, backup } of [...entries].reverse()) {
         rmSync(target, { recursive: true, force: true });
         if (!entry.existed) continue;
-        const backup = join(root, entry.backup);
-        if (!existsSync(backup)) {
-          throw new Error(`Missing skill transaction backup: ${backup}`);
-        }
         mkdirSync(dirname(target), { recursive: true });
         cpSync(backup, target, {
           recursive: entry.directory,
@@ -1853,11 +1907,110 @@ function safeTransactionPath(home: string, path: string): string {
     candidate.length === 0 ||
     isAbsolute(candidate) ||
     candidate === ".." ||
-    candidate.startsWith(`..${sep}`)
+    candidate.startsWith(`..${sep}`) ||
+    (candidate !== SKILLS_DIR && !candidate.startsWith(`${SKILLS_DIR}${sep}`))
   ) {
     throw new Error("Skill transaction path escapes its scope home");
   }
   return candidate;
+}
+
+function verifiedTransactionTarget(home: string, relativePath: string): string {
+  if (
+    relativePath !== SKILLS_DIR &&
+    !relativePath.startsWith(`${SKILLS_DIR}${sep}`)
+  ) {
+    throw new Error("Skill transaction target is outside the skills tree");
+  }
+  return verifiedRelativePath(home, relativePath, "target");
+}
+
+function verifiedTransactionNamespace(home: string, path: string): string {
+  const relativePath = relative(home, path);
+  if (
+    relativePath !== `.agents${sep}store${sep}${SKILL_TRANSACTION_NAMESPACE}` &&
+    relativePath !== `.gonk${sep}store${sep}${SKILL_TRANSACTION_NAMESPACE}` &&
+    relativePath !== `store${sep}${SKILL_TRANSACTION_NAMESPACE}`
+  ) {
+    throw new Error("Skill transaction namespace escapes its scope home");
+  }
+  return verifiedRelativePath(home, relativePath, "namespace");
+}
+
+function verifiedRelativePath(
+  home: string,
+  relativePath: string,
+  label: "target" | "namespace"
+): string {
+  let cursor = realpathSync(home);
+  const parts = relativePath.split(sep);
+  for (let index = 0; index < parts.length; index += 1) {
+    cursor = join(cursor, parts[index]!);
+    const stat = lstatIfExists(cursor);
+    if (!stat) return join(cursor, ...parts.slice(index + 1));
+    if (stat.isSymbolicLink()) {
+      throw new Error(`Skill transaction ${label} contains a symbolic link`);
+    }
+    if (index < parts.length - 1 && !stat.isDirectory()) {
+      throw new Error(`Skill transaction ${label} parent is not a directory`);
+    }
+  }
+  return cursor;
+}
+
+function validateTransactionTargets(
+  home: string,
+  entries: SkillTransactionMarker["entries"]
+): void {
+  const paths = new Set<string>();
+  const backups = new Set<string>();
+  for (const entry of entries) {
+    if (paths.has(entry.path) || backups.has(entry.backup)) {
+      throw new Error("Skill transaction marker contains duplicate entries");
+    }
+    paths.add(entry.path);
+    backups.add(entry.backup);
+    verifiedTransactionTarget(home, entry.path);
+  }
+}
+
+function prepareTransactionRollback(
+  root: string,
+  home: string,
+  entries: SkillTransactionMarker["entries"]
+): {
+  entry: SkillTransactionMarker["entries"][number];
+  target: string;
+  backup: string;
+}[] {
+  return entries.map((entry) => {
+    const target = verifiedTransactionTarget(home, entry.path);
+    const backup = join(root, entry.backup);
+    const backupStat = lstatIfExists(backup);
+    if (!entry.existed) {
+      if (backupStat) {
+        throw new Error(`Unexpected skill transaction backup: ${backup}`);
+      }
+      return { entry, target, backup };
+    }
+    if (
+      !backupStat ||
+      backupStat.isSymbolicLink() ||
+      (entry.directory ? !backupStat.isDirectory() : !backupStat.isFile())
+    ) {
+      throw new Error(`Invalid skill transaction backup: ${backup}`);
+    }
+    return { entry, target, backup };
+  });
+}
+
+function lstatIfExists(path: string): ReturnType<typeof lstatSync> | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
 }
 
 function isOpaqueHash(value: unknown): value is string {

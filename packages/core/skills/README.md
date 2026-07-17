@@ -88,10 +88,14 @@ schemas and atomic KV writes; raw auth contexts, policy functions, request bodie
 and idempotency keys are not stored. The journal inherits `@gonk/store`'s
 single-writer-per-namespace assumption. Pending pre-images live in the sibling
 `skills.lifecycle-transactions` namespace with atomic markers containing only
-relative paths and opaque receipt identifiers. A scope lock is held from pending
-snapshot creation through receipt commit and cleanup; live-owner locks prevent a
-second registry from constructing over an in-flight mutation, while dead-owner
-locks are reclaimed on reconstruction. To roll back or clear receipt history,
+relative paths and opaque receipt identifiers. Recovery resolves scope homes
+live, rejects symlinked target components, and validates every backup before any
+rollback write. A scope lock is held from pending snapshot creation through
+receipt commit and cleanup; live-owner locks prevent a second registry from
+constructing over an in-flight mutation, while dead-owner locks are reclaimed on
+reconstruction. If a journal write throws after persisting the exact receipt,
+Core keeps the matching filesystem result instead of rolling it back. To roll
+back or clear receipt history,
 stop writers, construct the registry once to reconcile pending transactions,
 verify that namespace has no `.pending-*` directories, back up, then remove only
 the `skills.lifecycle` namespace directory in the affected tiers. Managed skill

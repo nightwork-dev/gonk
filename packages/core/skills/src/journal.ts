@@ -6,7 +6,7 @@ import {
   type ScopeEnvironment,
   type ScopeName,
 } from "@gonk/scope";
-import { createStore, type KvStore, type Store } from "@gonk/store";
+import { createStore, type KvStore } from "@gonk/store";
 
 import {
   skillActivationJournalRecordSchema,
@@ -34,11 +34,7 @@ const ACTIVATION_PREFIX = "activation:";
  * atomic temp-file-plus-rename writes.
  */
 export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
-  private readonly store: Store;
-
-  constructor(env: ScopeEnvironment) {
-    this.store = createStore(createScope(env));
-  }
+  constructor(private readonly env: ScopeEnvironment) {}
 
   mutationReceiptId(query: SkillMutationJournalQuery): string {
     return mutationReceiptId(query);
@@ -159,7 +155,7 @@ export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
   }
 
   private kv(scope: ScopeName): KvStore<unknown> {
-    return this.store.kv(scope, JOURNAL_NAMESPACE);
+    return createStore(createScope(this.env)).kv(scope, JOURNAL_NAMESPACE);
   }
 }
 

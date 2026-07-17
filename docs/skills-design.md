@@ -163,6 +163,10 @@ auth contexts, policy functions, request bodies, or idempotency keys. It inherit
 `@gonk/store`'s single-writer-per-namespace assumption. Pending pre-images use the
 sibling `skills.lifecycle-transactions` namespace; their atomic markers contain
 relative scope paths and opaque receipt identifiers, never raw idempotency keys.
+Scope homes are resolved live for both journal and transaction storage. Recovery
+rejects symlinked target components and validates all pre-images before its first
+rollback write. A post-write journal exception keeps the filesystem result only
+when the exact expected receipt can be read back durably.
 Rollback is isolated: stop writers, construct the registry once to reconcile all
 pending transactions, verify that no `.pending-*` directories remain, then back
 up and remove the `skills.lifecycle` namespace in the affected tiers. Skills

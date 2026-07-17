@@ -447,6 +447,39 @@ describe("authorized filesystem mutations", () => {
     ).toMatchObject({ status: "found", receipt: { result: retried } });
   });
 
+  it("keeps a mutation when the journal writes then throws and cleans committed pending state", async () => {
+    const harness = make();
+    const crash = pendingTransactionCrashImage(harness, "journal-committed");
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      lifecycleJournal: journalWritingThenThrowingOnce(
+        harness.env,
+        "mutation",
+        crash.capture
+      ),
+    });
+    const request = {
+      auth: authContext("allow", "agent:mutation-committed"),
+      idempotencyKey: "mutation-write-then-throw",
+      id: "journal-committed",
+      scope: "project" as const,
+      description: "journal committed",
+      body: "receipt and skill must agree",
+    };
+
+    const created = await registry.create(request);
+    expect(created.status).toBe("ok");
+    crash.restore();
+
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    expect(await restarted.create(request)).toEqual(created);
+    expect(await restarted.get({ id: request.id, scope: request.scope })).toMatchObject({
+      status: "found",
+      skill: { body: "receipt and skill must agree\n" },
+    });
+    expect(pendingTransactionDirectories(harness)).toEqual([]);
+  });
+
   it("rejects pinned edits and archives even when untyped callers pass allowPinned", async () => {
     const harness = make();
     await harness.seed({
@@ -823,6 +856,47 @@ describe("authorized filesystem mutations", () => {
     expect((await restarted.listActivationReceipts({ auth })).receipts).toHaveLength(1);
   });
 
+  it("keeps activation usage when the receipt writes then throws and recovers it after restart", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "activation-committed",
+      body: "activation committed body",
+    });
+    const auth = authContext("allow", "agent:activation-committed");
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      lifecycleJournal: journalWritingThenThrowingOnce(
+        harness.env,
+        "activation"
+      ),
+    });
+    const result = await registry.activate({
+      auth,
+      id: "activation-committed",
+      requestId: "activation-write-then-throw",
+      trigger: "manual",
+      reason: "receipt consistency",
+    });
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") throw new Error("expected ready activation");
+    const skill = await registry.get({ id: "activation-committed", scope: "project" });
+    expect(skill.status === "found" ? skill.skill.useCount : undefined).toBe(1);
+
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    expect(
+      await restarted.getActivationReceipt({
+        auth,
+        activationId: result.receipt.activationId,
+      })
+    ).toEqual({ status: "found", receipt: result.receipt });
+    const recovered = await restarted.get({
+      id: "activation-committed",
+      scope: "project",
+    });
+    expect(recovered.status === "found" ? recovered.skill.useCount : undefined).toBe(1);
+  });
+
   it("projects distinct operations and registers only executable tool definitions", async () => {
     const harness = make();
     await harness.seed({ scope: "project", id: "tool-ready", body: "tool body" });
@@ -959,6 +1033,87 @@ describe("filesystem safety and parsing", () => {
     active = personaB;
     const b = await registry.get({ id: "persona-live" });
     expect(b.status === "found" ? b.skill.body.trim() : undefined).toBe("persona B");
+  });
+
+  it("writes persona mutations and receipts through the live resolver after rebinding", async () => {
+    const harness = make();
+    const personaA = join(harness.root, "persona-write-a");
+    const personaB = join(harness.root, "persona-write-b");
+    mkdirSync(personaA, { recursive: true });
+    mkdirSync(personaB, { recursive: true });
+    let active = personaA;
+    const env = {
+      cwd: harness.home("directory"),
+      homeRoot: harness.home("global"),
+      projectRoot: harness.home("project"),
+      resolvePersonaHome: () => active,
+    };
+    const registry = new FilesystemManagedSkillRegistry({ env });
+    active = personaB;
+    const request = {
+      auth: authContext("allow", "agent:persona-rebind"),
+      idempotencyKey: "persona-live-create",
+      id: "persona-created",
+      scope: "persona" as const,
+      description: "live persona create",
+      body: "created in persona B",
+    };
+    const created = await registry.create(request);
+    expect(created.status).toBe("ok");
+    expect(existsSync(join(personaA, "skills", request.id))).toBe(false);
+    expect(existsSync(join(personaB, "skills", request.id))).toBe(true);
+    expect(
+      existsSync(join(personaB, ".agents", "store", "skills.lifecycle", "kv.json"))
+    ).toBe(true);
+
+    const restarted = new FilesystemManagedSkillRegistry({ env });
+    expect(await restarted.create(request)).toEqual(created);
+  });
+
+  it("fails closed when a pending marker target traverses a symlink", () => {
+    const harness = make();
+    const outside = join(harness.root, "outside-transaction-target");
+    const victim = join(outside, "victim.txt");
+    mkdirSync(outside, { recursive: true });
+    writeFileSync(victim, "outside must survive", "utf8");
+    const skillsRoot = join(harness.home("project"), "skills");
+    mkdirSync(skillsRoot, { recursive: true });
+    symlinkSync(outside, join(skillsRoot, "link"));
+
+    const pending = join(
+      harness.home("project"),
+      ".agents",
+      "store",
+      "skills.lifecycle-transactions",
+      ".pending-attacker"
+    );
+    mkdirSync(pending, { recursive: true });
+    writeFileSync(join(pending, "0"), "attacker replacement", "utf8");
+    writeFileSync(
+      join(pending, "transaction.json"),
+      JSON.stringify({
+        markerVersion: 1,
+        scope: "project",
+        probe: { kind: "rollback" },
+        entries: [
+          {
+            path: "skills/link/victim.txt",
+            backup: "0",
+            existed: true,
+            directory: false,
+          },
+        ],
+      }),
+      "utf8"
+    );
+
+    expect(
+      () => new FilesystemManagedSkillRegistry({ env: harness.env })
+    ).toThrow("Skill transaction target contains a symbolic link");
+    expect(readFileSync(victim, "utf8")).toBe("outside must survive");
+    expect(readFileSync(join(pending, "0"), "utf8")).toBe(
+      "attacker replacement"
+    );
   });
 
   it("rejects traversal, absolute paths, reserved IDs, and malformed IDs before I/O", async () => {
@@ -1280,6 +1435,53 @@ function journalFailingOnce(
       delegate.writeActivation(input);
     },
   };
+}
+
+function journalWritingThenThrowingOnce(
+  env: FilesystemHarness["env"],
+  target: "mutation" | "activation",
+  afterWrite?: () => void
+): SkillLifecycleJournal {
+  const delegate = new FilesystemSkillLifecycleJournal(env);
+  let failed = false;
+  return {
+    mutationReceiptId: (query) => delegate.mutationReceiptId(query),
+    readMutation: (query) => delegate.readMutation(query),
+    readMutationByReceiptId: (scope, receiptId) =>
+      delegate.readMutationByReceiptId(scope, receiptId),
+    writeMutation: (input) => {
+      const receipt = delegate.writeMutation(input);
+      if (target === "mutation" && !failed) {
+        failed = true;
+        afterWrite?.();
+        throw new Error("injected mutation post-write failure");
+      }
+      return receipt;
+    },
+    readActivation: (query) => delegate.readActivation(query),
+    listActivations: (securityContextKey) =>
+      delegate.listActivations(securityContextKey),
+    writeActivation: (input) => {
+      delegate.writeActivation(input);
+      if (target === "activation" && !failed) {
+        failed = true;
+        afterWrite?.();
+        throw new Error("injected activation post-write failure");
+      }
+    },
+  };
+}
+
+function pendingTransactionDirectories(harness: FilesystemHarness): string[] {
+  const root = join(
+    harness.home("project"),
+    ".agents",
+    "store",
+    "skills.lifecycle-transactions"
+  );
+  return existsSync(root)
+    ? readdirSync(root).filter((name) => name.startsWith(".pending-"))
+    : [];
 }
 
 function pendingTransactionCrashImage(
