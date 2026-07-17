@@ -1,15 +1,16 @@
 # Managed skills design
 
-> Status: **Phase 0 implemented; GR-74 remains open** until the migration-pending
-> extension registry moves to Core and the first consumer runs against `@gonk/skills`.
+> Status: **Phase 1 implemented; GR-74 remains open** until the extension
+> registry and first Sigil consumer migrate to Core.
 
 ## Boundary
 
 Core owns the canonical managed-skill records, YAML parsing plus strict field validation,
-deterministic scope resolution, read APIs, provenance/freshness vocabulary,
-filesystem implementation, and reusable conformance suite. Host catalogs,
-tool and UI projections, mutations, activation, and semantic search remain
-outside this package.
+deterministic scope resolution, read APIs, authorized writable APIs,
+provenance/freshness vocabulary, filesystem implementation, activation
+receipts/context projection, distinct tool projection, and reusable conformance
+suite. Host catalogs, UI state, semantic search, and host-specific test runners
+remain outside this package.
 
 This extracts and hardens the useful filesystem behavior in the existing
 `skill-creator` extension registry, whose migration to Core is still pending.
@@ -40,12 +41,12 @@ All public requests and results have exact Standard Schema validators. Their
 scope, lifecycle, origin, capability, freshness, result, and failure values are
 closed unions. Opaque host adapter and package identifiers remain data fields.
 
-Phase 0 does not accept an auth context and does not authorize disclosure. It
-is the canonical storage/discovery substrate underneath an authorized adapter:
+Read methods do not accept an auth context and do not authorize disclosure. They
+are the canonical storage/discovery substrate underneath an authorized adapter:
 the consumer must authorize list visibility, detail and definition information,
 and every body or supporting-file read before returning it to a principal.
-This boundary is explicit in the registry interface documentation; Core does
-not imply that filesystem reachability grants model or user visibility.
+Writable methods are separate and require canonical `@gonk/auth` `AuthContext`;
+authorization failures, thrown policies, and malformed principals fail closed.
 
 ## Filesystem invariants
 
@@ -101,15 +102,48 @@ Freshness is optional and requested explicitly. A caller may inject a
 `unknown`. Throws or schema-invalid probe results report `unprobeable` and do
 not make the skill disappear.
 
+## Writable lifecycle
+
+`ManagedSkillRegistry` remains the read-only contract. `WritableManagedSkillRegistry`
+adds create, patch, archive, restore, promote, pin, usage, and activate as
+required methods so consumers cannot accidentally treat mutation support as
+optional and fail open.
+
+Mutation requests carry `idempotencyKey`; the filesystem implementation keeps an
+in-process replay ledger keyed by request fingerprint. Reusing a key with a
+different request returns a structured conflict. Patch, pin, usage, and archive
+also carry `expectedRevision`; stale callers receive the current revision and
+affected paths. Patch can update the manifest body, write supporting files, and
+remove supporting files through a copy-then-rename directory rewrite. Pinned
+skills reject agent edits and archive by default.
+
+Create can write active or staged skills, but not overwrite existing live
+material. Staged skills live under `.staging` and remain invisible to list/get/read.
+Promotion requires both `skill.manage` authorization and an injected
+`@gonk/tool-registry` approval provider; a missing, required, or denied approval
+provider leaves the staged copy untouched. Restore copies from `.archive` and
+refuses to clobber a live skill.
+
+## Activation and tools
+
+Activation is not a read shortcut. `activate()` authorizes `skill.activate`,
+checks basic readiness, records usage metadata, and returns an activation receipt
+plus a compiler candidate. Model-visible content flows through
+`createSkillActivationContributor()` and the normal `@gonk/context` discovery,
+resolution, and `context.use` authorization path.
+
+Tool projection is closed and distinct: `read`, `attach`, `activate`, and
+`test`. `projectSkillToolDefinitions()` returns real `@gonk/tool-registry`
+definitions with closed Standard Schema input/output contracts; the lighter
+`projectSkillTools()` descriptor is for catalogs. Core deliberately does not
+project a generic invoke verb.
+
 ## Intentionally not lifted
 
 The extension parser's permissive fallback for malformed frontmatter, linked
-file traversal, mutation and staging views, inline shell/template expansion,
-tool wiring, activation, and host projection are not part of Phase 0. The next
-slice adds lifecycle operations and activation receipts over these same read
-contracts; it will use canonical Gonk auth and `@gonk/context`, with distinct
-`read`, `attach`, `activate`, and `test` operations rather than generic
-`invoke`.
+file traversal, inline shell/template expansion, host-installed discovery,
+semantic search, Sigil UI state, and host-specific skill test execution remain
+outside Core.
 
 ## Migration and release
 

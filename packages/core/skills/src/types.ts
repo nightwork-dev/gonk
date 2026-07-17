@@ -1,4 +1,7 @@
+import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
+import type { ContextContributor } from "@gonk/context";
 import type { ScopeEnvironment } from "@gonk/scope";
+import type { ApprovalProvider } from "@gonk/tool-registry/security";
 
 export type SkillScope =
   | "global"
@@ -31,6 +34,14 @@ export type SkillFreshness =
   | "dead"
   | "unprobeable"
   | "unknown";
+
+export type SkillMutationFailureReason =
+  | "denied"
+  | "not-found"
+  | "already-exists"
+  | "invalid"
+  | "conflict"
+  | "unsupported";
 
 export type SkillProvenanceAnchorKind = "file" | "symbol";
 
@@ -183,6 +194,213 @@ export type SkillReadResult =
       reason: "skill-not-found" | "file-not-found";
     };
 
+export interface SkillMutationFile {
+  path: string;
+  content: string;
+}
+
+export interface SkillCreateRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  id: string;
+  scope: SkillScope;
+  description: string;
+  body: string;
+  name?: string;
+  version?: string;
+  author?: string;
+  pinned?: boolean;
+  agentCreated?: boolean;
+  staged?: boolean;
+  files?: readonly SkillMutationFile[];
+}
+
+export interface SkillPatchRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  expectedRevision: string;
+  id: string;
+  scope?: SkillScope;
+  path?: string;
+  find: string;
+  replace: string;
+  writeFiles?: readonly SkillMutationFile[];
+  removeFiles?: readonly string[];
+  allowPinned?: boolean;
+}
+
+export interface SkillArchiveRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  expectedRevision: string;
+  id: string;
+  scope?: SkillScope;
+  allowPinned?: boolean;
+}
+
+export interface SkillRestoreRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  id: string;
+  scope?: SkillScope;
+  archiveId?: string;
+}
+
+export interface SkillPromoteRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  id: string;
+  scope?: SkillScope;
+  approval: SkillPromotionApproval;
+}
+
+export interface SkillPinRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  expectedRevision: string;
+  id: string;
+  scope?: SkillScope;
+  pinned: boolean;
+}
+
+export interface SkillRecordUsageRequest {
+  auth: AuthContext;
+  idempotencyKey: string;
+  expectedRevision: string;
+  id: string;
+  scope?: SkillScope;
+  usedAt?: string;
+}
+
+export type SkillMutationResult =
+  | {
+      status: "ok";
+      id: string;
+      scope: SkillScope;
+      lifecycle: SkillLifecycle;
+      revision: string;
+    }
+  | {
+      status: "failed";
+      id: string;
+      reason: SkillMutationFailureReason;
+      message: string;
+      currentRevision?: string;
+      affectedPaths?: readonly string[];
+    };
+
+export interface SkillPromotionApproval {
+  assertion: "approved-for-promotion";
+  approvedBy: string;
+  approvedAt: string;
+  reason: string;
+}
+
+export interface SkillArchiveEntry {
+  id: string;
+  archiveId: string;
+  scope: SkillScope;
+  archivedAt: string;
+  restoredAt?: string;
+}
+
+export type SkillArchiveResult =
+  | {
+      status: "ok";
+      id: string;
+      scope: SkillScope;
+      archiveId: string;
+      archivedAt: string;
+    }
+  | {
+      status: "failed";
+      id: string;
+      reason: SkillMutationFailureReason;
+      message: string;
+    };
+
+export type SkillRestoreResult =
+  | {
+      status: "ok";
+      id: string;
+      scope: SkillScope;
+      archiveId: string;
+      revision: string;
+    }
+  | {
+      status: "failed";
+      id: string;
+      reason: SkillMutationFailureReason;
+      message: string;
+    };
+
+export interface SkillActivationReceipt {
+  kind: "skill-activation";
+  receiptVersion: 1;
+  activationId: string;
+  timestamp: string;
+  id: string;
+  scope: SkillScope;
+  revision: string;
+  resourceKey: string;
+  principal: Pick<AuthenticatedPrincipal, "id" | "kind">;
+}
+
+export interface SkillActivateRequest {
+  auth: AuthContext;
+  id: string;
+  scope?: SkillScope;
+  requestId?: string;
+  trigger: "manual" | "rule" | "startup" | "session";
+  reason: string;
+}
+
+export type SkillActivateResult =
+  | {
+      status: "ready";
+      receipt: SkillActivationReceipt;
+      candidate: {
+        candidateId: string;
+        contributorId: string;
+        resourceKey: string;
+        revisionHint: string;
+        necessity: "required";
+        priority: number;
+        estimatedTokens: number;
+        estimateQuality: "fallback";
+      };
+    }
+  | {
+      status: "missing-requirements";
+      id: string;
+      missing: readonly string[];
+      message: string;
+    }
+  | {
+      status: "failed";
+      id: string;
+      reason: SkillMutationFailureReason;
+      message: string;
+    };
+
+export interface SkillActivationContributorOptions {
+  registry: ManagedSkillRegistry;
+  activations: () => readonly SkillActivationReceipt[];
+  contributorId?: string;
+}
+
+export interface SkillToolProjection {
+  name: string;
+  operation: "read" | "attach" | "activate" | "test";
+  description: string;
+  inputSchema: {
+    type: "object";
+    properties: Record<string, unknown>;
+    required: readonly string[];
+    additionalProperties: false;
+  };
+}
+
 export interface ManagedSkillRegistry {
   /** Discovery only. The caller owns authorization before returning records. */
   list(request?: SkillListRequest): Promise<SkillListResult>;
@@ -194,7 +412,22 @@ export interface ManagedSkillRegistry {
   read(request: SkillReadRequest): Promise<SkillReadResult>;
 }
 
+export interface WritableManagedSkillRegistry extends ManagedSkillRegistry {
+  create(request: SkillCreateRequest): Promise<SkillMutationResult>;
+  patch(request: SkillPatchRequest): Promise<SkillMutationResult>;
+  archive(request: SkillArchiveRequest): Promise<SkillArchiveResult>;
+  restore(request: SkillRestoreRequest): Promise<SkillRestoreResult>;
+  promote(request: SkillPromoteRequest): Promise<SkillMutationResult>;
+  pin(request: SkillPinRequest): Promise<SkillMutationResult>;
+  recordUsage(request: SkillRecordUsageRequest): Promise<SkillMutationResult>;
+  activate(request: SkillActivateRequest): Promise<SkillActivateResult>;
+}
+
 export interface FilesystemManagedSkillRegistryOptions {
   env: ScopeEnvironment;
   freshnessProbe?: SkillFreshnessProbe;
+  now?: () => string;
+  promotionApprovalProvider?: ApprovalProvider;
 }
+
+export type { ContextContributor };

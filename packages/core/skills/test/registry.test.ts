@@ -8,15 +8,22 @@ import {
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 
+import type { AuthContext } from "@gonk/auth";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  createSkillActivationContributor,
   managedSkillDetailSchema,
   FilesystemManagedSkillRegistry,
+  projectSkillToolDefinitions,
+  projectSkillTools,
+  skillActivateResultSchema,
   skillFreshnessResultSchema,
   skillGetRequestSchema,
   skillListResultSchema,
+  skillMutationResultSchema,
   skillResolveRequestSchema,
+  skillToolProjectionSchema,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
 
@@ -72,6 +79,270 @@ describe("closed Standard Schema contracts", () => {
       expect(detail.skill).not.toHaveProperty("manifestPath");
       expect(valid(managedSkillDetailSchema, { ...detail.skill, extra: true })).toBe(false);
     }
+  });
+});
+
+describe("authorized filesystem mutations", () => {
+  it("fails closed when auth denies create before writing", async () => {
+    const harness = make();
+    const result = await harness.registry.create({
+      auth: authContext("deny"),
+      idempotencyKey: "create-denied",
+      id: "blocked",
+      scope: "project",
+      description: "blocked",
+      body: "blocked",
+    });
+    expect(result.status).toBe("failed");
+    if (result.status !== "failed") throw new Error("expected failed create");
+    expect(result.reason).toBe("denied");
+    expect((await harness.registry.get({ id: "blocked" })).status).toBe("not-found");
+  });
+
+  it("creates active and staged skills without exposing staged material to reads", async () => {
+    const harness = make();
+    const active = await harness.registry.create({
+      auth: authContext(),
+      idempotencyKey: "create-active",
+      id: "live",
+      scope: "project",
+      description: "live skill",
+      body: "live body",
+      files: [{ path: "refs/a.md", content: "A" }],
+    });
+    expect(active.status).toBe("ok");
+    expect(valid(skillMutationResultSchema, active)).toBe(true);
+    expect((await harness.registry.read({ id: "live", path: "refs/a.md" })).status).toBe("found");
+
+    const staged = await harness.registry.create({
+      auth: authContext(),
+      idempotencyKey: "create-staged",
+      id: "drafted",
+      scope: "project",
+      description: "drafted skill",
+      body: "drafted body",
+      staged: true,
+    });
+    expect(staged.status).toBe("ok");
+    expect(await harness.registry.get({ id: "drafted" })).toEqual({
+      status: "not-found",
+      id: "drafted",
+    });
+  });
+
+  it("returns structured revision conflicts and idempotency mismatch conflicts", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "editable", body: "old body" });
+    const current = await revisionOf(harness, "editable");
+    const conflict = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-conflict",
+      expectedRevision: "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      id: "editable",
+      find: "old",
+      replace: "new",
+    });
+    expect(conflict.status).toBe("failed");
+    if (conflict.status !== "failed") throw new Error("expected conflict");
+    expect(conflict.reason).toBe("conflict");
+    expect(conflict.currentRevision).toBe(current);
+    expect(conflict.affectedPaths).toEqual(["SKILL.md"]);
+
+    const ok = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-once",
+      expectedRevision: current,
+      id: "editable",
+      find: "old",
+      replace: "new",
+    });
+    expect(ok.status).toBe("ok");
+    const replay = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-once",
+      expectedRevision: current,
+      id: "editable",
+      find: "old",
+      replace: "new",
+    });
+    expect(replay).toEqual(ok);
+    const mismatch = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-once",
+      expectedRevision: current,
+      id: "editable",
+      find: "new",
+      replace: "again",
+    });
+    expect(mismatch.status).toBe("failed");
+    if (mismatch.status !== "failed") throw new Error("expected mismatch");
+    expect(mismatch.reason).toBe("conflict");
+  });
+
+  it("rejects pinned edits and archives by default", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "pinned",
+      body: "do not edit",
+      frontmatter: "id: pinned\ndescription: pinned\npinned: true",
+    });
+    const revision = await revisionOf(harness, "pinned");
+    const edit = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-pinned",
+      expectedRevision: revision,
+      id: "pinned",
+      find: "do",
+      replace: "please",
+    });
+    expect(edit.status).toBe("failed");
+    if (edit.status !== "failed") throw new Error("expected pinned edit failure");
+    expect(edit.reason).toBe("conflict");
+    const archive = await harness.registry.archive({
+      auth: authContext(),
+      idempotencyKey: "archive-pinned",
+      expectedRevision: revision,
+      id: "pinned",
+    });
+    expect(archive.status).toBe("failed");
+    if (archive.status !== "failed") throw new Error("expected pinned archive failure");
+    expect(archive.reason).toBe("conflict");
+  });
+
+  it("patches body plus supporting file writes and removals through one real directory rewrite", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "files-mutate",
+      body: "old body",
+      files: { "remove.txt": "bye", "keep.txt": "stay" },
+    });
+    const revision = await revisionOf(harness, "files-mutate");
+    const result = await harness.registry.patch({
+      auth: authContext(),
+      idempotencyKey: "patch-files",
+      expectedRevision: revision,
+      id: "files-mutate",
+      find: "old",
+      replace: "new",
+      writeFiles: [{ path: "added/readme.md", content: "added" }],
+      removeFiles: ["remove.txt"],
+    });
+    expect(result.status).toBe("ok");
+    expect((await harness.registry.read({ id: "files-mutate" })).status).toBe("found");
+    expect((await harness.registry.read({ id: "files-mutate", path: "added/readme.md" })).status).toBe("found");
+    expect(await harness.registry.read({ id: "files-mutate", path: "remove.txt" })).toMatchObject({
+      status: "not-found",
+      reason: "file-not-found",
+    });
+  });
+
+  it("requires an injected approval provider before promoting staged skills", async () => {
+    const harness = make();
+    await harness.registry.create({
+      auth: authContext(),
+      idempotencyKey: "stage-for-promotion",
+      id: "needs-approval",
+      scope: "project",
+      description: "needs approval",
+      body: "needs approval body",
+      staged: true,
+    });
+    const denied = await harness.registry.promote({
+      auth: authContext(),
+      idempotencyKey: "promote-denied",
+      id: "needs-approval",
+      approval: approval(),
+    });
+    expect(denied.status).toBe("failed");
+    if (denied.status !== "failed") throw new Error("expected promotion denial");
+    expect(denied.reason).toBe("denied");
+    expect((await harness.registry.get({ id: "needs-approval" })).status).toBe("not-found");
+
+    const approved = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      promotionApprovalProvider: {
+        decide: () => ({ outcome: "approved", reason: "reviewed" }),
+      },
+    });
+    const promoted = await approved.promote({
+      auth: authContext(),
+      idempotencyKey: "promote-approved",
+      id: "needs-approval",
+      approval: approval(),
+    });
+    expect(promoted.status).toBe("ok");
+    expect((await approved.get({ id: "needs-approval" })).status).toBe("found");
+  });
+
+  it("activates only ready skills and projects activation through a context contributor", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "ready", body: "ready body" });
+    await harness.seed({
+      scope: "project",
+      id: "missing-tools",
+      frontmatter: [
+        "id: missing-tools",
+        "description: missing tools",
+        "requirements:",
+        "  tools:",
+        "    - external-tool",
+      ].join("\n"),
+    });
+    const missing = await harness.registry.activate({
+      auth: authContext(),
+      id: "missing-tools",
+      trigger: "manual",
+      reason: "test",
+    });
+    expect(missing.status).toBe("missing-requirements");
+
+    const result = await harness.registry.activate({
+      auth: authContext(),
+      id: "ready",
+      requestId: "activation-1",
+      trigger: "manual",
+      reason: "test",
+    });
+    expect(result.status).toBe("ready");
+    expect(valid(skillActivateResultSchema, result)).toBe(true);
+    if (result.status !== "ready") throw new Error("expected ready activation");
+    const contributor = createSkillActivationContributor({
+      registry: harness.registry,
+      activations: () => [result.receipt],
+    });
+    const discovered = await contributor.discover({
+      requestId: "ctx",
+      audience: "model",
+      principal: authContext().principal,
+    });
+    expect(discovered).toHaveLength(1);
+    const resolved = await contributor.resolve({
+      requestId: "ctx",
+      audience: "model",
+      principal: authContext().principal,
+      candidate: discovered[0]!,
+    });
+    expect(resolved?.content.trim()).toBe("ready body");
+  });
+
+  it("projects distinct skill tools and never a generic invoke verb", () => {
+    expect(projectSkillTools().map(({ operation }) => operation)).toEqual([
+      "read",
+      "attach",
+      "activate",
+      "test",
+    ]);
+    expect(projectSkillTools().map(({ name }) => name)).not.toContain("skill-invoke");
+    expect(projectSkillTools().every((tool) => valid(skillToolProjectionSchema, tool))).toBe(true);
+    expect(projectSkillToolDefinitions().map(({ name }) => name)).toEqual([
+      "skill-read",
+      "skill-attach",
+      "skill-activate",
+      "skill-test",
+    ]);
+    expect(projectSkillToolDefinitions().every((tool) => tool.inputJsonSchema?.additionalProperties === false)).toBe(true);
   });
 });
 
@@ -414,4 +685,33 @@ async function revisionOf(harness: FilesystemHarness, id: string): Promise<strin
   const result = await harness.registry.get({ id });
   if (result.status !== "found") throw new Error(`Missing fixture: ${id}`);
   return result.skill.revision;
+}
+
+function authContext(mode: "allow" | "deny" = "allow"): AuthContext {
+  return {
+    principal: {
+      id: "agent:test",
+      kind: "agent",
+      identity: {
+        issuer: "test",
+        subject: "agent:test",
+        method: "local",
+      },
+      roles: ["tester"],
+      scopes: ["skills"],
+    },
+    authorize: async () =>
+      mode === "allow"
+        ? { outcome: "allow", reason: "test allow" }
+        : { outcome: "deny", reason: "test deny" },
+  };
+}
+
+function approval() {
+  return {
+    assertion: "approved-for-promotion" as const,
+    approvedBy: "reviewer:test",
+    approvedAt: "2026-07-16T00:00:00Z",
+    reason: "reviewed in test",
+  };
 }

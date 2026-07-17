@@ -5,6 +5,9 @@ import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
 import type {
   ManagedSkillDetail,
   ManagedSkillSummary,
+  SkillActivateResult,
+  SkillArchiveResult,
+  SkillMutationResult,
   SkillFreshnessResult,
   SkillGetRequest,
   SkillGetResult,
@@ -18,6 +21,8 @@ import type {
   SkillRequirement,
   SkillResolveRequest,
   SkillResolveResult,
+  SkillRestoreResult,
+  SkillToolProjection,
   SkillTreeEntry,
 } from "./types.ts";
 
@@ -81,6 +86,26 @@ export const skillResolveResultSchema = schema<SkillResolveResult>(
 export const skillReadResultSchema = schema<SkillReadResult>(
   "SkillReadResult",
   isSkillReadResult
+);
+export const skillMutationResultSchema = schema<SkillMutationResult>(
+  "SkillMutationResult",
+  isSkillMutationResult
+);
+export const skillArchiveResultSchema = schema<SkillArchiveResult>(
+  "SkillArchiveResult",
+  isSkillArchiveResult
+);
+export const skillRestoreResultSchema = schema<SkillRestoreResult>(
+  "SkillRestoreResult",
+  isSkillRestoreResult
+);
+export const skillActivateResultSchema = schema<SkillActivateResult>(
+  "SkillActivateResult",
+  isSkillActivateResult
+);
+export const skillToolProjectionSchema = schema<SkillToolProjection>(
+  "SkillToolProjection",
+  isSkillToolProjection
 );
 
 function schema<T>(
@@ -386,6 +411,161 @@ function isSkillReadResult(value: unknown): value is SkillReadResult {
     isManagedSkillId(value.id) &&
     isManagedSkillPath(value.path) &&
     isOneOf(value.reason, ["skill-not-found", "file-not-found"])
+  );
+}
+
+function isSkillMutationResult(value: unknown): value is SkillMutationResult {
+  if (
+    isExactRecord(value, ["status", "id", "scope", "lifecycle", "revision"]) &&
+    value.status === "ok"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      isScope(value.scope) &&
+      isOneOf(value.lifecycle, ["active", "staged", "archived"]) &&
+      isHash(value.revision)
+    );
+  }
+  return isSkillFailure(value);
+}
+
+function isSkillArchiveResult(value: unknown): value is SkillArchiveResult {
+  if (
+    isExactRecord(value, ["status", "id", "scope", "archiveId", "archivedAt"]) &&
+    value.status === "ok"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      isScope(value.scope) &&
+      isNonEmptyString(value.archiveId) &&
+      isIsoTimestamp(value.archivedAt)
+    );
+  }
+  return isSkillFailure(value);
+}
+
+function isSkillRestoreResult(value: unknown): value is SkillRestoreResult {
+  if (
+    isExactRecord(value, ["status", "id", "scope", "archiveId", "revision"]) &&
+    value.status === "ok"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      isScope(value.scope) &&
+      isNonEmptyString(value.archiveId) &&
+      isHash(value.revision)
+    );
+  }
+  return isSkillFailure(value);
+}
+
+function isSkillActivateResult(value: unknown): value is SkillActivateResult {
+  if (isExactRecord(value, ["status", "receipt", "candidate"]) && value.status === "ready") {
+    const receipt = value.receipt;
+    const candidate = value.candidate;
+    return (
+      isExactRecord(receipt, [
+        "kind",
+        "receiptVersion",
+        "activationId",
+        "timestamp",
+        "id",
+        "scope",
+        "revision",
+        "resourceKey",
+        "principal",
+      ]) &&
+      receipt.kind === "skill-activation" &&
+      receipt.receiptVersion === 1 &&
+      isNonEmptyString(receipt.activationId) &&
+      isIsoTimestamp(receipt.timestamp) &&
+      isManagedSkillId(receipt.id) &&
+      isScope(receipt.scope) &&
+      isHash(receipt.revision) &&
+      isNonEmptyString(receipt.resourceKey) &&
+      isExactRecord(receipt.principal, ["id", "kind"]) &&
+      isNonEmptyString(receipt.principal.id) &&
+      isOneOf(receipt.principal.kind, ["human", "agent", "service", "local"]) &&
+      isExactRecord(candidate, [
+        "candidateId",
+        "contributorId",
+        "resourceKey",
+        "revisionHint",
+        "necessity",
+        "priority",
+        "estimatedTokens",
+        "estimateQuality",
+      ]) &&
+      isNonEmptyString(candidate.candidateId) &&
+      isNonEmptyString(candidate.contributorId) &&
+      candidate.resourceKey === receipt.resourceKey &&
+      candidate.revisionHint === receipt.revision &&
+      candidate.necessity === "required" &&
+      isNonNegativeInteger(candidate.priority) &&
+      isNonNegativeInteger(candidate.estimatedTokens) &&
+      candidate.estimateQuality === "fallback"
+    );
+  }
+  if (
+    isExactRecord(value, ["status", "id", "missing", "message"]) &&
+    value.status === "missing-requirements"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      Array.isArray(value.missing) &&
+      value.missing.every(isNonEmptyString) &&
+      isNonEmptyString(value.message)
+    );
+  }
+  return isSkillFailure(value);
+}
+
+function isSkillToolProjection(value: unknown): value is SkillToolProjection {
+  return (
+    isExactRecord(value, ["name", "operation", "description", "inputSchema"]) &&
+    isNonEmptyString(value.name) &&
+    isOneOf(value.operation, ["read", "attach", "activate", "test"]) &&
+    isNonEmptyString(value.description) &&
+    isExactRecord(value.inputSchema, [
+      "type",
+      "properties",
+      "required",
+      "additionalProperties",
+    ]) &&
+    value.inputSchema.type === "object" &&
+    value.inputSchema.properties !== null &&
+    typeof value.inputSchema.properties === "object" &&
+    Array.isArray(value.inputSchema.required) &&
+    value.inputSchema.required.every(isNonEmptyString) &&
+    value.inputSchema.additionalProperties === false
+  );
+}
+
+function isSkillFailure(value: unknown): value is Extract<SkillMutationResult, { status: "failed" }> {
+  return (
+    isExactRecord(value, [
+      "status",
+      "id",
+      "reason",
+      "message",
+      "currentRevision",
+      "affectedPaths",
+    ]) &&
+    value.status === "failed" &&
+    isNonEmptyString(value.id) &&
+    isOneOf(value.reason, [
+      "denied",
+      "not-found",
+      "already-exists",
+      "invalid",
+      "conflict",
+      "unsupported",
+    ]) &&
+    isNonEmptyString(value.message) &&
+    (value.currentRevision === undefined || isHash(value.currentRevision)) &&
+    (value.affectedPaths === undefined ||
+      (Array.isArray(value.affectedPaths) &&
+        value.affectedPaths.every(isManagedSkillPath)))
   );
 }
 

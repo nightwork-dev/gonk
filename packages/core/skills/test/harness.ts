@@ -9,9 +9,10 @@ import type {
   ManagedSkillFixture,
 } from "../src/conformance.ts";
 import { FilesystemManagedSkillRegistry } from "../src/filesystem.ts";
-import type { SkillFreshnessProbe } from "../src/types.ts";
+import type { SkillFreshnessProbe, WritableManagedSkillRegistry } from "../src/types.ts";
 
 export interface FilesystemHarness extends ManagedSkillConformanceHarness {
+  registry: WritableManagedSkillRegistry;
   root: string;
   env: ScopeEnvironment;
   home(scope: ManagedSkillFixture["scope"]): string;
