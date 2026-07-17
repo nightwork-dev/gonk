@@ -70,7 +70,9 @@ const resolved = await retrieval.resolve({
 
 Sources own their filter value type and Standard Schema. A search filter carries
 the source ID plus the schema ID and version; Core validates the value through
-the registered schema. Every filter must name a registered, selected source.
+the registered schema. Every filter must name a discoverable, selected source.
+Missing, discovery-hidden, and unselected filter sources fail with the same
+unavailable-source error so validation does not become a source-discovery oracle.
 For coordinated indexes, Core authorizes documents before invoking the source
 filter callback, and filters before corpus statistics. There is no open filter
 bag or predicate callback at the public boundary.

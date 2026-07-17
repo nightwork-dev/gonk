@@ -88,16 +88,22 @@ export class RetrievalEngine {
     );
     const auth = captureAuthContext(valid.auth);
     const registered = this.options.registry.registered();
-    const registeredIds = new Set(registered.map(({ description }) => description.id));
     const selected = new Set(
       valid.sourceIds ?? registered.map(({ description }) => description.id)
     );
-    for (const filter of valid.filters ?? []) {
-      if (!registeredIds.has(filter.sourceId)) {
-        throw new TypeError(`Unregistered retrieval filter source: ${filter.sourceId}`);
+    const available: RetrievalSource[] = [];
+    for (const source of registered) {
+      if (!selected.has(source.description.id)) continue;
+      if (await this.options.registry.canDiscover(source, auth)) {
+        available.push(source);
       }
-      if (!selected.has(filter.sourceId)) {
-        throw new TypeError(`Unselected retrieval filter source: ${filter.sourceId}`);
+    }
+    const availableIds = new Set(
+      available.map(({ description }) => description.id)
+    );
+    for (const filter of valid.filters ?? []) {
+      if (!availableIds.has(filter.sourceId)) {
+        throw new TypeError(`Unavailable retrieval filter source: ${filter.sourceId}`);
       }
     }
     const filters = new Map(
@@ -107,9 +113,7 @@ export class RetrievalEngine {
     const receiptSources: RetrievalReceiptSource[] = [];
     const drops = new Map<RetrievalReceiptDrop["reason"], number>();
 
-    for (const source of registered) {
-      if (!selected.has(source.description.id)) continue;
-      if (!(await this.options.registry.canDiscover(source, auth))) continue;
+    for (const source of available) {
       let filter: unknown;
       try {
         filter = await this.validateFilter(source, filters.get(source.description.id));

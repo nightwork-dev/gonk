@@ -269,15 +269,54 @@ describe("closed filters and ranking", () => {
     expect(withDenied.receipt.drops).toEqual([]);
   });
 
-  it("rejects filters for unregistered and unselected sources before search", async () => {
+  it("makes absent and hidden filter sources indistinguishably unavailable", async () => {
     const fixture = makeFixture();
-    await expect(
-      fixture.engine.search({
-        ...searchRequest("typo", fixture.auth, "lantern"),
-        filters: [filter("soruce", { tag: "keep" })],
-      })
-    ).rejects.toThrow("Unregistered retrieval filter source: soruce");
+    const request = {
+      ...searchRequest("unavailable", fixture.auth, "lantern"),
+      sourceIds: ["source", "opaque"],
+      filters: [filter("opaque", { tag: "keep" })],
+    };
+    const absentError = await rejectionOf(fixture.engine.search(request));
 
+    const hiddenFixture = makeFixture();
+    const hidden = new TestCoordinatedSource("opaque");
+    hiddenFixture.registry.register(hidden);
+    hiddenFixture.policy.hiddenSources.add("opaque");
+    const hiddenError = await rejectionOf(
+      hiddenFixture.engine.search({ ...request, auth: hiddenFixture.auth })
+    );
+
+    expect({ name: hiddenError.name, message: hiddenError.message }).toEqual({
+      name: absentError.name,
+      message: absentError.message,
+    });
+    expect(absentError).toMatchObject({
+      name: "TypeError",
+      message: "Unavailable retrieval filter source: opaque",
+    });
+    expect(
+      await hiddenFixture.registry.list({
+        requestId: "hidden-list",
+        auth: hiddenFixture.auth,
+      })
+    ).toEqual(
+      await fixture.registry.list({
+        requestId: "absent-list",
+        auth: fixture.auth,
+      })
+    );
+    const hiddenSearch = await hiddenFixture.engine.search({
+      ...searchRequest("hidden-search", hiddenFixture.auth, "lantern"),
+      sourceIds: ["source", "opaque"],
+    });
+    expect(JSON.stringify(hiddenSearch)).not.toContain("opaque");
+    expect(fixture.source.filterCalls).toBe(0);
+    expect(hiddenFixture.source.filterCalls).toBe(0);
+    expect(hidden.filterCalls).toBe(0);
+  });
+
+  it("rejects discoverable but unselected filter sources before search", async () => {
+    const fixture = makeFixture();
     const other = new TestCoordinatedSource("other");
     fixture.registry.register(other);
     await expect(
@@ -286,7 +325,7 @@ describe("closed filters and ranking", () => {
         sourceIds: ["source"],
         filters: [filter("other", { tag: "keep" })],
       })
-    ).rejects.toThrow("Unselected retrieval filter source: other");
+    ).rejects.toThrow("Unavailable retrieval filter source: other");
     expect(fixture.source.filterCalls).toBe(0);
     expect(other.filterCalls).toBe(0);
   });
@@ -833,6 +872,16 @@ function filter(sourceId: string, value: unknown) {
     schemaVersion: 1,
     value,
   };
+}
+
+async function rejectionOf(promise: Promise<unknown>): Promise<Error> {
+  try {
+    await promise;
+  } catch (error) {
+    if (error instanceof Error) return error;
+    throw new TypeError("Expected an Error rejection");
+  }
+  throw new Error("Expected promise to reject");
 }
 
 function valid(
