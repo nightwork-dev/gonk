@@ -217,6 +217,31 @@ describe("authorized filesystem mutations", () => {
     ).toBe(true);
   });
 
+  it("rejects a symlinked default session ancestor without writing outside", async () => {
+    const harness = make();
+    const { sessionHome: _sessionHome, ...env } = harness.env;
+    const outside = join(harness.root, "outside-sessions");
+    const sessions = join(harness.home("global"), ".agents", "sessions");
+    mkdirSync(dirname(sessions), { recursive: true });
+    mkdirSync(outside, { recursive: true });
+    symlinkSync(outside, sessions, "dir");
+    const registry = new FilesystemManagedSkillRegistry({ env });
+
+    await expect(
+      registry.create({
+        auth: authContext(),
+        idempotencyKey: "create-symlinked-session-home",
+        id: "escaped-session-write",
+        scope: "session",
+        description: "must stay inside",
+        body: "must not be written",
+      })
+    ).rejects.toThrow("Skill transaction home contains a symbolic link");
+
+    expect(existsSync(join(outside, "test-session"))).toBe(false);
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
   it("returns structured revision conflicts and idempotency mismatch conflicts", async () => {
     const harness = make();
     await harness.seed({ scope: "project", id: "editable", body: "old body" });

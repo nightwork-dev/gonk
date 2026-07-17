@@ -20,6 +20,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -1604,7 +1605,12 @@ class FilesystemSkillTransactionStore {
     probe: SkillTransactionProbe
   ): FilesystemSnapshot {
     const configuredHome = this.home(scope);
-    const home = ensureTransactionHome(configuredHome);
+    const home = ensureTransactionHome(
+      configuredHome,
+      scope === "session" && this.env.sessionHome === undefined
+        ? this.env.homeRoot ?? homedir()
+        : undefined
+    );
     const namespace = this.namespace(scope, home);
     mkdirSync(namespace, { recursive: true });
     const releaseLock = this.tryAcquireLock(scope, namespace);
@@ -1941,7 +1947,7 @@ function verifiedTransactionNamespace(home: string, path: string): string {
 function verifiedRelativePath(
   home: string,
   relativePath: string,
-  label: "home" | "target" | "namespace"
+  label: "target" | "namespace"
 ): string {
   let cursor = realpathSync(home);
   const parts = relativePath.split(sep);
@@ -1959,8 +1965,21 @@ function verifiedRelativePath(
   return cursor;
 }
 
-function ensureTransactionHome(home: string): string {
+function ensureTransactionHome(home: string, trustedBase?: string): string {
   const requestedHome = resolve(home);
+  if (trustedBase !== undefined) {
+    const base = resolve(trustedBase);
+    const suffix = relative(base, requestedHome);
+    if (
+      suffix === "" ||
+      isAbsolute(suffix) ||
+      suffix === ".." ||
+      suffix.startsWith(`..${sep}`)
+    ) {
+      throw new Error("Skill transaction home escapes its trusted base");
+    }
+    return ensureVerifiedDirectory(realpathSync(base), suffix);
+  }
   let ancestor = requestedHome;
   while (!lstatIfExists(ancestor)) {
     const parent = dirname(ancestor);
@@ -1969,18 +1988,41 @@ function ensureTransactionHome(home: string): string {
     }
     ancestor = parent;
   }
-  const canonicalAncestor = realpathSync(ancestor);
-  if (!lstatSync(canonicalAncestor).isDirectory()) {
+  const ancestorStat = lstatSync(ancestor);
+  if (ancestorStat.isSymbolicLink()) {
+    throw new Error("Skill transaction home contains a symbolic link");
+  }
+  if (!ancestorStat.isDirectory()) {
     throw new Error("Skill transaction home ancestor is not a directory");
   }
   const suffix = relative(ancestor, requestedHome);
-  const prospectiveHome = suffix
-    ? verifiedRelativePath(canonicalAncestor, suffix, "home")
-    : canonicalAncestor;
-  mkdirSync(prospectiveHome, { recursive: true });
+  const canonicalAncestor = realpathSync(ancestor);
   return suffix
-    ? verifiedRelativePath(canonicalAncestor, suffix, "home")
+    ? ensureVerifiedDirectory(canonicalAncestor, suffix)
     : canonicalAncestor;
+}
+
+function ensureVerifiedDirectory(base: string, relativePath: string): string {
+  let cursor = base;
+  for (const part of relativePath.split(sep)) {
+    cursor = join(cursor, part);
+    let stat = lstatIfExists(cursor);
+    if (!stat) {
+      try {
+        mkdirSync(cursor);
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== "EEXIST") throw error;
+      }
+      stat = lstatSync(cursor);
+    }
+    if (stat.isSymbolicLink()) {
+      throw new Error("Skill transaction home contains a symbolic link");
+    }
+    if (!stat.isDirectory()) {
+      throw new Error("Skill transaction home parent is not a directory");
+    }
+  }
+  return cursor;
 }
 
 function validateTransactionTargets(
