@@ -1,5 +1,18 @@
 # @gonk/retrieval
 
+## 0.3.0
+
+### Minor Changes
+
+- [`ac9d728`](https://github.com/nightwork-dev/gonk/commit/ac9d7284e9155a6dc30cdbad0404f6a8d01badea) Thanks [@abrisene](https://github.com/abrisene)! - Add the optional `@gonk/retrieval/context` adapter for projecting explicitly selected retrieval hits into `@gonk/context` candidates and for projecting authorized source health/freshness from the existing retrieval registry without a second source registry.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.3.0
+  - @gonk/context@0.3.0
+  - @gonk/store@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes

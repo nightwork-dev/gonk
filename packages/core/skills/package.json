@@ -1,6 +1,6 @@
 {
   "name": "@gonk/skills",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Host-neutral managed skill discovery, scope resolution, provenance, freshness, and supporting-file reads.",
   "exports": {
