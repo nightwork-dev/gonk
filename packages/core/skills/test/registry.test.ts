@@ -190,6 +190,33 @@ describe("authorized filesystem mutations", () => {
     });
   });
 
+  it("creates a session skill when the default session home does not exist", async () => {
+    const harness = make();
+    const { sessionHome: _sessionHome, ...env } = harness.env;
+    const defaultSessionHome = join(
+      harness.home("global"),
+      ".agents",
+      "sessions",
+      "test-session"
+    );
+    expect(existsSync(defaultSessionHome)).toBe(false);
+    const registry = new FilesystemManagedSkillRegistry({ env });
+
+    const created = await registry.create({
+      auth: authContext(),
+      idempotencyKey: "create-fresh-session-home",
+      id: "session-first-write",
+      scope: "session",
+      description: "first session skill",
+      body: "session body",
+    });
+
+    expect(created.status).toBe("ok");
+    expect(
+      existsSync(join(defaultSessionHome, "skills", "session-first-write", "SKILL.md"))
+    ).toBe(true);
+  });
+
   it("returns structured revision conflicts and idempotency mismatch conflicts", async () => {
     const harness = make();
     await harness.seed({ scope: "project", id: "editable", body: "old body" });

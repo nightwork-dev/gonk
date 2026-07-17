@@ -1603,7 +1603,8 @@ class FilesystemSkillTransactionStore {
     paths: readonly string[],
     probe: SkillTransactionProbe
   ): FilesystemSnapshot {
-    const home = this.home(scope);
+    const configuredHome = this.home(scope);
+    const home = ensureTransactionHome(configuredHome);
     const namespace = this.namespace(scope, home);
     mkdirSync(namespace, { recursive: true });
     const releaseLock = this.tryAcquireLock(scope, namespace);
@@ -1614,7 +1615,7 @@ class FilesystemSkillTransactionStore {
     const entries: SkillTransactionMarker["entries"][number][] = [];
     try {
       for (const [index, path] of [...new Set(paths)].entries()) {
-        const relativePath = safeTransactionPath(home, path);
+        const relativePath = safeTransactionPath(configuredHome, path);
         const target = verifiedTransactionTarget(home, relativePath);
         const targetStat = lstatIfExists(target);
         const existed = targetStat !== undefined;
@@ -1940,7 +1941,7 @@ function verifiedTransactionNamespace(home: string, path: string): string {
 function verifiedRelativePath(
   home: string,
   relativePath: string,
-  label: "target" | "namespace"
+  label: "home" | "target" | "namespace"
 ): string {
   let cursor = realpathSync(home);
   const parts = relativePath.split(sep);
@@ -1956,6 +1957,30 @@ function verifiedRelativePath(
     }
   }
   return cursor;
+}
+
+function ensureTransactionHome(home: string): string {
+  const requestedHome = resolve(home);
+  let ancestor = requestedHome;
+  while (!lstatIfExists(ancestor)) {
+    const parent = dirname(ancestor);
+    if (parent === ancestor) {
+      throw new Error("Cannot resolve skill transaction home ancestor");
+    }
+    ancestor = parent;
+  }
+  const canonicalAncestor = realpathSync(ancestor);
+  if (!lstatSync(canonicalAncestor).isDirectory()) {
+    throw new Error("Skill transaction home ancestor is not a directory");
+  }
+  const suffix = relative(ancestor, requestedHome);
+  const prospectiveHome = suffix
+    ? verifiedRelativePath(canonicalAncestor, suffix, "home")
+    : canonicalAncestor;
+  mkdirSync(prospectiveHome, { recursive: true });
+  return suffix
+    ? verifiedRelativePath(canonicalAncestor, suffix, "home")
+    : canonicalAncestor;
 }
 
 function validateTransactionTargets(
@@ -2790,8 +2815,9 @@ function verifyDirectory(root: string, path: string): VerifiedDirectory {
   if (!before.isDirectory() || before.isSymbolicLink()) {
     throw new TypeError("Skill directory must be a real directory");
   }
+  const realRoot = realpathSync(root);
   const realPath = realpathSync(path);
-  if (!isInside(root, realPath)) {
+  if (!isInside(realRoot, realPath)) {
     throw new TypeError("Skill directory escapes its root");
   }
   const after = lstatSync(path);
