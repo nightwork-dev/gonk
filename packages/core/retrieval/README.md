@@ -163,10 +163,10 @@ probes run.
 
 ## Release train
 
-This package ships on Gonk's fixed `@gonk/*` train. The context-adapter changeset
-is minor and materializes the fixed Core `0.3.0` train. Raw tarballs created
-before `changeset version` retain source-tree metadata and are not supported
-release artifacts.
+This package ships on Gonk's fixed `@gonk/*` train. The context adapter is
+published in Core 0.3.1; that patch supersedes 0.3.0 without changing retrieval
+contracts. Raw tarballs created before `changeset version` retain source-tree
+metadata and are not supported release artifacts.
 
 ## Deferred beyond Phase 0
 

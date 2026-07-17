@@ -162,15 +162,13 @@ registry is introduced.
 
 ## Release train
 
-The Phase 1 context-adapter changeset is minor because it adds a new public
-subpath over the shipped retrieval contract. The repository's fixed `@gonk/*`
-release group therefore materializes the full Core `0.3.0` train; `changeset status`
-must report that train before release packaging is approved.
+The Phase 1 context adapter shipped in the fixed Core 0.3.1 train. The public
+subpath was the minor change in 0.3.0; 0.3.1 supersedes it with the independent
+scope operational-home repair and does not change retrieval contracts.
 
-Raw tarballs packed before `changeset version` still carry source-tree versions.
-Those are not release artifacts and can collide with already published
-packages. Final publish smoke tests run only after Changesets has materialized
-the fixed `0.3.0` train.
+Raw tarballs packed before `changeset version` carry source-tree versions and
+are not release artifacts. Release proof uses the published Verdaccio manifests
+and a clean external consumer install.
 
 ## Deferred
 

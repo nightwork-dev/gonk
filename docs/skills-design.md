@@ -1,7 +1,7 @@
 # Managed skills design
 
-> Status: **Phase 1 implemented; GR-74 remains open** until the extension
-> registry and first Sigil consumer migrate to Core.
+> Status: **Phase 1 shipped in Core 0.3.1; GR-74 complete.** Extensions 0.5.0
+> consumes Core as the canonical managed-skill owner.
 
 ## Boundary
 
@@ -12,10 +12,10 @@ receipts/context projection, distinct tool projection, and reusable conformance
 suite. Host catalogs, UI state, semantic search, and host-specific test runners
 remain outside this package.
 
-This extracts and hardens the useful filesystem behavior in the existing
-`skill-creator` extension registry, whose migration to Core is still pending.
-It is not a generic registry abstraction, and Core does not depend on that
-extension.
+This extracts and hardens the useful filesystem behavior from the former
+`skill-creator` extension registry. The extension now adapts to Core and is not
+a second authority. This is not a generic registry abstraction, and Core does
+not depend on that extension.
 
 The package depends on `@gonk/scope`, `@standard-schema/spec`, and `yaml`.
 `yaml` is intentional compatibility substrate: the legacy registry writes with
@@ -192,13 +192,13 @@ outside Core.
 
 ## Migration and release
 
-The Phase 0 changeset is minor because it adds a new public Core contract. Under
-the fixed `@gonk/*` release train this is destined for `0.3.0`. The already
-merged context changeset must likewise be corrected to minor before that train
-is released. GR-74 closes only after extension behavior is migrated and Sigil
-consumes the Core package; landing this package alone is not completion.
+Core 0.3.1 publishes the Phase 1 registry, lifecycle, activation, receipts, and
+projection contracts. Extensions 0.5.0 moves `@gonk/skill-creator` and its host
+adapters onto that owner; the legacy registry is compatibility surface only.
+The 0.3.1 patch supersedes 0.3.0 after the published Pi integration suite found
+that colliding read tiers could hide an explicit operational scope home.
 
-The Changesets peer-dependent option only escalates peers when their declared
-range is actually left. `@gonk/tool-registry` now declares its optional scope
-peer as compatible across pre-1 Core minors, preventing that in-range peer from
-turning the fixed train's intended `0.3.0` minor into a spurious `1.0.0` major.
+The fixed train remains pre-1.0 and follows semver: new public substrate was a
+minor release, while the operational-home repair was a patch. Optional peer
+ranges span compatible pre-1 Core minors so an in-range peer cannot spuriously
+escalate the train to 1.0.0.
