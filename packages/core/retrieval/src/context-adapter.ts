@@ -346,7 +346,6 @@ async function isRetrievalContextSelection(
     !isNonEmptyString(value.candidateId) ||
     (value.necessity !== undefined &&
       value.necessity !== "required" &&
-      value.necessity !== "useful" &&
       value.necessity !== "optional") ||
     (value.priority !== undefined && !isFiniteNumber(value.priority)) ||
     (value.estimatedTokens !== undefined &&

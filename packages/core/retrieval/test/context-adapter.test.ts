@@ -278,6 +278,19 @@ describe("retrieval context adapter", () => {
     ).rejects.toThrow("Invalid RetrievalContextSelectionList");
     await expect(
       validateStandard(
+        retrievalContextSelectionListSchema,
+        [
+          {
+            candidateId: "selected",
+            hit: retrievalHit(resource("visible", "alpha", "r1")),
+            necessity: "useful",
+          },
+        ],
+        "RetrievalContextSelectionList"
+      )
+    ).rejects.toThrow("Invalid RetrievalContextSelectionList");
+    await expect(
+      validateStandard(
         retrievalContextSourceProbeResultSchema,
         { health: "available", freshness: "fresh", extra: "not closed" },
         "RetrievalContextSourceProbeResult"
