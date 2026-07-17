@@ -109,19 +109,22 @@ adds create, patch, archive, restore, promote, pin, usage, and activate as
 required methods so consumers cannot accidentally treat mutation support as
 optional and fail open.
 
-Mutation requests carry `idempotencyKey`; the filesystem implementation keeps an
-in-process replay ledger keyed by operation, canonical auth security context,
-and request fingerprint. Authorization runs before every replay, so a denied or
+Mutation requests carry `idempotencyKey`; the filesystem implementation keeps a
+restart-durable `SkillLifecycleJournal` keyed by operation, canonical auth
+security context, and hashed request fingerprint. Authorization runs before every replay, so a denied or
 different effective principal cannot inherit a prior result. Reusing a key with
-a different request returns a structured conflict. Patch, pin, usage, and archive
+a different request returns a structured conflict. `getMutationReceipt()` exposes
+the original security-bound result to its authorized principal after restart.
+Patch, pin, usage, and archive
 also carry `expectedRevision`; stale callers receive the current revision and
 affected paths. Patch can update the manifest body, write supporting files, and
 remove supporting files through a copy-then-rename directory rewrite. Pinned
 skills reject edits and archive until the authorized pin API explicitly unpins
 them; patch/archive have no caller-controlled bypass.
 
-Create can write active or staged skills, but not overwrite existing live
-material. Staged skills live under `.staging` and remain invisible to list/get/read.
+Create can write active or staged skills, preserve typed tags and provenance, but
+not overwrite existing live material. Staged skills live under `.staging` and
+remain invisible to list/get/read.
 Promotion requires both `skill.manage` authorization and an injected
 `@gonk/tool-registry` approval provider; a missing, required, or denied approval
 provider leaves the staged copy untouched. Restore validates an isolated
@@ -131,10 +134,27 @@ after placement, and refuses to clobber a live skill.
 ## Activation and tools
 
 Activation is not a read shortcut. `activate()` authorizes `skill.activate`,
-checks basic readiness, records usage metadata, and returns an activation receipt
-plus a compiler candidate. Model-visible content flows through
+checks basic readiness, then performs the usage update under the same action. A
+denied, conflicted, or failed usage update returns a structured non-ready failure.
+Only after that write succeeds does Core durably journal an activation receipt and
+return its compiler candidate. Receipt IDs include compiler request, skill, scope,
+and post-usage revision, so one request can activate multiple skills.
+`getActivationReceipt()` and `listActivationReceipts()` recover the current
+principal's receipts after restart. Model-visible content flows through
 `createSkillActivationContributor()` and the normal `@gonk/context` discovery,
-resolution, and `context.use` authorization path.
+resolution, and `context.use` authorization path; stale receipt revisions do not
+resolve changed skill content.
+
+The filesystem journal is a small implementation of `SkillLifecycleJournal` over
+`@gonk/store` KV. Each tier stores closed-schema records at
+`<tier-home>/.agents/store/skills.lifecycle/kv.json` (or the scope-selected legacy
+`.gonk` path), with atomic temp-file-plus-rename writes. It persists security keys,
+opaque receipt IDs, hashed request fingerprints, and results/receipts, never raw
+auth contexts, policy functions, request bodies, or idempotency keys. It inherits
+`@gonk/store`'s single-writer-per-namespace assumption. Rollback is isolated:
+stop writers, back up, and remove the `skills.lifecycle` namespace in the affected
+tiers. Skills remain intact, but prior replays and activation receipt recovery are
+intentionally lost.
 
 Tool projection is closed and distinct: `read`, `attach`, `activate`, and
 `test`. `createSkillToolDefinitions()` returns real `@gonk/tool-registry`

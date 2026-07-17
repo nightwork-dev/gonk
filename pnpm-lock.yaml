@@ -311,6 +311,9 @@ importers:
       '@gonk/scope':
         specifier: workspace:*
         version: link:../scope
+      '@gonk/store':
+        specifier: workspace:*
+        version: link:../store
       '@gonk/tool-registry':
         specifier: workspace:*
         version: link:../tool-registry

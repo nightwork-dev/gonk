@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { isAuthenticatedPrincipal } from "@gonk/auth";
 
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
 import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
@@ -6,8 +7,13 @@ import type {
   ManagedSkillDetail,
   ManagedSkillSummary,
   SkillActivateResult,
+  SkillActivationJournalRecord,
+  SkillActivationReceipt,
   SkillArchiveResult,
+  SkillCreateRequest,
   SkillMutationResult,
+  SkillMutationJournalRecord,
+  SkillMutationReceipt,
   SkillFreshnessResult,
   SkillGetRequest,
   SkillGetResult,
@@ -67,6 +73,10 @@ export const skillReadRequestSchema = schema<SkillReadRequest>(
   "SkillReadRequest",
   isSkillReadRequest
 );
+export const skillCreateRequestSchema = schema<SkillCreateRequest>(
+  "SkillCreateRequest",
+  isSkillCreateRequest
+);
 export const skillResolveRequestSchema = schema<SkillResolveRequest>(
   "SkillResolveRequest",
   isSkillResolveRequest
@@ -102,6 +112,22 @@ export const skillRestoreResultSchema = schema<SkillRestoreResult>(
 export const skillActivateResultSchema = schema<SkillActivateResult>(
   "SkillActivateResult",
   isSkillActivateResult
+);
+export const skillActivationReceiptSchema = schema<SkillActivationReceipt>(
+  "SkillActivationReceipt",
+  isSkillActivationReceipt
+);
+export const skillMutationReceiptSchema = schema<SkillMutationReceipt>(
+  "SkillMutationReceipt",
+  isSkillMutationReceipt
+);
+export const skillMutationJournalRecordSchema = schema<SkillMutationJournalRecord>(
+  "SkillMutationJournalRecord",
+  isSkillMutationJournalRecord
+);
+export const skillActivationJournalRecordSchema = schema<SkillActivationJournalRecord>(
+  "SkillActivationJournalRecord",
+  isSkillActivationJournalRecord
 );
 export const skillToolProjectionSchema = schema<SkillToolProjection>(
   "SkillToolProjection",
@@ -223,6 +249,7 @@ function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
       "description",
       "version",
       "author",
+      "tags",
       "origin",
       "scope",
       "lifecycle",
@@ -242,6 +269,7 @@ function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
     isNonEmptyString(value.description) &&
     isOptionalNonEmptyString(value.version) &&
     isOptionalNonEmptyString(value.author) &&
+    isOptionalNonEmptyStringArray(value.tags) &&
     isSkillOrigin(value.origin) &&
     isScope(value.scope) &&
     value.lifecycle === "active" &&
@@ -268,6 +296,7 @@ function isManagedSkillDetail(value: unknown): value is ManagedSkillDetail {
       "description",
       "version",
       "author",
+      "tags",
       "origin",
       "scope",
       "lifecycle",
@@ -324,6 +353,53 @@ function isSkillReadRequest(value: unknown): value is SkillReadRequest {
     isManagedSkillId(value.id) &&
     (value.path === undefined || isManagedSkillPath(value.path)) &&
     (value.scope === undefined || isScope(value.scope))
+  );
+}
+
+function isSkillCreateRequest(value: unknown): value is SkillCreateRequest {
+  return (
+    isExactRecord(value, [
+      "auth",
+      "idempotencyKey",
+      "id",
+      "scope",
+      "description",
+      "body",
+      "name",
+      "version",
+      "author",
+      "tags",
+      "provenance",
+      "pinned",
+      "agentCreated",
+      "staged",
+      "files",
+    ]) &&
+    isExactRecord(value.auth, ["principal", "authorize"]) &&
+    isAuthenticatedPrincipal(value.auth.principal) &&
+    typeof value.auth.authorize === "function" &&
+    isNonEmptyString(value.idempotencyKey) &&
+    isManagedSkillId(value.id) &&
+    isScope(value.scope) &&
+    isNonEmptyString(value.description) &&
+    isNonEmptyString(value.body) &&
+    isOptionalNonEmptyString(value.name) &&
+    isOptionalNonEmptyString(value.version) &&
+    isOptionalNonEmptyString(value.author) &&
+    isOptionalNonEmptyStringArray(value.tags) &&
+    (value.provenance === undefined || isSkillProvenance(value.provenance)) &&
+    isOptionalBoolean(value.pinned) &&
+    isOptionalBoolean(value.agentCreated) &&
+    isOptionalBoolean(value.staged) &&
+    (value.files === undefined ||
+      (Array.isArray(value.files) &&
+        value.files.every(
+          (file) =>
+            isExactRecord(file, ["path", "content"]) &&
+            isManagedSkillPath(file.path) &&
+            file.path !== "SKILL.md" &&
+            typeof file.content === "string"
+        )))
   );
 }
 
@@ -464,28 +540,7 @@ function isSkillActivateResult(value: unknown): value is SkillActivateResult {
     const receipt = value.receipt;
     const candidate = value.candidate;
     return (
-      isExactRecord(receipt, [
-        "kind",
-        "receiptVersion",
-        "activationId",
-        "timestamp",
-        "id",
-        "scope",
-        "revision",
-        "resourceKey",
-        "principal",
-      ]) &&
-      receipt.kind === "skill-activation" &&
-      receipt.receiptVersion === 1 &&
-      isNonEmptyString(receipt.activationId) &&
-      isIsoTimestamp(receipt.timestamp) &&
-      isManagedSkillId(receipt.id) &&
-      isScope(receipt.scope) &&
-      isHash(receipt.revision) &&
-      isNonEmptyString(receipt.resourceKey) &&
-      isExactRecord(receipt.principal, ["id", "kind"]) &&
-      isNonEmptyString(receipt.principal.id) &&
-      isOneOf(receipt.principal.kind, ["human", "agent", "service", "local"]) &&
+      isSkillActivationReceipt(receipt) &&
       isExactRecord(candidate, [
         "candidateId",
         "contributorId",
@@ -518,6 +573,111 @@ function isSkillActivateResult(value: unknown): value is SkillActivateResult {
     );
   }
   return isSkillFailure(value);
+}
+
+function isSkillActivationReceipt(value: unknown): value is SkillActivationReceipt {
+  return (
+    isExactRecord(value, [
+      "kind",
+      "receiptVersion",
+      "activationId",
+      "timestamp",
+      "id",
+      "scope",
+      "revision",
+      "resourceKey",
+      "principal",
+    ]) &&
+    value.kind === "skill-activation" &&
+    value.receiptVersion === 1 &&
+    isNonEmptyString(value.activationId) &&
+    isIsoTimestamp(value.timestamp) &&
+    isManagedSkillId(value.id) &&
+    isScope(value.scope) &&
+    isHash(value.revision) &&
+    isNonEmptyString(value.resourceKey) &&
+    isExactRecord(value.principal, ["id", "kind"]) &&
+    isNonEmptyString(value.principal.id) &&
+    isOneOf(value.principal.kind, ["human", "agent", "service", "local"])
+  );
+}
+
+function isSkillMutationReceipt(value: unknown): value is SkillMutationReceipt {
+  if (
+    !isExactRecord(value, [
+      "kind",
+      "receiptVersion",
+      "receiptId",
+      "timestamp",
+      "operation",
+      "requestFingerprint",
+      "id",
+      "scope",
+      "result",
+    ]) ||
+    value.kind !== "skill-mutation" ||
+    value.receiptVersion !== 1 ||
+    !isHash(value.receiptId) ||
+    !isIsoTimestamp(value.timestamp) ||
+    !isOneOf(value.operation, [
+      "create",
+      "patch",
+      "archive",
+      "restore",
+      "promote",
+      "pin",
+      "record-usage",
+    ]) ||
+    !isHash(value.requestFingerprint) ||
+    !isManagedSkillId(value.id) ||
+    !isScope(value.scope)
+  ) {
+    return false;
+  }
+  const result = value.result;
+  if (value.operation === "archive") {
+    return (
+      isSkillArchiveResult(result) &&
+      result.id === value.id &&
+      (result.status === "failed" || result.scope === value.scope)
+    );
+  }
+  if (value.operation === "restore") {
+    return (
+      isSkillRestoreResult(result) &&
+      result.id === value.id &&
+      (result.status === "failed" || result.scope === value.scope)
+    );
+  }
+  return (
+    isSkillMutationResult(result) &&
+    result.id === value.id &&
+    (result.status === "failed" || result.scope === value.scope)
+  );
+}
+
+function isSkillMutationJournalRecord(
+  value: unknown
+): value is SkillMutationJournalRecord {
+  return (
+    isExactRecord(value, ["kind", "recordVersion", "securityContextKey", "receipt"]) &&
+    value.kind === "skill-mutation-journal" &&
+    value.recordVersion === 1 &&
+    isNonEmptyString(value.securityContextKey) &&
+    isSkillMutationReceipt(value.receipt)
+  );
+}
+
+function isSkillActivationJournalRecord(
+  value: unknown
+): value is SkillActivationJournalRecord {
+  return (
+    isExactRecord(value, ["kind", "recordVersion", "securityContextKey", "receipt"]) &&
+    value.kind === "skill-activation-journal" &&
+    value.recordVersion === 1 &&
+    isNonEmptyString(value.securityContextKey) &&
+    isSkillActivationReceipt(value.receipt)
+  );
 }
 
 function isSkillToolProjection(value: unknown): value is SkillToolProjection {
@@ -572,7 +732,7 @@ function isSkillFailure(value: unknown): value is Extract<SkillMutationResult, {
 function pickSummary(value: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of [
-    "id", "name", "description", "version", "author", "origin", "scope",
+    "id", "name", "description", "version", "author", "tags", "origin", "scope",
     "lifecycle", "capabilities", "revision", "contentHash", "pinned",
     "agentCreated", "useCount", "lastUsedAt", "updatedAt", "requirements",
     "freshness",

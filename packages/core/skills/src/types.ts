@@ -114,6 +114,7 @@ export interface ManagedSkillSummary {
   description: string;
   version?: string;
   author?: string;
+  tags?: readonly string[];
   origin: SkillOrigin;
   scope: SkillScope;
   lifecycle: "active";
@@ -210,6 +211,8 @@ export interface SkillCreateRequest {
   name?: string;
   version?: string;
   author?: string;
+  tags?: readonly string[];
+  provenance?: SkillProvenance;
   pinned?: boolean;
   agentCreated?: boolean;
   staged?: boolean;
@@ -270,6 +273,15 @@ export interface SkillRecordUsageRequest {
   scope?: SkillScope;
   usedAt?: string;
 }
+
+export type SkillMutationOperation =
+  | "create"
+  | "patch"
+  | "archive"
+  | "restore"
+  | "promote"
+  | "pin"
+  | "record-usage";
 
 export type SkillMutationResult =
   | {
@@ -333,6 +345,34 @@ export type SkillRestoreResult =
       message: string;
     };
 
+export type SkillMutationReceiptResult =
+  | SkillMutationResult
+  | SkillArchiveResult
+  | SkillRestoreResult;
+
+export interface SkillMutationReceipt {
+  kind: "skill-mutation";
+  receiptVersion: 1;
+  receiptId: string;
+  timestamp: string;
+  operation: SkillMutationOperation;
+  requestFingerprint: string;
+  id: string;
+  scope: SkillScope;
+  result: SkillMutationReceiptResult;
+}
+
+export interface SkillMutationReceiptRequest {
+  auth: AuthContext;
+  operation: SkillMutationOperation;
+  idempotencyKey: string;
+}
+
+export type SkillMutationReceiptReadResult =
+  | { status: "found"; receipt: SkillMutationReceipt }
+  | { status: "not-found" }
+  | { status: "failed"; reason: "denied"; message: string };
+
 export interface SkillActivationReceipt {
   kind: "skill-activation";
   receiptVersion: 1;
@@ -343,6 +383,73 @@ export interface SkillActivationReceipt {
   revision: string;
   resourceKey: string;
   principal: Pick<AuthenticatedPrincipal, "id" | "kind">;
+}
+
+export interface SkillActivationReceiptListRequest {
+  auth: AuthContext;
+  id?: string;
+  scope?: SkillScope;
+}
+
+export interface SkillActivationReceiptListResult {
+  status: "ok";
+  receipts: readonly SkillActivationReceipt[];
+}
+
+export interface SkillActivationReceiptGetRequest {
+  auth: AuthContext;
+  activationId: string;
+}
+
+export type SkillActivationReceiptGetResult =
+  | { status: "found"; receipt: SkillActivationReceipt }
+  | { status: "not-found" }
+  | { status: "failed"; reason: "denied"; message: string };
+
+export interface SkillMutationJournalQuery {
+  operation: SkillMutationOperation;
+  securityContextKey: string;
+  idempotencyKey: string;
+}
+
+export interface SkillMutationJournalWrite extends SkillMutationJournalQuery {
+  timestamp: string;
+  requestFingerprint: string;
+  id: string;
+  scope: SkillScope;
+  result: SkillMutationReceiptResult;
+}
+
+export interface SkillActivationJournalQuery {
+  securityContextKey: string;
+  activationId: string;
+}
+
+export interface SkillActivationJournalWrite {
+  securityContextKey: string;
+  receipt: SkillActivationReceipt;
+}
+
+export interface SkillMutationJournalRecord {
+  kind: "skill-mutation-journal";
+  recordVersion: 1;
+  securityContextKey: string;
+  receipt: SkillMutationReceipt;
+}
+
+export interface SkillActivationJournalRecord {
+  kind: "skill-activation-journal";
+  recordVersion: 1;
+  securityContextKey: string;
+  receipt: SkillActivationReceipt;
+}
+
+export interface SkillLifecycleJournal {
+  readMutation(query: SkillMutationJournalQuery): SkillMutationReceipt | undefined;
+  writeMutation(input: SkillMutationJournalWrite): SkillMutationReceipt;
+  readActivation(query: SkillActivationJournalQuery): SkillActivationReceipt | undefined;
+  listActivations(securityContextKey: string): readonly SkillActivationReceipt[];
+  writeActivation(input: SkillActivationJournalWrite): void;
 }
 
 export interface SkillActivateRequest {
@@ -444,6 +551,15 @@ export interface WritableManagedSkillRegistry extends ManagedSkillRegistry {
   pin(request: SkillPinRequest): Promise<SkillMutationResult>;
   recordUsage(request: SkillRecordUsageRequest): Promise<SkillMutationResult>;
   activate(request: SkillActivateRequest): Promise<SkillActivateResult>;
+  getMutationReceipt(
+    request: SkillMutationReceiptRequest
+  ): Promise<SkillMutationReceiptReadResult>;
+  getActivationReceipt(
+    request: SkillActivationReceiptGetRequest
+  ): Promise<SkillActivationReceiptGetResult>;
+  listActivationReceipts(
+    request: SkillActivationReceiptListRequest
+  ): Promise<SkillActivationReceiptListResult>;
 }
 
 export interface FilesystemManagedSkillRegistryOptions {
@@ -451,6 +567,7 @@ export interface FilesystemManagedSkillRegistryOptions {
   freshnessProbe?: SkillFreshnessProbe;
   now?: () => string;
   promotionApprovalProvider?: ApprovalProvider;
+  lifecycleJournal?: SkillLifecycleJournal;
 }
 
 export type { ContextContributor };

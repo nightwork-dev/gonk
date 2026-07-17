@@ -37,9 +37,11 @@ import { stringify as stringifyYaml } from "yaml";
 
 import { parseSkillDocument, type FrontmatterRecord } from "./frontmatter.ts";
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
+import { FilesystemSkillLifecycleJournal } from "./journal.ts";
 import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
 import {
   skillActivateResultSchema,
+  skillCreateRequestSchema,
   skillGetRequestSchema,
   skillGetResultSchema,
   skillListRequestSchema,
@@ -59,6 +61,10 @@ import type {
   SkillFreshnessResult,
   SkillActivateRequest,
   SkillActivateResult,
+  SkillActivationReceiptGetRequest,
+  SkillActivationReceiptGetResult,
+  SkillActivationReceiptListRequest,
+  SkillActivationReceiptListResult,
   SkillActivationContributorOptions,
   SkillActivationReceipt,
   SkillArchiveRequest,
@@ -71,6 +77,10 @@ import type {
   SkillLifecycle,
   SkillMutationFailureReason,
   SkillMutationResult,
+  SkillMutationOperation,
+  SkillMutationReceipt,
+  SkillMutationReceiptReadResult,
+  SkillMutationReceiptRequest,
   SkillPatchRequest,
   SkillPinRequest,
   SkillProvenance,
@@ -100,15 +110,6 @@ const STAGING_DIR = ".staging";
 const ARCHIVE_DIR = ".archive";
 const READ_CAPABILITIES = Object.freeze(["read"] as const);
 
-type SkillMutationOperation =
-  | "create"
-  | "patch"
-  | "archive"
-  | "restore"
-  | "promote"
-  | "pin"
-  | "record-usage";
-
 // ToolRegistry deliberately type-erases heterogeneous definitions at registration.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySkillToolDefinition = ToolDefinition<any, any>;
@@ -126,7 +127,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
   private readonly freshnessProbe: FilesystemManagedSkillRegistryOptions["freshnessProbe"];
   private readonly now: () => string;
   private readonly promotionApprovalProvider: FilesystemManagedSkillRegistryOptions["promotionApprovalProvider"];
-  private readonly idempotency = new Map<string, { fingerprint: string; result: unknown }>();
+  private readonly lifecycleJournal: NonNullable<FilesystemManagedSkillRegistryOptions["lifecycleJournal"]>;
 
   constructor(options: FilesystemManagedSkillRegistryOptions) {
     this.env = Object.freeze({
@@ -141,6 +142,8 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     this.freshnessProbe = options.freshnessProbe;
     this.now = options.now ?? (() => new Date().toISOString());
     this.promotionApprovalProvider = options.promotionApprovalProvider;
+    this.lifecycleJournal =
+      options.lifecycleJournal ?? new FilesystemSkillLifecycleJournal(this.env);
   }
 
   async list(request: SkillListRequest = {}): Promise<SkillListResult> {
@@ -284,6 +287,9 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const auth = captureMutationAuth(request.auth);
     const denied = await authorizeSkill(auth, "skill.manage", request.id, request.scope, request);
     if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    if (!isValidSync(skillCreateRequestSchema, request)) {
+      return mutationFailed(request.id, "invalid", "Invalid skill create request");
+    }
     const replay = this.replay<SkillMutationResult>(
       "create",
       auth,
@@ -339,7 +345,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       request.scope,
       request.staged === true ? "staged" : "active"
     );
-    return this.remember("create", auth, request.idempotencyKey, request, result);
+    return this.remember("create", auth, request.idempotencyKey, request, request.scope, result);
   }
 
   async patch(request: SkillPatchRequest): Promise<SkillMutationResult> {
@@ -377,7 +383,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         writeFileSync(join(temp, MANIFEST), renderSkillManifest(request.id, metadata, body, {}), "utf8");
         applyFileMutations(temp, request.writeFiles, request.removeFiles);
       });
-      return this.remember("patch", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
+      return this.remember("patch", auth, request.idempotencyKey, request, scope, await this.mutationDetail(request.id, scope, "active"));
     }
     const target = join(skillDir, path);
     if (!isInside(skillDir, target) || !existsSync(target)) {
@@ -391,7 +397,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       writeFileSync(join(temp, path), current.split(request.find).join(request.replace), "utf8");
       applyFileMutations(temp, request.writeFiles, request.removeFiles);
     });
-    return this.remember("patch", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
+    return this.remember("patch", auth, request.idempotencyKey, request, scope, await this.mutationDetail(request.id, scope, "active"));
   }
 
   async archive(request: SkillArchiveRequest): Promise<SkillArchiveResult> {
@@ -425,7 +431,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     mkdirSync(dirname(dest), { recursive: true });
     cpSync(source, dest, { recursive: true });
     rmSync(source, { recursive: true, force: true });
-    return this.remember("archive", auth, request.idempotencyKey, request, { status: "ok", id: request.id, scope, archiveId, archivedAt });
+    return this.remember("archive", auth, request.idempotencyKey, request, scope, { status: "ok", id: request.id, scope, archiveId, archivedAt });
   }
 
   async restore(request: SkillRestoreRequest): Promise<SkillRestoreResult> {
@@ -471,7 +477,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     } finally {
       rmSync(temp, { recursive: true, force: true });
     }
-    return this.remember("restore", auth, request.idempotencyKey, request, {
+    return this.remember("restore", auth, request.idempotencyKey, request, chosen.scope, {
       status: "ok",
       id: request.id,
       scope: chosen.scope,
@@ -520,7 +526,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         "utf8"
       );
     }
-    return this.remember("promote", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, staged.scope, "active"));
+    return this.remember("promote", auth, request.idempotencyKey, request, staged.scope, await this.mutationDetail(request.id, staged.scope, "active"));
   }
 
   async pin(request: SkillPinRequest): Promise<SkillMutationResult> {
@@ -537,7 +543,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       () => idempotencyConflict(request.id)
     );
     if (replay) return replay;
-    return this.remember("pin", auth, request.idempotencyKey, request, await this.rewriteOperationalMetadata(auth, request.id, scope, { pinned: request.pinned }, request));
+    return this.remember("pin", auth, request.idempotencyKey, request, scope, await this.rewriteOperationalMetadata(auth, request.id, scope, { pinned: request.pinned }, request));
   }
 
   async recordUsage(request: SkillRecordUsageRequest): Promise<SkillMutationResult> {
@@ -556,7 +562,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (replay) return replay;
     const found = await this.get({ id: request.id, scope });
     if (found.status !== "found") return mutationFailed(request.id, "not-found", "Skill not found");
-    return this.remember("record-usage", auth, request.idempotencyKey, request, await this.rewriteOperationalMetadata(
+    return this.remember("record-usage", auth, request.idempotencyKey, request, scope, await this.rewriteOperationalMetadata(
       auth,
       request.id,
       scope,
@@ -568,6 +574,74 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     ));
   }
 
+  async getMutationReceipt(
+    request: SkillMutationReceiptRequest
+  ): Promise<SkillMutationReceiptReadResult> {
+    const auth = captureMutationAuth(request.auth);
+    const receipt = this.lifecycleJournal.readMutation({
+      operation: request.operation,
+      securityContextKey: securityContextKey({ principal: auth.principal }),
+      idempotencyKey: request.idempotencyKey,
+    });
+    if (!receipt) return { status: "not-found" };
+    const denied = await authorizeSkill(
+      auth,
+      "skill.manage",
+      receipt.id,
+      receipt.scope,
+      request
+    );
+    if (denied) {
+      return { status: "failed", reason: "denied", message: denied.reason };
+    }
+    return { status: "found", receipt };
+  }
+
+  async getActivationReceipt(
+    request: SkillActivationReceiptGetRequest
+  ): Promise<SkillActivationReceiptGetResult> {
+    const auth = captureMutationAuth(request.auth);
+    const receipt = this.lifecycleJournal.readActivation({
+      securityContextKey: securityContextKey({ principal: auth.principal }),
+      activationId: request.activationId,
+    });
+    if (!receipt) return { status: "not-found" };
+    const denied = await authorizeSkill(
+      auth,
+      "skill.activate",
+      receipt.id,
+      receipt.scope,
+      request
+    );
+    if (denied) {
+      return { status: "failed", reason: "denied", message: denied.reason };
+    }
+    return { status: "found", receipt };
+  }
+
+  async listActivationReceipts(
+    request: SkillActivationReceiptListRequest
+  ): Promise<SkillActivationReceiptListResult> {
+    const auth = captureMutationAuth(request.auth);
+    const receipts = this.lifecycleJournal.listActivations(
+      securityContextKey({ principal: auth.principal })
+    );
+    const authorized: SkillActivationReceipt[] = [];
+    for (const receipt of receipts) {
+      if (request.id !== undefined && receipt.id !== request.id) continue;
+      if (request.scope !== undefined && receipt.scope !== request.scope) continue;
+      const denied = await authorizeSkill(
+        auth,
+        "skill.activate",
+        receipt.id,
+        receipt.scope,
+        request
+      );
+      if (!denied) authorized.push(receipt);
+    }
+    return { status: "ok", receipts: authorized };
+  }
+
   async activate(request: SkillActivateRequest): Promise<SkillActivateResult> {
     const auth = captureMutationAuth(request.auth);
     const found = await this.get({ id: request.id, ...(request.scope === undefined ? {} : { scope: request.scope }) });
@@ -577,18 +651,52 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (found.skill.requirements?.tools && found.skill.requirements.tools.length > 0) {
       return { status: "missing-requirements", id: request.id, missing: found.skill.requirements.tools, message: "Skill has unresolved tool requirements" };
     }
-    await this.rewriteOperationalMetadata(auth, request.id, found.skill.scope, { lastUsedAt: this.now(), useCount: (found.skill.useCount ?? 0) + 1 }, { expectedRevision: found.skill.revision });
+    const timestamp = this.now();
+    const usage = await this.rewriteOperationalMetadata(
+      auth,
+      request.id,
+      found.skill.scope,
+      { lastUsedAt: timestamp, useCount: (found.skill.useCount ?? 0) + 1 },
+      { expectedRevision: found.skill.revision },
+      "skill.activate"
+    );
+    if (usage.status === "failed") {
+      return {
+        status: "failed",
+        id: request.id,
+        reason: usage.reason,
+        message: usage.message,
+      };
+    }
     const receipt: SkillActivationReceipt = {
       kind: "skill-activation",
       receiptVersion: 1,
-      activationId: request.requestId ?? `${request.id}:${found.skill.revision}:${this.now()}`,
-      timestamp: this.now(),
+      activationId: skillActivationId(
+        request.requestId ?? timestamp,
+        request.id,
+        found.skill.scope,
+        usage.revision
+      ),
+      timestamp,
       id: request.id,
       scope: found.skill.scope,
-      revision: found.skill.revision,
-      resourceKey: skillResourceKey(request.id, found.skill.scope, found.skill.revision),
+      revision: usage.revision,
+      resourceKey: skillResourceKey(request.id, found.skill.scope, usage.revision),
       principal: { id: auth.principal.id, kind: auth.principal.kind },
     };
+    try {
+      this.lifecycleJournal.writeActivation({
+        securityContextKey: securityContextKey({ principal: auth.principal }),
+        receipt,
+      });
+    } catch {
+      return {
+        status: "failed",
+        id: request.id,
+        reason: "invalid",
+        message: "Activation receipt could not be persisted",
+      };
+    }
     return {
       status: "ready",
       receipt,
@@ -613,21 +721,32 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     conflict: () => T
   ): T | undefined {
     const fingerprint = stableFingerprint(request);
-    const previous = this.idempotency.get(idempotencyNamespace(operation, auth, key));
+    const previous = this.lifecycleJournal.readMutation({
+      operation,
+      securityContextKey: securityContextKey({ principal: auth.principal }),
+      idempotencyKey: key,
+    });
     if (!previous) return undefined;
-    if (previous.fingerprint === fingerprint) return previous.result as T;
+    if (previous.requestFingerprint === fingerprint) return previous.result as T;
     return conflict();
   }
 
-  private remember<T>(
+  private remember<T extends SkillMutationReceipt["result"]>(
     operation: SkillMutationOperation,
     auth: AuthContext,
     key: string,
     request: unknown,
+    scope: SkillScope,
     result: T
   ): T {
-    this.idempotency.set(idempotencyNamespace(operation, auth, key), {
-      fingerprint: stableFingerprint(request),
+    this.lifecycleJournal.writeMutation({
+      operation,
+      securityContextKey: securityContextKey({ principal: auth.principal }),
+      idempotencyKey: key,
+      timestamp: this.now(),
+      requestFingerprint: stableFingerprint(request),
+      id: result.id,
+      scope,
       result,
     });
     return result;
@@ -718,14 +837,15 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     id: string,
     scope: SkillScope,
     patch: Partial<Pick<ManagedSkillSummary, "pinned" | "lastUsedAt" | "useCount">>,
-    originalRequest: { expectedRevision: string }
+    originalRequest: { expectedRevision: string },
+    action: AuthzAction = "skill.manage"
   ): Promise<SkillMutationResult> {
     const auth = captureMutationAuth(authInput);
     const found = await this.get({ id, scope });
     if (found.status !== "found") return mutationFailed(id, "not-found", "Skill not found");
     const conflict = revisionConflict(id, originalRequest.expectedRevision, found.skill.revision, [MANIFEST]);
     if (conflict) return conflict;
-    const denied = await authorizeSkill(auth, "skill.manage", id, scope, { id, scope, ...patch });
+    const denied = await authorizeSkill(auth, action, id, scope, { id, scope, ...patch });
     if (denied) return mutationFailed(id, "denied", denied.reason);
     this.atomicRewriteSkillDir(this.skillDir(scope, id), (temp) => {
       writeFileSync(
@@ -1060,6 +1180,8 @@ function renderSkillManifest(
     name?: string;
     version?: string;
     author?: string;
+    tags?: readonly string[];
+    provenance?: SkillProvenance;
     pinned?: boolean;
     agentCreated?: boolean;
     useCount?: number;
@@ -1075,6 +1197,10 @@ function renderSkillManifest(
     description: metadata.description,
     ...(metadata.version === undefined ? {} : { version: metadata.version }),
     ...(metadata.author === undefined ? {} : { author: metadata.author }),
+    ...(metadata.tags === undefined ? {} : { tags: metadata.tags }),
+    ...(metadata.provenance === undefined
+      ? {}
+      : { provenance: renderProvenance(metadata.provenance) }),
     ...(options.createdAt === undefined ? {} : { created_at: options.createdAt }),
     updated_at: options.updatedAt ?? metadata.updatedAt,
     ...(metadata.pinned === undefined ? {} : { pinned: metadata.pinned }),
@@ -1098,6 +1224,8 @@ function metadataFromDetail(
   name?: string;
   version?: string;
   author?: string;
+  tags?: readonly string[];
+  provenance?: SkillProvenance;
   pinned?: boolean;
   agentCreated?: boolean;
   useCount?: number;
@@ -1109,6 +1237,8 @@ function metadataFromDetail(
     ...(skill.name === undefined ? {} : { name: skill.name }),
     ...(skill.version === undefined ? {} : { version: skill.version }),
     ...(skill.author === undefined ? {} : { author: skill.author }),
+    ...(skill.tags === undefined ? {} : { tags: skill.tags }),
+    ...(skill.provenance === undefined ? {} : { provenance: skill.provenance }),
     ...(skill.pinned === undefined ? {} : { pinned: skill.pinned }),
     ...(skill.agentCreated === undefined ? {} : { agentCreated: skill.agentCreated }),
     ...(skill.useCount === undefined ? {} : { useCount: skill.useCount }),
@@ -1155,6 +1285,19 @@ function skillResourceKey(id: string, scope: SkillScope, revision: string): stri
   return `gonk:skill:${scope}:${id}:${revision}`;
 }
 
+function skillActivationId(
+  requestId: string,
+  id: string,
+  scope: SkillScope,
+  revision: string
+): string {
+  const hash = createHash("sha256");
+  for (const part of ["skill-activation-v1", requestId, id, scope, revision]) {
+    updateLengthPrefixed(hash, Buffer.from(part, "utf8"));
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
 function applyFileMutations(
   skillDir: string,
   writeFiles: readonly { path: string; content: string }[] | undefined,
@@ -1189,14 +1332,6 @@ function writeFileAtomic(path: string, content: string): void {
   }
 }
 
-function idempotencyNamespace(
-  operation: SkillMutationOperation,
-  auth: AuthContext,
-  key: string
-): string {
-  return `${operation}:${securityContextKey({ principal: auth.principal })}:${key}`;
-}
-
 function idempotencyConflict(id: string): SkillMutationResult {
   return mutationFailed(
     id,
@@ -1206,7 +1341,11 @@ function idempotencyConflict(id: string): SkillMutationResult {
 }
 
 function stableFingerprint(value: unknown): string {
-  return JSON.stringify(redactAuth(value), Object.keys(flattenKeys(value)).sort());
+  const canonical = JSON.stringify(
+    redactAuth(value),
+    Object.keys(flattenKeys(value)).sort()
+  );
+  return hashBytes(Buffer.from(canonical, "utf8"));
 }
 
 function flattenKeys(value: unknown, out: Record<string, true> = {}): Record<string, true> {
@@ -1260,7 +1399,7 @@ export function createSkillActivationContributor(
         .find((entry) => entry.resourceKey === request.candidate.resourceKey);
       if (!receipt) return null;
       const read = await options.registry.read({ id: receipt.id, scope: receipt.scope });
-      if (read.status !== "found") return null;
+      if (read.status !== "found" || read.skillRevision !== receipt.revision) return null;
       return {
         candidateId: request.candidate.candidateId,
         contributorId,
@@ -1608,6 +1747,7 @@ function readDefinition(
     description: metadata.description,
     ...(metadata.version === undefined ? {} : { version: metadata.version }),
     ...(metadata.author === undefined ? {} : { author: metadata.author }),
+    ...(metadata.tags === undefined ? {} : { tags: metadata.tags }),
     origin: { kind: "gonk-managed" },
     scope,
     lifecycle: "active",
@@ -1646,6 +1786,7 @@ interface ParsedMetadata {
   description: string;
   version?: string;
   author?: string;
+  tags?: readonly string[];
   pinned?: boolean;
   agentCreated?: boolean;
   useCount?: number;
@@ -1680,6 +1821,7 @@ function parseMetadata(
   }
   const requirements = parseRequirements(frontmatter);
   const provenance = parseProvenance(frontmatter.provenance);
+  const tags = optionalStringArray(frontmatter.tags, "tags");
   return {
     id,
     ...(frontmatter.name === undefined
@@ -1692,6 +1834,7 @@ function parseMetadata(
     ...(frontmatter.author === undefined
       ? {}
       : { author: requiredString(frontmatter.author, "author") }),
+    ...(tags === undefined ? {} : { tags }),
     ...(frontmatter.pinned === undefined
       ? {}
       : { pinned: optionalBoolean(frontmatter.pinned, "pinned")! }),
@@ -1759,12 +1902,8 @@ function parseProvenance(value: unknown): SkillProvenance | undefined {
   if (!isFrontmatterRecord(value)) {
     throw new TypeError("provenance must be a mapping");
   }
-  const rawAnchors = optionalStringArray(value.anchors, "provenance.anchors");
-  if (!rawAnchors || rawAnchors.length === 0) return undefined;
-  const anchors: SkillProvenanceAnchor[] = rawAnchors.map((anchor) => ({
-    kind: looksLikeFileAnchor(anchor) ? "file" : "symbol",
-    value: anchor,
-  }));
+  const anchors = parseProvenanceAnchors(value.anchors);
+  if (anchors.length === 0) return undefined;
   return {
     ...(value.repo === undefined
       ? {}
@@ -1784,6 +1923,45 @@ function parseProvenance(value: unknown): SkillProvenance | undefined {
           ),
         }),
     anchors,
+  };
+}
+
+function parseProvenanceAnchors(value: unknown): readonly SkillProvenanceAnchor[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new TypeError("provenance.anchors must be a non-empty array");
+  }
+  return Object.freeze(
+    value.map((anchor): SkillProvenanceAnchor => {
+      if (typeof anchor === "string" && anchor.trim().length > 0) {
+        return {
+          kind: looksLikeFileAnchor(anchor) ? "file" as const : "symbol" as const,
+          value: anchor,
+        };
+      }
+      if (
+        isFrontmatterRecord(anchor) &&
+        (anchor.kind === "file" || anchor.kind === "symbol")
+      ) {
+        return {
+          kind: anchor.kind,
+          value: requiredString(anchor.value, "provenance.anchors.value"),
+        };
+      }
+      throw new TypeError("provenance.anchors entries must be strings or typed anchors");
+    })
+  );
+}
+
+function renderProvenance(provenance: SkillProvenance): Record<string, unknown> {
+  return {
+    ...(provenance.repositoryId === undefined ? {} : { repo: provenance.repositoryId }),
+    ...(provenance.packageId === undefined ? {} : { package: provenance.packageId }),
+    ...(provenance.version === undefined ? {} : { version: provenance.version }),
+    ...(provenance.pinnedAt === undefined ? {} : { pinned_at: provenance.pinnedAt }),
+    anchors: provenance.anchors.map((anchor) => ({
+      kind: anchor.kind,
+      value: anchor.value,
+    })),
   };
 }
 

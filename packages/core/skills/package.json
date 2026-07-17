@@ -29,6 +29,7 @@
     "@gonk/auth": "workspace:*",
     "@gonk/context": "workspace:*",
     "@gonk/scope": "workspace:*",
+    "@gonk/store": "workspace:*",
     "@gonk/tool-registry": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "yaml": "catalog:"

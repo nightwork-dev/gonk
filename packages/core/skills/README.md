@@ -38,12 +38,15 @@ returns that real winner and every definition in order; `get({ scope })`
 inspects an exact definition and labels the others neutrally.
 
 Mutations live on the separate `WritableManagedSkillRegistry` contract. Create
-can write active skills or structurally invisible staged skills. Patch supports
+can write active skills or structurally invisible staged skills while preserving
+typed tags and provenance. Patch supports
 body find/replace plus supporting-file writes/removals and compares
 `expectedRevision`; patch, pin, usage, and archive return structured conflicts
-with the current revision and affected paths. `idempotencyKey` is replayed by an
-in-process ledger namespaced by operation and the canonical auth security context;
-authorization is rechecked before every replay. Pinned skills reject edits and
+with the current revision and affected paths. `idempotencyKey` is replayed from a
+restart-durable lifecycle journal namespaced by operation, canonical auth security
+context, and a hashed request fingerprint; authorization is rechecked before every
+replay. `getMutationReceipt()` makes the durable result observable without exposing
+it across principals. Pinned skills reject edits and
 archive until an authorized `pin({ pinned: false })` explicitly unpins them.
 
 Staged promotion is never implicit. `promote()` requires normal Gonk
@@ -51,9 +54,11 @@ authorization and an injected `@gonk/tool-registry` approval provider; without
 that provider, or when approval is required/denied, the staged directory is left
 untouched.
 
-Activation is model-visible only through `@gonk/context`. `activate()` returns a
-readiness result and compiler candidate; `createSkillActivationContributor()`
-projects activation receipts as required model-context candidates. Tool
+Activation is model-visible only through `@gonk/context`. `activate()` returns
+`ready` only after its usage metadata update and activation receipt are durable.
+`getActivationReceipt()` and `listActivationReceipts()` recover security-bound
+receipts after restart; `createSkillActivationContributor()` projects recovered
+receipts as required model-context candidates. Tool
 projection is distinct (`read`, `attach`, `activate`, `test`).
 `createSkillToolDefinitions()` binds real `skill-read` and `skill-activate`
 handlers to a writable registry; it emits `skill-attach` or `skill-test` only
@@ -70,6 +75,17 @@ Read APIs remain a discovery/read substrate, not an authorization boundary.
 Applications and host adapters must authorize list visibility, detail and
 definition disclosure, and body/supporting-file reads before exposing results to
 a principal. Writable APIs take canonical `AuthContext` and fail closed.
+
+Lifecycle records use `@gonk/store` at
+`<tier-home>/.agents/store/skills.lifecycle/kv.json` (or the pre-existing legacy
+`.gonk/store/skills.lifecycle/kv.json` selected by scope). Records use closed
+schemas and atomic KV writes; raw auth contexts, policy functions, request bodies,
+and idempotency keys are not stored. The journal inherits `@gonk/store`'s
+single-writer-per-namespace assumption. To roll back or clear receipt history,
+stop writers, back up, then remove only the `skills.lifecycle` namespace
+directory in the affected tiers. Managed skill directories remain untouched; the
+tradeoff is that old mutation calls can no longer replay and old activation
+receipts cannot be recovered.
 
 Future stores can import the runner-neutral
 `managedSkillRegistryConformanceCases()` from `@gonk/skills/conformance` and

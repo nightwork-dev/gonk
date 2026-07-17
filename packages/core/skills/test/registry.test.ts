@@ -7,7 +7,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 
 import type { AuthContext } from "@gonk/auth";
@@ -25,13 +25,19 @@ import {
   FilesystemManagedSkillRegistry,
   projectSkillTools,
   skillActivateResultSchema,
+  skillActivationJournalRecordSchema,
+  skillActivationReceiptSchema,
+  skillCreateRequestSchema,
   skillFreshnessResultSchema,
   skillGetRequestSchema,
   skillListResultSchema,
   skillMutationResultSchema,
+  skillMutationJournalRecordSchema,
+  skillMutationReceiptSchema,
   skillResolveRequestSchema,
   skillToolProjectionSchema,
   type SkillArchiveRequest,
+  type SkillActivationReceipt,
   type SkillPatchRequest,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
@@ -67,6 +73,21 @@ describe("closed Standard Schema contracts", () => {
     expect(
       valid(skillFreshnessResultSchema, { status: "fresh", checkedAt: "2026-07-16" })
     ).toBe(false);
+    const create = {
+      auth: authContext(),
+      idempotencyKey: "create-schema",
+      id: "created",
+      scope: "project",
+      description: "created",
+      body: "created body",
+      tags: ["workflow", "review"],
+      provenance: {
+        repositoryId: "nightwork-dev/gonk",
+        anchors: [{ kind: "symbol", value: "ManagedSkillRegistry" }],
+      },
+    };
+    expect(valid(skillCreateRequestSchema, create)).toBe(true);
+    expect(valid(skillCreateRequestSchema, { ...create, extra: true })).toBe(false);
   });
 
   it("rejects leaked fields at nested and result boundaries", async () => {
@@ -117,11 +138,37 @@ describe("authorized filesystem mutations", () => {
       scope: "project",
       description: "live skill",
       body: "live body",
+      tags: ["workflow", "review"],
+      provenance: {
+        repositoryId: "nightwork-dev/gonk",
+        packageId: "@gonk/skills",
+        version: "0.3.0",
+        pinnedAt: "2026-07-16",
+        anchors: [
+          { kind: "symbol", value: "WritableManagedSkillRegistry" },
+          { kind: "file", value: "packages/core/skills/src/types.ts" },
+        ],
+      },
       files: [{ path: "refs/a.md", content: "A" }],
     });
     expect(active.status).toBe("ok");
     expect(valid(skillMutationResultSchema, active)).toBe(true);
     expect((await harness.registry.read({ id: "live", path: "refs/a.md" })).status).toBe("found");
+    const created = await harness.registry.get({ id: "live" });
+    expect(created.status).toBe("found");
+    if (created.status !== "found") throw new Error("expected created skill");
+    expect(created.skill.tags).toEqual(["workflow", "review"]);
+    expect(created.skill.provenance).toEqual({
+      repositoryId: "nightwork-dev/gonk",
+      packageId: "@gonk/skills",
+      version: "0.3.0",
+      pinnedAt: "2026-07-16",
+      anchors: [
+        { kind: "symbol", value: "WritableManagedSkillRegistry" },
+        { kind: "file", value: "packages/core/skills/src/types.ts" },
+      ],
+    });
+    expect(valid(managedSkillDetailSchema, created.skill)).toBe(true);
 
     const staged = await harness.registry.create({
       auth: authContext(),
@@ -236,6 +283,103 @@ describe("authorized filesystem mutations", () => {
     const archived = await harness.registry.archive(archiveRequest);
     expect(archived.status).toBe("ok");
     expect(await harness.registry.archive(archiveRequest)).toEqual(archived);
+  });
+
+  it("recovers authorized mutation replay and receipts after process restart", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "durable-replay", body: "old body" });
+    const request: SkillPatchRequest = {
+      auth: authContext("allow", "agent:durable"),
+      idempotencyKey: "durable-secret-key",
+      expectedRevision: await revisionOf(harness, "durable-replay"),
+      id: "durable-replay",
+      find: "old",
+      replace: "new",
+    };
+    const first = await harness.registry.patch(request);
+    expect(first.status).toBe("ok");
+
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    expect(await restarted.patch(request)).toEqual(first);
+
+    const recovered = await restarted.getMutationReceipt({
+      auth: authContext("allow", "agent:durable"),
+      operation: "patch",
+      idempotencyKey: request.idempotencyKey,
+    });
+    expect(recovered.status).toBe("found");
+    if (recovered.status !== "found") throw new Error("expected mutation receipt");
+    expect(recovered.receipt.result).toEqual(first);
+    expect(valid(skillMutationReceiptSchema, recovered.receipt)).toBe(true);
+    expect(recovered.receipt.requestFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    expect(
+      await restarted.getMutationReceipt({
+        auth: authContext("allow", "agent:other"),
+        operation: "patch",
+        idempotencyKey: request.idempotencyKey,
+      })
+    ).toEqual({ status: "not-found" });
+    expect(
+      await restarted.getMutationReceipt({
+        auth: authContext("deny", "agent:durable"),
+        operation: "patch",
+        idempotencyKey: request.idempotencyKey,
+      })
+    ).toMatchObject({ status: "failed", reason: "denied" });
+    expect(
+      await restarted.patch({
+        ...request,
+        auth: authContext("allow", "agent:other"),
+      })
+    ).toMatchObject({ status: "failed", reason: "conflict" });
+
+    const journalPath = join(
+      harness.home("project"),
+      ".agents",
+      "store",
+      "skills.lifecycle",
+      "kv.json"
+    );
+    const raw = readFileSync(journalPath, "utf8");
+    expect(raw).not.toContain(request.idempotencyKey);
+    expect(raw).not.toContain("authorize");
+    const persisted = JSON.parse(raw) as Record<string, { value?: unknown }>;
+    const record = Object.values(persisted)
+      .map((entry) => entry.value)
+      .find(
+        (value) =>
+          value !== null &&
+          typeof value === "object" &&
+          (value as { kind?: unknown }).kind === "skill-mutation-journal"
+      );
+    expect(valid(skillMutationJournalRecordSchema, record)).toBe(true);
+    expect(
+      valid(skillMutationJournalRecordSchema, {
+        ...(record as Record<string, unknown>),
+        extra: true,
+      })
+    ).toBe(false);
+    expect(readdirSync(dirname(journalPath)).some((name) => name.includes(".tmp"))).toBe(false);
+
+    const persistedEntry = Object.entries(persisted).find(
+      ([, entry]) => entry.value === record
+    );
+    if (!persistedEntry) throw new Error("expected persisted mutation entry");
+    persisted[persistedEntry[0]] = {
+      value: { ...(record as Record<string, unknown>), extra: true },
+    };
+    writeFileSync(journalPath, JSON.stringify(persisted), "utf8");
+    const recoveredFromCorruptJournal = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+    });
+    expect(
+      await recoveredFromCorruptJournal.getMutationReceipt({
+        auth: authContext("allow", "agent:durable"),
+        operation: "patch",
+        idempotencyKey: request.idempotencyKey,
+      })
+    ).toEqual({ status: "not-found" });
   });
 
   it("rejects pinned edits and archives even when untyped callers pass allowPinned", async () => {
@@ -415,6 +559,144 @@ describe("authorized filesystem mutations", () => {
     expect(resolved?.content.trim()).toBe("ready body");
   });
 
+  it("recovers multiple same-request activation receipts and resolves them after restart", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "restart-one", body: "one body" });
+    await harness.seed({ scope: "project", id: "restart-two", body: "two body" });
+    const auth = authContext("allow", "agent:activation-restart");
+    const first = await harness.registry.activate({
+      auth,
+      id: "restart-one",
+      requestId: "compiler-request",
+      trigger: "manual",
+      reason: "restart test",
+    });
+    const second = await harness.registry.activate({
+      auth,
+      id: "restart-two",
+      requestId: "compiler-request",
+      trigger: "manual",
+      reason: "restart test",
+    });
+    expect(first.status).toBe("ready");
+    expect(second.status).toBe("ready");
+    if (first.status !== "ready" || second.status !== "ready") {
+      throw new Error("expected ready activations");
+    }
+    expect(first.receipt.activationId).not.toBe(second.receipt.activationId);
+    expect(valid(skillActivationReceiptSchema, first.receipt)).toBe(true);
+    expect(valid(skillActivationReceiptSchema, second.receipt)).toBe(true);
+
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const listed = await restarted.listActivationReceipts({ auth });
+    expect(listed.receipts).toHaveLength(2);
+    expect(new Set(listed.receipts.map(({ id }) => id))).toEqual(
+      new Set(["restart-one", "restart-two"])
+    );
+    expect(
+      await restarted.getActivationReceipt({
+        auth,
+        activationId: first.receipt.activationId,
+      })
+    ).toEqual({ status: "found", receipt: first.receipt });
+    expect(
+      await restarted.listActivationReceipts({
+        auth: authContext("allow", "agent:other"),
+      })
+    ).toEqual({ status: "ok", receipts: [] });
+    expect(
+      await restarted.getActivationReceipt({
+        auth: authContext("allow", "agent:other"),
+        activationId: first.receipt.activationId,
+      })
+    ).toEqual({ status: "not-found" });
+
+    const contributor = createSkillActivationContributor({
+      registry: restarted,
+      activations: () => listed.receipts,
+    });
+    const candidates = await contributor.discover({
+      requestId: "restarted-context",
+      audience: "model",
+      principal: auth.principal,
+    });
+    expect(candidates).toHaveLength(2);
+    const contents = new Set<string>();
+    for (const candidate of candidates) {
+      const resolved = await contributor.resolve({
+        requestId: "restarted-context",
+        audience: "model",
+        principal: auth.principal,
+        candidate,
+      });
+      if (resolved) contents.add(resolved.content.trim());
+    }
+    expect(contents).toEqual(new Set(["one body", "two body"]));
+
+    const journalPath = join(
+      harness.home("project"),
+      ".agents",
+      "store",
+      "skills.lifecycle",
+      "kv.json"
+    );
+    const persisted = JSON.parse(readFileSync(journalPath, "utf8")) as Record<
+      string,
+      { value?: unknown }
+    >;
+    const activationRecords = Object.values(persisted)
+      .map((entry) => entry.value)
+      .filter(
+        (value) =>
+          value !== null &&
+          typeof value === "object" &&
+          (value as { kind?: unknown }).kind === "skill-activation-journal"
+      );
+    expect(activationRecords).toHaveLength(2);
+    expect(
+      activationRecords.every((record) =>
+        valid(skillActivationJournalRecordSchema, record)
+      )
+    ).toBe(true);
+  });
+
+  it("does not return ready or persist a receipt when activation usage is denied", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "usage-denied", body: "body" });
+    const base = authContext("allow", "agent:usage-denied");
+    let activationChecks = 0;
+    const auth: AuthContext = {
+      principal: base.principal,
+      authorize: async (request) => {
+        if (request.action === "skill.activate") {
+          activationChecks += 1;
+          if (activationChecks === 2) {
+            return { outcome: "deny", reason: "usage write denied" };
+          }
+        }
+        return { outcome: "allow", reason: "test allow" };
+      },
+    };
+    const result = await harness.registry.activate({
+      auth,
+      id: "usage-denied",
+      requestId: "usage-denied-request",
+      trigger: "manual",
+      reason: "test",
+    });
+    expect(result).toMatchObject({
+      status: "failed",
+      reason: "denied",
+      message: "usage write denied",
+    });
+    const skill = await harness.registry.get({ id: "usage-denied" });
+    expect(skill.status === "found" ? skill.skill.useCount : undefined).toBeUndefined();
+    expect(await harness.registry.listActivationReceipts({ auth })).toEqual({
+      status: "ok",
+      receipts: [],
+    });
+  });
+
   it("projects distinct operations and registers only executable tool definitions", async () => {
     const harness = make();
     await harness.seed({ scope: "project", id: "tool-ready", body: "tool body" });
@@ -468,7 +750,10 @@ describe("authorized filesystem mutations", () => {
     );
     expect(activate).toMatchObject({
       ok: true,
-      data: { status: "ready", receipt: { activationId: "tool-activation" } },
+      data: {
+        status: "ready",
+        receipt: { activationId: expect.stringMatching(/^sha256:[0-9a-f]{64}$/) },
+      },
     });
   });
 
