@@ -29,8 +29,8 @@ The foundation primitives, each its own package, plus an authoring layer on top 
   result with a content-free receipt.
 - **Authorized retrieval** — [`@gonk/retrieval`](packages/core/retrieval).
   In-process native/coordinated sources, immutable lexical index generations,
-  authorization-before-ranking, authoritative content resolution, stable
-  citations, and redacted domain receipts. See
+  Core-owned or source-conformant authorization-before-ranking, authoritative
+  content resolution, stable citations, and redacted domain receipts. See
   [docs/retrieval-design.md](docs/retrieval-design.md).
 - **Managed skills** — [`@gonk/skills`](packages/core/skills). Canonical read contracts and a filesystem registry over the five scope tiers, with deterministic shadowing, hidden staging/archive stores, strict path handling, typed provenance/freshness, stable revisions, and a reusable conformance suite.
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.

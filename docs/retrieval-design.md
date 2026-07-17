@@ -10,9 +10,10 @@ Roadmap: GR-75
 
 Gonk Core owns a separate retrieval package over `@gonk/auth` and
 `@gonk/store`. It registers in-process sources, publishes immutable coordinated
-index generations, searches only the authorized corpus, resolves content
-through a final authoritative gate, creates stable citations, and emits
-content-free retrieval-domain receipts.
+index generations, searches a Core-authorized coordinated corpus or a
+source-enforced authorized native corpus, resolves content through a final
+authoritative gate, creates stable citations, and emits content-free
+retrieval-domain receipts.
 
 Retrieval does not import `@gonk/context`. Search and citation are useful on
 their own; a later adapter may turn authorized retrieval results into context
@@ -21,8 +22,12 @@ candidates without merging the two policy boundaries.
 ## Source modes
 
 - `native-index`: the source owns an authenticated index and returns untrusted
-  metadata candidates. Core validates identity and authority, then applies the
-  hit gate independently.
+  metadata candidates. Its description must declare
+  `rankingContract: "source-enforced-authorized-corpus"`. The source must apply
+  authorization before its own corpus statistics/ranking and pass the native
+  conformance suite; Core cannot reconstruct or prove those source-owned
+  statistics. Core still validates every returned candidate and applies the hit
+  gate independently.
 - `coordinated-index`: the source provides an authenticated scan and
   source-owned typed filtering. Core owns immutable generations, tombstones,
   authorization-before-statistics, and deterministic BM25 ranking.
@@ -36,12 +41,21 @@ registration trust boundary.
 ```text
 captured AuthContext
   -> retrieval.source.discover
-  -> source-owned typed filter validation
-  -> authenticated source scan/search
+  -> validate selected source + source-owned filter schema
+  -> coordinated generation read
   -> validate canonical ref + tenant/workspace confinement
   -> retrieval.hit.read
+  -> source filter predicate over authorized documents only
   -> authorized-corpus statistics and lexical ranking
   -> metadata-only hit
+
+captured AuthContext
+  -> retrieval.source.discover
+  -> validate selected source + source-owned filter schema
+  -> native source authorizes its corpus, filters, and ranks
+  -> Core validates returned refs + tenant/workspace confinement
+  -> Core independently repeats retrieval.hit.read
+  -> metadata-only hit with Core-normalized query terms
 
 metadata-only ref
   -> source resolve against current authoritative state
@@ -51,10 +65,13 @@ metadata-only ref
 ```
 
 Discovery-denied sources are absent from source lists, searches, and receipts.
-Hit denials are also silent: denied candidates cannot affect visible corpus
-statistics, scores, order, counts, or drop receipts. Search does not call
-content resolution. Adapter output is untrusted even when the adapter received
-the authenticated request.
+Hit denials are also silent. In coordinated mode, Core guarantees that denied
+candidates never reach source filter callbacks or affect visible corpus
+statistics, scores, order, counts, or drop receipts. In native mode, score
+noninterference is the source's declared, conformance-tested obligation rather
+than a property Core can prove after receiving source-produced scores. Search
+does not call content resolution. Adapter output remains untrusted even when
+the adapter received the authenticated request.
 
 ## Identity and schemas
 
@@ -86,15 +103,18 @@ leave the previous pointer authoritative.
 
 ## Lexical baseline
 
-Phase 0 tokenizes deterministically and computes BM25 over documents that have
-already passed structured filters, tenant/workspace confinement, and
-`retrieval.hit.read`. Scores expose a closed lexical component with source ID,
-source priority, and final score. Stable resource identity is the final
-tie-breaker.
+Phase 0 tokenizes deterministically and computes coordinated BM25 over documents
+that have already passed tenant/workspace confinement, `retrieval.hit.read`, and
+then the source-owned structured filter. Scores expose a closed lexical
+component with source ID, source priority, and final score. Stable resource
+identity is the final tie-breaker.
 
 Native source scores are source-produced and labelled `native`; Core does not
 pretend it can reconstruct native corpus statistics without owning that index.
-It still validates and authorizes every returned candidate.
+The required `source-enforced-authorized-corpus` marker and native conformance
+suite make that trust obligation explicit. Native candidates do not provide
+matched terms; Core derives the public `matchedTerms` deterministically from the
+normalized query. Core still validates and authorizes every returned candidate.
 
 ## Citations and receipts
 

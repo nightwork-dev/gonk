@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  nativeAuthorizedRankingConformanceCases,
   retrievalConformanceCases,
   retrievalConformanceDocuments,
 } from "../src/conformance.ts";
@@ -8,6 +9,7 @@ import {
 describe("runner-neutral conformance export", () => {
   it("contains executable cases and stable fixtures without a test-runner dependency", () => {
     expect(retrievalConformanceCases().length).toBeGreaterThan(0);
+    expect(nativeAuthorizedRankingConformanceCases().length).toBeGreaterThan(0);
     expect(retrievalConformanceDocuments.alpha.resource.id).toBe("alpha");
   });
 });

@@ -5,11 +5,13 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalResourceKey,
+  nativeRetrievalCandidateSchema,
   RetrievalEngine,
   RetrievalIndexCoordinator,
   RetrievalSourceRegistry,
   retrievalSearchRequestSchema,
   retrievalSearchResultSchema,
+  retrievalSourceDescriptionSchema,
   type CoordinatedRetrievalSource,
   type NativeRetrievalCandidate,
   type NativeRetrievalSearchRequest,
@@ -21,7 +23,9 @@ import {
   type SourceResolutionResult,
 } from "../src/index.ts";
 import {
+  nativeAuthorizedRankingConformanceCases,
   retrievalConformanceCases,
+  type NativeAuthorizedRankingConformanceHarness,
   type RetrievalConformanceHarness,
 } from "../src/conformance.ts";
 import { MemoryStoreBackend } from "./memory-backend.ts";
@@ -33,6 +37,12 @@ describe("retrieval conformance", () => {
     it(testCase.name, async () => {
       const fixture = makeFixture("conformance");
       await testCase.run(conformanceHarness(fixture));
+    });
+  }
+
+  for (const testCase of nativeAuthorizedRankingConformanceCases()) {
+    it(testCase.name, async () => {
+      await testCase.run(nativeConformanceHarness());
     });
   }
 });
@@ -233,6 +243,54 @@ describe("closed filters and ranking", () => {
     ).rejects.toThrow("Invalid retrieval filter");
   });
 
+  it("authorizes the coordinated corpus before invoking source filters", async () => {
+    const fixture = makeFixture();
+    const visible = document("source", "visible", "r1", "lantern", "keep");
+    const denied = document("source", "denied", "r1", "lantern lantern", "keep");
+    fixture.policy.deniedHits.add(canonicalResourceKey(denied.resource));
+    fixture.source.throwFilterIds.add("denied");
+    fixture.source.replace([visible]);
+    await fixture.coordinator.index(indexRequest("baseline-index", fixture.auth, "source"));
+    const baseline = await fixture.engine.search({
+      ...searchRequest("stable-filter", fixture.auth, "lantern"),
+      filters: [filter("source", { tag: "keep" })],
+    });
+
+    fixture.source.replace([visible, denied]);
+    await fixture.coordinator.index(indexRequest("hidden-index", fixture.auth, "source"));
+    const withDenied = await fixture.engine.search({
+      ...searchRequest("stable-filter", fixture.auth, "lantern"),
+      filters: [filter("source", { tag: "keep" })],
+    });
+
+    expect(normalizeGenerationIds(withDenied)).toEqual(
+      normalizeGenerationIds(baseline)
+    );
+    expect(withDenied.receipt.drops).toEqual([]);
+  });
+
+  it("rejects filters for unregistered and unselected sources before search", async () => {
+    const fixture = makeFixture();
+    await expect(
+      fixture.engine.search({
+        ...searchRequest("typo", fixture.auth, "lantern"),
+        filters: [filter("soruce", { tag: "keep" })],
+      })
+    ).rejects.toThrow("Unregistered retrieval filter source: soruce");
+
+    const other = new TestCoordinatedSource("other");
+    fixture.registry.register(other);
+    await expect(
+      fixture.engine.search({
+        ...searchRequest("unselected", fixture.auth, "lantern"),
+        sourceIds: ["source"],
+        filters: [filter("other", { tag: "keep" })],
+      })
+    ).rejects.toThrow("Unselected retrieval filter source: other");
+    expect(fixture.source.filterCalls).toBe(0);
+    expect(other.filterCalls).toBe(0);
+  });
+
   it("rejects unknown query fields and open query modes", () => {
     expect(valid(retrievalSearchRequestSchema, searchRequest("ok", auth(), "query"))).toBe(true);
     expect(
@@ -245,6 +303,19 @@ describe("closed filters and ranking", () => {
       valid(retrievalSearchRequestSchema, {
         ...searchRequest("bad", auth(), "query"),
         arbitrary: true,
+      })
+    ).toBe(false);
+  });
+
+  it("requires the native authorized-corpus marker and rejects adapter terms", () => {
+    const native = new TestNativeSource("native");
+    expect(valid(retrievalSourceDescriptionSchema, native.description)).toBe(true);
+    const { rankingContract: _rankingContract, ...unmarked } = native.description;
+    expect(valid(retrievalSourceDescriptionSchema, unmarked)).toBe(false);
+    expect(
+      valid(nativeRetrievalCandidateSchema, {
+        ...candidate(ref("native", "visible", "r1"), 1),
+        matchedTerms: ["adapter-controlled"],
       })
     ).toBe(false);
   });
@@ -291,7 +362,21 @@ describe("source modes and revision capabilities", () => {
     });
     expect(result.hits.map(({ resource }) => resource.id)).toEqual(["visible"]);
     expect(result.hits[0]?.scores.lexical.algorithm).toBe("native");
+    expect(result.hits[0]?.matchedTerms).toEqual(["lantern"]);
     expect(result.receipt.drops).toEqual([]);
+  });
+
+  it("derives native matched terms from the normalized query", async () => {
+    const fixture = makeFixture();
+    const native = new TestNativeSource("native");
+    native.candidates = [candidate(ref("native", "visible", "r1"), 5)];
+    fixture.registry.register(native);
+
+    const result = await fixture.engine.search({
+      ...searchRequest("native-terms", fixture.auth, " LANTERN alpha lantern "),
+      sourceIds: ["native"],
+    });
+    expect(result.hits[0]?.matchedTerms).toEqual(["alpha", "lantern"]);
   });
 
   it("distinguishes current-only change from historical resolution", async () => {
@@ -369,14 +454,57 @@ function conformanceHarness(
   };
 }
 
+function nativeConformanceHarness(): NativeAuthorizedRankingConformanceHarness {
+  const registry = new RetrievalSourceRegistry();
+  const source = new ConformantNativeSource("conformance");
+  registry.register(source);
+  const storage: RetrievalGenerationStorage = {
+    generations: new BackedKvStore(new MemoryStoreBackend()),
+    pointers: new BackedKvStore(new MemoryStoreBackend()),
+    citations: new BackedKvStore(new MemoryStoreBackend()),
+  };
+  const policy = new Policy();
+  const context = auth(policy);
+  const coordinator = new RetrievalIndexCoordinator({
+    registry,
+    storage,
+    clock: { now: () => NOW },
+  });
+  const engine = new RetrievalEngine({
+    registry,
+    coordinator,
+    storage,
+    clock: { now: () => NOW },
+  });
+  return {
+    replaceDocuments: (documents) => source.replace(documents),
+    denyHit: (id, denied) =>
+      toggle(
+        policy.deniedHits,
+        canonicalResourceKey(ref("conformance", id, "r1")),
+        denied
+      ),
+    search: (requestId, text) =>
+      engine.search({
+        ...searchRequest(requestId, context, text),
+        sourceIds: ["conformance"],
+      }),
+  };
+}
+
 class TestCoordinatedSource implements CoordinatedRetrievalSource<TagFilter> {
-  readonly description: RetrievalSourceDescription & { mode: "coordinated-index" };
+  readonly description: Extract<
+    RetrievalSourceDescription,
+    { mode: "coordinated-index" }
+  >;
   readonly filterSchema = tagFilterSchema;
   private documents: RetrievalDocument[] = [];
   private readonly history = new Map<string, string>();
   readonly scanContexts: Array<{ tenantId?: string; workspaceId?: string; frozen: boolean }> = [];
   resolveCalls = 0;
+  filterCalls = 0;
   reverseScan = false;
+  readonly throwFilterIds = new Set<string>();
 
   constructor(
     id: string,
@@ -413,6 +541,10 @@ class TestCoordinatedSource implements CoordinatedRetrievalSource<TagFilter> {
   }
 
   matchesFilter(document: RetrievalDocument, filterValue: TagFilter): boolean {
+    this.filterCalls += 1;
+    if (this.throwFilterIds.has(document.resource.id)) {
+      throw new Error("filter must not observe denied document");
+    }
     return document.facets?.some(
       (facet) => facet.name === "tag" && facet.value === filterValue.tag
     ) ?? false;
@@ -432,7 +564,10 @@ class TestCoordinatedSource implements CoordinatedRetrievalSource<TagFilter> {
 }
 
 class TestNativeSource implements NativeRetrievalSource<TagFilter> {
-  readonly description: RetrievalSourceDescription & { mode: "native-index" };
+  readonly description: Extract<
+    RetrievalSourceDescription,
+    { mode: "native-index" }
+  >;
   readonly filterSchema = tagFilterSchema;
   candidates: NativeRetrievalCandidate[] = [];
 
@@ -441,6 +576,7 @@ class TestNativeSource implements NativeRetrievalSource<TagFilter> {
       id,
       label: `Source ${id}`,
       mode: "native-index",
+      rankingContract: "source-enforced-authorized-corpus",
       revisionResolution: "current-only",
       resourceKinds: ["document"],
       filter: { schemaId: "test-tag-filter", schemaVersion: 1 },
@@ -454,6 +590,83 @@ class TestNativeSource implements NativeRetrievalSource<TagFilter> {
 
   resolve(resource: RetrievalResourceRef): SourceResolutionResult {
     return resolved(resource, `native content ${resource.id}`);
+  }
+}
+
+class ConformantNativeSource implements NativeRetrievalSource<TagFilter> {
+  readonly description: Extract<
+    RetrievalSourceDescription,
+    { mode: "native-index" }
+  >;
+  readonly filterSchema = tagFilterSchema;
+  private documents: RetrievalDocument[] = [];
+
+  constructor(id: string) {
+    this.description = {
+      id,
+      label: `Source ${id}`,
+      mode: "native-index",
+      rankingContract: "source-enforced-authorized-corpus",
+      revisionResolution: "current-only",
+      resourceKinds: ["document"],
+      filter: { schemaId: "test-tag-filter", schemaVersion: 1 },
+      priority: 0,
+    };
+  }
+
+  replace(documents: readonly RetrievalDocument[]): void {
+    this.documents = structuredClone([...documents]);
+  }
+
+  async search(
+    request: NativeRetrievalSearchRequest<TagFilter>,
+    context: AuthContext
+  ): Promise<readonly NativeRetrievalCandidate[]> {
+    const authorized: RetrievalDocument[] = [];
+    for (const value of this.documents) {
+      const decision = await context.authorize({
+        action: "retrieval.hit.read",
+        resource: {
+          kind: "retrieval-resource",
+          target: canonicalResourceKey(value.resource),
+          scope: "resource",
+          ...(value.tenantId === undefined ? {} : { tenantId: value.tenantId }),
+          ...(value.workspaceId === undefined
+            ? {}
+            : { workspaceId: value.workspaceId }),
+          metadata: {
+            sourceId: value.resource.sourceId,
+            resourceKind: value.resource.kind,
+            revision: value.resource.revision,
+            audience: value.audience,
+          },
+        },
+      });
+      if (decision.outcome === "allow") authorized.push(value);
+    }
+    const normalizedQuery = request.text.toLocaleLowerCase("en-US");
+    return authorized
+      .filter(({ searchText }) =>
+        searchText.toLocaleLowerCase("en-US").includes(normalizedQuery)
+      )
+      .map((value) => ({
+        resource: value.resource,
+        audience: value.audience,
+        ...(value.tenantId === undefined ? {} : { tenantId: value.tenantId }),
+        ...(value.workspaceId === undefined
+          ? {}
+          : { workspaceId: value.workspaceId }),
+        lexicalScore: 1 / authorized.length,
+      }));
+  }
+
+  resolve(resource: RetrievalResourceRef): SourceResolutionResult {
+    const current = this.documents.find(({ resource: value }) =>
+      canonicalResourceKey(value) === canonicalResourceKey(resource)
+    );
+    return current === undefined
+      ? { status: "deleted", resource }
+      : resolved(resource, current.searchText);
   }
 }
 
@@ -582,7 +795,19 @@ function candidate(resource: RetrievalResourceRef, lexicalScore: number): Native
     tenantId: "tenant-1",
     workspaceId: "workspace-1",
     lexicalScore,
-    matchedTerms: ["lantern"],
+  };
+}
+
+function normalizeGenerationIds(result: import("../src/index.ts").RetrievalSearchResult) {
+  return {
+    ...result,
+    hits: result.hits.map(({ generationId: _generationId, ...hit }) => hit),
+    receipt: {
+      ...result.receipt,
+      sources: result.receipt.sources.map(
+        ({ generationId: _generationId, ...source }) => source
+      ),
+    },
   };
 }
 

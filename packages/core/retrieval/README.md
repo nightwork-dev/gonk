@@ -4,10 +4,10 @@ Authorized source discovery, deterministic lexical retrieval, authoritative
 content resolution, and stable citations for Gonk hosts.
 
 `@gonk/retrieval` supports two source modes. A `native-index` source owns its
-index and returns authenticated metadata candidates. A `coordinated-index`
-source supplies an authenticated scan while Gonk publishes immutable index
-generations and performs deterministic BM25 ranking. Both modes pass through
-the same discovery, hit, and content authorization gates.
+index and declares that it ranks only its source-authorized corpus. A
+`coordinated-index` source supplies an authenticated scan while Gonk publishes
+immutable index generations and performs deterministic BM25 ranking. Core
+applies the same discovery, returned-hit, and content gates to both modes.
 
 Phase 0 is an in-process library. It does not import `@gonk/context`, create
 embeddings, register remote sources, or provide Sigil-specific adapters.
@@ -70,8 +70,10 @@ const resolved = await retrieval.resolve({
 
 Sources own their filter value type and Standard Schema. A search filter carries
 the source ID plus the schema ID and version; Core validates the value through
-the registered schema before filtering or corpus statistics. There is no open
-filter bag or predicate callback at the public boundary.
+the registered schema. Every filter must name a registered, selected source.
+For coordinated indexes, Core authorizes documents before invoking the source
+filter callback, and filters before corpus statistics. There is no open filter
+bag or predicate callback at the public boundary.
 
 ## Authorization boundary
 
@@ -79,14 +81,33 @@ Every operation captures the canonical `AuthContext` before asynchronous work.
 Core then applies three gates:
 
 1. `retrieval.source.discover` before a source is listed or searched;
-2. `retrieval.hit.read` before a candidate can affect BM25 statistics, scores,
-   ordering, visible counts, or receipts;
+2. `retrieval.hit.read` before a coordinated candidate can reach source filters
+   or affect BM25 statistics, scores, ordering, visible counts, or receipts;
 3. `retrieval.content.resolve` against freshly resolved authoritative metadata
    before any label, excerpt, or content is returned.
 
 Denied sources and hits are silent. They do not appear as denial counts in
 retrieval receipts. Native adapter output and coordinated scan output are
 validated and independently confined to the authenticated tenant/workspace.
+
+### Native-index trust contract
+
+A native source description must include:
+
+```ts
+{
+  mode: "native-index",
+  rankingContract: "source-enforced-authorized-corpus",
+}
+```
+
+The native source receives the captured `AuthContext` and must exclude denied
+documents before its own filtering, corpus statistics, normalization, and
+ranking. Core cannot infer that property from a returned numeric score, so it is
+a trusted adapter obligation enforced by the runner-neutral
+`nativeAuthorizedRankingConformanceCases()` suite. Core independently validates
+and authorizes returned candidates. Native candidates do not submit matched
+terms; public `matchedTerms` are derived from the normalized query inside Core.
 
 ## Immutable generations
 
@@ -120,7 +141,8 @@ opaque only where the registered source schema owns them.
 
 `@gonk/retrieval/conformance` exports runner-neutral fixtures and cases for
 metadata-only hits, denied-hit ranking isolation, tombstone publication, and
-authoritative final-gate denial. Source implementations can run these cases
+authoritative final-gate denial. It also exports the mandatory native
+authorized-corpus ranking case. Source implementations can run these cases
 without depending on Vitest.
 
 ## Release train

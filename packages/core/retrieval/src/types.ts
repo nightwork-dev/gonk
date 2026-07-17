@@ -37,15 +37,23 @@ export interface RetrievalFilterDefinition {
   schemaVersion: number;
 }
 
-export interface RetrievalSourceDescription {
+interface RetrievalSourceDescriptionBase {
   id: string;
   label: string;
-  mode: RetrievalSourceMode;
   revisionResolution: RevisionResolution;
   resourceKinds: readonly string[];
   filter: RetrievalFilterDefinition;
   priority: number;
 }
+
+export type RetrievalSourceDescription = RetrievalSourceDescriptionBase &
+  (
+    | {
+        mode: "native-index";
+        rankingContract: "source-enforced-authorized-corpus";
+      }
+    | { mode: "coordinated-index" }
+  );
 
 export interface RetrievalSourceFilter<Filter = unknown> {
   sourceId: string;
@@ -94,8 +102,8 @@ export interface NativeRetrievalCandidate {
   audience: RetrievalAudience;
   tenantId?: string;
   workspaceId?: string;
+  /** Score computed by the source after enforcing its authorized-corpus contract. */
   lexicalScore: number;
-  matchedTerms: readonly string[];
 }
 
 export interface NativeRetrievalSearchRequest<Filter = unknown> {
@@ -137,7 +145,12 @@ interface RetrievalSourceBase<Filter> {
 
 export interface NativeRetrievalSource<Filter = unknown>
   extends RetrievalSourceBase<Filter> {
-  readonly description: RetrievalSourceDescription & { mode: "native-index" };
+  /**
+   * Declares that search excludes unauthorized documents before filtering,
+   * corpus statistics, normalization, and ranking. Implementations must pass
+   * `nativeAuthorizedRankingConformanceCases()`.
+   */
+  readonly description: Extract<RetrievalSourceDescription, { mode: "native-index" }>;
   search(
     request: NativeRetrievalSearchRequest<Filter>,
     auth: AuthContext
@@ -148,9 +161,10 @@ export interface NativeRetrievalSource<Filter = unknown>
 
 export interface CoordinatedRetrievalSource<Filter = unknown>
   extends RetrievalSourceBase<Filter> {
-  readonly description: RetrievalSourceDescription & {
-    mode: "coordinated-index";
-  };
+  readonly description: Extract<
+    RetrievalSourceDescription,
+    { mode: "coordinated-index" }
+  >;
   scan(
     request: RetrievalScanRequest,
     auth: AuthContext

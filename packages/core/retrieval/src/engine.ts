@@ -16,6 +16,7 @@ import {
 import {
   compareRetrievalHits,
   rankAuthorizedDocuments,
+  tokenizeRetrievalText,
 } from "./ranking.ts";
 import { RetrievalSourceRegistry } from "./registry.ts";
 import {
@@ -86,9 +87,19 @@ export class RetrievalEngine {
       "RetrievalSearchRequest"
     );
     const auth = captureAuthContext(valid.auth);
-    const selected = new Set(valid.sourceIds ?? this.options.registry.registered().map(
-      ({ description }) => description.id
-    ));
+    const registered = this.options.registry.registered();
+    const registeredIds = new Set(registered.map(({ description }) => description.id));
+    const selected = new Set(
+      valid.sourceIds ?? registered.map(({ description }) => description.id)
+    );
+    for (const filter of valid.filters ?? []) {
+      if (!registeredIds.has(filter.sourceId)) {
+        throw new TypeError(`Unregistered retrieval filter source: ${filter.sourceId}`);
+      }
+      if (!selected.has(filter.sourceId)) {
+        throw new TypeError(`Unselected retrieval filter source: ${filter.sourceId}`);
+      }
+    }
     const filters = new Map(
       (valid.filters ?? []).map((filter) => [filter.sourceId, filter] as const)
     );
@@ -96,7 +107,7 @@ export class RetrievalEngine {
     const receiptSources: RetrievalReceiptSource[] = [];
     const drops = new Map<RetrievalReceiptDrop["reason"], number>();
 
-    for (const source of this.options.registry.registered()) {
+    for (const source of registered) {
       if (!selected.has(source.description.id)) continue;
       if (!(await this.options.registry.canDiscover(source, auth))) continue;
       let filter: unknown;
@@ -116,20 +127,8 @@ export class RetrievalEngine {
           ...(generation === undefined ? {} : { generationId: generation.generationId }),
         });
         if (!generation) continue;
-        let filtered: readonly RetrievalDocument[];
-        try {
-          filtered =
-            filter === undefined
-              ? generation.documents
-              : generation.documents.filter((document) =>
-                  source.matchesFilter(document, filter)
-                );
-        } catch {
-          increment(drops, "source-failed");
-          continue;
-        }
         const authorized: RetrievalDocument[] = [];
-        for (const document of filtered) {
+        for (const document of generation.documents) {
           if (!authorityMatches(auth.principal, document)) {
             continue;
           }
@@ -143,11 +142,23 @@ export class RetrievalEngine {
             authorized.push(document);
           }
         }
+        let filtered: readonly RetrievalDocument[];
+        try {
+          filtered =
+            filter === undefined
+              ? authorized
+              : authorized.filter((document) =>
+                  source.matchesFilter(document, filter)
+                );
+        } catch {
+          increment(drops, "source-failed");
+          continue;
+        }
         hits.push(
           ...rankAuthorizedDocuments(
             source.description,
             generation.generationId,
-            authorized,
+            filtered,
             valid.text
           )
         );
@@ -330,6 +341,9 @@ export class RetrievalEngine {
     hits: RetrievalHit[],
     drops: Map<RetrievalReceiptDrop["reason"], number>
   ): Promise<void> {
+    const normalizedQueryTerms = [
+      ...new Set(tokenizeRetrievalText(request.text)),
+    ].sort();
     let candidates: readonly NativeRetrievalCandidate[];
     try {
       candidates = await source.search(
@@ -389,7 +403,7 @@ export class RetrievalEngine {
           sourcePriority: source.description.priority,
           final: validCandidate.lexicalScore + source.description.priority,
         },
-        matchedTerms: [...validCandidate.matchedTerms],
+        matchedTerms: normalizedQueryTerms,
       });
     }
   }

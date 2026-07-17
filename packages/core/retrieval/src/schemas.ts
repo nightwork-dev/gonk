@@ -199,19 +199,24 @@ function isRetrievalFragmentRef(value: unknown): value is RetrievalFragmentRef {
 function isRetrievalSourceDescription(
   value: unknown
 ): value is RetrievalSourceDescription {
+  if (!isRecord(value)) return false;
+  const allowedKeys = [
+    "id",
+    "label",
+    "mode",
+    "revisionResolution",
+    "resourceKinds",
+    "filter",
+    "priority",
+    ...(value.mode === "native-index" ? ["rankingContract"] : []),
+  ];
   return (
-    isExactRecord(value, [
-      "id",
-      "label",
-      "mode",
-      "revisionResolution",
-      "resourceKinds",
-      "filter",
-      "priority",
-    ]) &&
+    isExactRecord(value, allowedKeys) &&
     isNonEmptyString(value.id) &&
     isNonEmptyString(value.label) &&
     (value.mode === "native-index" || value.mode === "coordinated-index") &&
+    (value.mode !== "native-index" ||
+      value.rankingContract === "source-enforced-authorized-corpus") &&
     (value.revisionResolution === "current-only" ||
       value.revisionResolution === "historical") &&
     isUniqueNonEmptyStringArray(value.resourceKinds) &&
@@ -285,15 +290,13 @@ function isNativeRetrievalCandidate(
       "tenantId",
       "workspaceId",
       "lexicalScore",
-      "matchedTerms",
     ]) &&
     isRetrievalResourceRef(value.resource) &&
     isAudience(value.audience) &&
     isOptionalNonEmptyString(value.tenantId) &&
     isOptionalNonEmptyString(value.workspaceId) &&
     isFiniteNumber(value.lexicalScore) &&
-    value.lexicalScore >= 0 &&
-    isUniqueStringArray(value.matchedTerms)
+    value.lexicalScore >= 0
   );
 }
 

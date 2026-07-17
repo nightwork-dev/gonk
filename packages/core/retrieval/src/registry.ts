@@ -95,9 +95,10 @@ function snapshotSource<Filter>(
       throw new TypeError(`Retrieval source ${description.id} does not implement native search`);
     }
     return Object.freeze({
-      description: stableDescription as RetrievalSourceDescription & {
-        mode: "native-index";
-      },
+      description: stableDescription as Extract<
+        RetrievalSourceDescription,
+        { mode: "native-index" }
+      >,
       filterSchema: source.filterSchema,
       search: source.search.bind(source),
       resolve: source.resolve.bind(source),
@@ -110,9 +111,10 @@ function snapshotSource<Filter>(
     throw new TypeError(`Retrieval source ${description.id} does not implement coordinated scan`);
   }
   return Object.freeze({
-    description: stableDescription as RetrievalSourceDescription & {
-      mode: "coordinated-index";
-    },
+    description: stableDescription as Extract<
+      RetrievalSourceDescription,
+      { mode: "coordinated-index" }
+    >,
     filterSchema: source.filterSchema,
     scan: source.scan.bind(source),
     matchesFilter: source.matchesFilter.bind(source),

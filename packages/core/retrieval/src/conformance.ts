@@ -25,6 +25,55 @@ export interface RetrievalConformanceCase {
   run(harness: RetrievalConformanceHarness): Promise<void>;
 }
 
+export interface NativeAuthorizedRankingConformanceHarness {
+  replaceDocuments(documents: readonly RetrievalDocument[]): void;
+  denyHit(id: string, denied: boolean): void;
+  search(requestId: string, text: string): Promise<RetrievalSearchResult>;
+}
+
+export interface NativeAuthorizedRankingConformanceCase {
+  name: string;
+  run(harness: NativeAuthorizedRankingConformanceHarness): Promise<void>;
+}
+
+/**
+ * Native-index sources own their ranking corpus. Core cannot reconstruct it, so
+ * adapters claiming `source-enforced-authorized-corpus` must pass this suite.
+ */
+export function nativeAuthorizedRankingConformanceCases(): readonly NativeAuthorizedRankingConformanceCase[] {
+  return [
+    {
+      name: "native ranking excludes denied documents before score calculation",
+      async run(harness) {
+        harness.denyHit("hidden", true);
+        harness.replaceDocuments([
+          retrievalConformanceDocuments.alpha,
+          retrievalConformanceDocuments.beta,
+        ]);
+        const baseline = await harness.search("native-score-isolation", "lantern");
+        harness.replaceDocuments([
+          retrievalConformanceDocuments.alpha,
+          retrievalConformanceDocuments.beta,
+          retrievalConformanceDocuments.hidden,
+        ]);
+        const withHidden = await harness.search(
+          "native-score-isolation",
+          "lantern"
+        );
+        assert(
+          JSON.stringify(projectHits(baseline)) === JSON.stringify(projectHits(withHidden)),
+          "native source ranked over a denied document"
+        );
+        assert(
+          JSON.stringify(baseline.receipt.drops) ===
+            JSON.stringify(withHidden.receipt.drops),
+          "native denied document changed caller-visible counts"
+        );
+      },
+    },
+  ];
+}
+
 export function retrievalConformanceCases(): readonly RetrievalConformanceCase[] {
   return [
     {
