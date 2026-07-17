@@ -8,6 +8,7 @@ export default defineConfig({
     errors: "src/errors.ts",
     metrics: "src/metrics.ts",
     shape: "src/shape.ts",
+    "json-schema": "src/json-schema.ts",
     approval: "src/approval.ts",
     outcome: "src/outcome.ts",
     security: "src/security.ts",

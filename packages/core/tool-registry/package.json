@@ -27,6 +27,10 @@
       "types": "./dist/shape.d.ts",
       "import": "./dist/shape.js"
     },
+    "./json-schema": {
+      "types": "./dist/json-schema.d.ts",
+      "import": "./dist/json-schema.js"
+    },
     "./approval": {
       "types": "./dist/approval.d.ts",
       "import": "./dist/approval.js"

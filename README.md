@@ -43,6 +43,11 @@ The foundation primitives, each its own package, plus an authoring layer on top 
 
 `@gonk/tool-orchestrator` sits on top of the registry for semantic selection (`find_tools`, `load_tool`, …) when a host carries more tools than it wants visible at once.
 
+The fastest authoring path is in [Tool authoring](docs/tool-authoring.md):
+write a `ToolDefinition` with a Standard Schema input, attach one JSON Schema
+projection to that same schema value for MCP, declare `approval: "read" |
+"write" | "exec"`, and mount the registry through the adapter your host needs.
+
 ## Scope resolution
 
 Every tool you write inherits config resolution for free — no config-file plumbing, no per-host storage code. A read with no tier named walks **most → least specific** and returns the first match; a write always names its tier. The same five tiers resolve identically across CLI, MCP, and Pi.
@@ -67,7 +72,12 @@ scope.resolve("tts.provider");  // → every tier where it is set, most → leas
 
 ## Package reference
 
-New here? The two you'll touch first are **`@gonk/tool-registry`** (define a tool) and **`@gonk/scope`** (read and write its config). The rest layer on as you need them.
+New here? Application scaffolds can import **`@gonk/core`** for the common
+auth + scope + registry surface. Published libraries and host adapters should
+usually import the focused package they actually need, especially
+**`@gonk/tool-registry`** (define a tool) and **`@gonk/scope`** (read and write
+its config). `@gonk/core` is a convenience barrel on the same `0.3.1` train, not
+a separate foundation.
 
 | Package | What it is |
 | --- | --- |

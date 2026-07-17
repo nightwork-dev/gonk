@@ -2,6 +2,55 @@
 
 Core tool definition shape, registry, and dispatch path. Harness-agnostic — the same `ToolDefinition` runs through CLI / MCP / Pi adapters without modification.
 
+## Short path
+
+Use one Standard Schema value for runtime validation and attach the JSON Schema
+projection adapters advertise from that same value.
+
+```ts
+import { ToolRegistry, shape } from "@gonk/tool-registry";
+
+const searchNotesInput = shape<{ query: string; limit?: number }>(
+  (value): value is { query: string; limit?: number } =>
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { query?: unknown }).query === "string",
+  "expected { query: string; limit?: number }",
+  {
+    type: "object",
+    properties: {
+      query: { type: "string", minLength: 1 },
+      limit: { type: "number", minimum: 1, maximum: 20 },
+    },
+    required: ["query"],
+    additionalProperties: false,
+  }
+);
+
+const registry = new ToolRegistry();
+registry.register({
+  name: "notes.search",
+  description: "Search notes visible to the authenticated principal.",
+  input: searchNotesInput,
+  approval: "read",
+  capabilities: { readsFs: true, idempotent: true },
+  hints: { mcp: { annotations: { readOnly: true, idempotent: true } } },
+  handler: async (input, ctx) => {
+    const workspaceId = ctx.auth?.principal.workspaceId;
+    return { data: await searchNotes(workspaceId, input.query, input.limit) };
+  },
+});
+```
+
+Use `withJsonSchema(schema, jsonSchema)` when your schema library already
+implements Standard Schema (Zod, Valibot, ArkType). Use
+`shape(check, message, jsonSchema)` only when a small hand-written guard is
+enough. Avoid maintaining `input` and `inputJsonSchema` as parallel sources
+unless you are intentionally overriding an adapter surface.
+
+See [../../docs/tool-authoring.md](../../docs/tool-authoring.md) for registry
+composition, authenticated writes, and embedded MCP routes.
+
 ## ToolDefinition
 
 ```ts
@@ -12,7 +61,7 @@ interface ToolDefinition<I, O> {
   visibility?: "always" | "on-demand";
   input: StandardSchemaV1<unknown, I>;
   output?: StandardSchemaV1<unknown, O>;
-  inputJsonSchema?: Record<string, unknown>;     // for MCP advertisement / CLI help
+  inputJsonSchema?: Record<string, unknown>;     // adapter override; prefer an annotated input schema
   validateOutput?: "off" | "lax" | "strict";
   handler: (input: I, ctx: ToolContext) => Promise<ToolResult<O>> | AsyncIterable<ToolEvent<O>>;
   capabilities?: { readsFs?, writesFs?, network?, longRunning?, idempotent?, duplex? };
@@ -57,6 +106,7 @@ import { ToolRegistry } from "@gonk/tool-registry/registry";
 import { ToolError } from "@gonk/tool-registry/errors";
 import { inMemorySink, consoleSink } from "@gonk/tool-registry/metrics";
 import { resolveApproval } from "@gonk/tool-registry/approval";
+import { withJsonSchema } from "@gonk/tool-registry/json-schema";
 import { dispatchDetachedWithWait } from "@gonk/tool-registry/async-dispatch";
 import { collectToolOutcome } from "@gonk/tool-registry/outcome";
 import type {

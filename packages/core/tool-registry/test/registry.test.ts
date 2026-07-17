@@ -8,6 +8,9 @@ import {
   ToolRegistry,
   inMemorySink,
   makeBaseContext,
+  resolveInputJsonSchema,
+  shape,
+  withJsonSchema,
   type ToolDefinition,
   type ToolEvent,
 } from "../src/index.ts";
@@ -50,6 +53,54 @@ async function collect(stream: AsyncIterable<ToolEvent>): Promise<ToolEvent[]> {
 }
 
 describe("ToolRegistry", () => {
+  it("keeps runtime validation and advertised JSON Schema on one annotated Standard Schema value", async () => {
+    const inputSchema = shape<{ text: string }>(
+      (value): value is { text: string } =>
+        Boolean(value) &&
+        typeof value === "object" &&
+        typeof (value as { text?: unknown }).text === "string",
+      "expected { text: string }",
+      {
+        type: "object",
+        properties: { text: { type: "string" } },
+        required: ["text"],
+        additionalProperties: false,
+      }
+    );
+    const r = new ToolRegistry();
+    const tool: ToolDefinition<{ text: string }, { echoed: string }> = {
+      name: "echo",
+      description: "echo",
+      input: inputSchema,
+      handler: async (input) => ({ data: { echoed: input.text } }),
+    };
+    r.register(tool);
+
+    expect(resolveInputJsonSchema(tool)).toEqual({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+      additionalProperties: false,
+    });
+    await expect(
+      collect(r.invoke("echo", { wrong: true }, makeBaseContext()))
+    ).resolves.toMatchObject([{ type: "error", code: "INVALID_INPUT" }]);
+  });
+
+  it("lets external Standard Schema libraries attach one JSON Schema projection with withJsonSchema", () => {
+    const schema = withJsonSchema(requireString(), {
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    });
+
+    expect(resolveInputJsonSchema({ input: schema })).toEqual({
+      type: "object",
+      properties: { text: { type: "string" } },
+      required: ["text"],
+    });
+  });
+
   it("invokes a sync tool and emits result", async () => {
     const r = new ToolRegistry();
     const tool: ToolDefinition<{ text: string }, { echoed: string }> = {

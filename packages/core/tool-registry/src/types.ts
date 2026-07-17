@@ -233,10 +233,11 @@ export interface ToolDefinition<I = unknown, O = unknown> {
   input: StandardSchemaV1<unknown, I>;
   output?: StandardSchemaV1<unknown, O>;
 
-  /** Optional raw JSON Schema for the input. Used by adapters that advertise
-   *  tool schemas to the model (MCP) or generate help (CLI). Tool authors using
-   *  typebox can pass the same object as `input` and `inputJsonSchema` since
-   *  typebox values are valid JSON Schemas. */
+  /** Optional raw JSON Schema override for the input. Used by adapters that
+   *  advertise tool schemas to the model (MCP) or generate help (CLI). Prefer
+   *  attaching JSON Schema to the Standard Schema input with
+   *  `withJsonSchema()` or `shape(..., jsonSchema)` so runtime validation and
+   *  advertised schema share one source. */
   inputJsonSchema?: Record<string, unknown>;
 
   /** Output validation policy. Applied only to `result` events / promise returns;

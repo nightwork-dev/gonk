@@ -238,7 +238,32 @@ keeping code target and data target separate in the manifest.
 
 ## Tool input schema
 
-Pulled from `tool.inputJsonSchema` (typebox values are valid JSON Schemas). When absent, the adapter advertises `{ type: "object", additionalProperties: true }`.
+Pulled from `resolveInputJsonSchema(tool)`: an explicit
+`tool.inputJsonSchema` override wins, otherwise the adapter reads the JSON
+Schema annotation attached by `withJsonSchema(schema, jsonSchema)` or
+`shape(check, message, jsonSchema)`. When no projection is present, the adapter
+advertises `{ type: "object", additionalProperties: true }`.
+
+Prefer an annotated Standard Schema input so the runtime validator and MCP
+advertisement stay next to each other:
+
+```ts
+import { shape } from "@gonk/tool-registry";
+
+const input = shape<{ query: string }>(
+  (value): value is { query: string } =>
+    Boolean(value) &&
+    typeof value === "object" &&
+    typeof (value as { query?: unknown }).query === "string",
+  "expected { query: string }",
+  {
+    type: "object",
+    properties: { query: { type: "string", minLength: 1 } },
+    required: ["query"],
+    additionalProperties: false,
+  }
+);
+```
 
 ## Display rendering
 

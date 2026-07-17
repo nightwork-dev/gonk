@@ -4,7 +4,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
-import { ToolRegistry, type ToolDefinition } from "@gonk/tool-registry";
+import { ToolRegistry, shape, type ToolDefinition } from "@gonk/tool-registry";
 import { createOrchestrator } from "@gonk/tool-orchestrator";
 
 import {
@@ -83,6 +83,42 @@ describe("createMcpServer", () => {
     expect(result.tools).toHaveLength(1);
     expect(result.tools[0]?.name).toBe("echo");
     expect(result.tools[0]?.inputSchema.type).toBe("object");
+  });
+
+  it("advertises JSON Schema attached to the Standard Schema input", async () => {
+    const r = new ToolRegistry();
+    r.register({
+      name: "notes.search",
+      description: "search notes",
+      input: shape<{ query: string }>(
+        (value): value is { query: string } =>
+          Boolean(value) &&
+          typeof value === "object" &&
+          typeof (value as { query?: unknown }).query === "string",
+        "expected { query: string }",
+        {
+          type: "object",
+          properties: { query: { type: "string", minLength: 1 } },
+          required: ["query"],
+          additionalProperties: false,
+        }
+      ),
+      handler: async (input) => ({ data: { query: input.query } }),
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+    });
+    const client = await pair(adapter);
+
+    const result = await client.listTools();
+    expect(result.tools[0]?.inputSchema).toEqual({
+      type: "object",
+      properties: { query: { type: "string", minLength: 1 } },
+      required: ["query"],
+      additionalProperties: false,
+    });
   });
 
   it("dispatches callTool through the registry", async () => {
