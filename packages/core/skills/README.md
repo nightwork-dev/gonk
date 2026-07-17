@@ -46,8 +46,11 @@ with the current revision and affected paths. `idempotencyKey` is replayed from 
 restart-durable lifecycle journal namespaced by operation, canonical auth security
 context, and a hashed request fingerprint; authorization is rechecked before every
 replay. `getMutationReceipt()` makes the durable result observable without exposing
-it across principals. Pinned skills reject edits and
-archive until an authorized `pin({ pinned: false })` explicitly unpins them.
+it across principals. Filesystem mutations keep a scope-local pending pre-image
+until the receipt commits; registry construction restores a pending mutation
+without a receipt and discards the pre-image when the receipt exists. Pinned
+skills reject edits and archive until an authorized `pin({ pinned: false })`
+explicitly unpins them.
 
 Staged promotion is never implicit. `promote()` requires normal Gonk
 authorization and an injected `@gonk/tool-registry` approval provider; without
@@ -56,6 +59,8 @@ untouched.
 
 Activation is model-visible only through `@gonk/context`. `activate()` returns
 `ready` only after its usage metadata update and activation receipt are durable.
+The usage rewrite is covered by the same pending pre-image protocol, so receipt
+failure or process interruption cannot leave an unreceipted use count committed.
 `getActivationReceipt()` and `listActivationReceipts()` recover security-bound
 receipts after restart; `createSkillActivationContributor()` projects recovered
 receipts as required model-context candidates. Tool
@@ -81,11 +86,17 @@ Lifecycle records use `@gonk/store` at
 `.gonk/store/skills.lifecycle/kv.json` selected by scope). Records use closed
 schemas and atomic KV writes; raw auth contexts, policy functions, request bodies,
 and idempotency keys are not stored. The journal inherits `@gonk/store`'s
-single-writer-per-namespace assumption. To roll back or clear receipt history,
-stop writers, back up, then remove only the `skills.lifecycle` namespace
-directory in the affected tiers. Managed skill directories remain untouched; the
-tradeoff is that old mutation calls can no longer replay and old activation
-receipts cannot be recovered.
+single-writer-per-namespace assumption. Pending pre-images live in the sibling
+`skills.lifecycle-transactions` namespace with atomic markers containing only
+relative paths and opaque receipt identifiers. A scope lock is held from pending
+snapshot creation through receipt commit and cleanup; live-owner locks prevent a
+second registry from constructing over an in-flight mutation, while dead-owner
+locks are reclaimed on reconstruction. To roll back or clear receipt history,
+stop writers, construct the registry once to reconcile pending transactions,
+verify that namespace has no `.pending-*` directories, back up, then remove only
+the `skills.lifecycle` namespace directory in the affected tiers. Managed skill
+directories remain untouched; the tradeoff is that old mutation calls can no
+longer replay and old activation receipts cannot be recovered.
 
 Future stores can import the runner-neutral
 `managedSkillRegistryConformanceCases()` from `@gonk/skills/conformance` and

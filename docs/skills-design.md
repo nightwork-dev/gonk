@@ -115,6 +115,12 @@ security context, and hashed request fingerprint. Authorization runs before ever
 different effective principal cannot inherit a prior result. Reusing a key with
 a different request returns a structured conflict. `getMutationReceipt()` exposes
 the original security-bound result to its authorized principal after restart.
+Every filesystem mutation keeps a durable scope-local pre-image and atomic pending
+marker until its receipt is committed. Registry construction reconciles those
+markers: a matching receipt commits the filesystem result, while a missing receipt
+restores the pre-image before reads or writes proceed. A live-owner scope lock
+prevents another registry from constructing over an in-flight mutation;
+dead-owner locks are reclaimed during reconstruction.
 Patch, pin, usage, and archive
 also carry `expectedRevision`; stale callers receive the current revision and
 affected paths. Patch can update the manifest body, write supporting files, and
@@ -139,6 +145,9 @@ denied, conflicted, or failed usage update returns a structured non-ready failur
 Only after that write succeeds does Core durably journal an activation receipt and
 return its compiler candidate. Receipt IDs include compiler request, skill, scope,
 and post-usage revision, so one request can activate multiple skills.
+The usage rewrite remains covered by a pending pre-image until the receipt exists;
+receipt failure or process death therefore restores the prior revision and use
+count on reconstruction.
 `getActivationReceipt()` and `listActivationReceipts()` recover the current
 principal's receipts after restart. Model-visible content flows through
 `createSkillActivationContributor()` and the normal `@gonk/context` discovery,
@@ -151,10 +160,14 @@ The filesystem journal is a small implementation of `SkillLifecycleJournal` over
 `.gonk` path), with atomic temp-file-plus-rename writes. It persists security keys,
 opaque receipt IDs, hashed request fingerprints, and results/receipts, never raw
 auth contexts, policy functions, request bodies, or idempotency keys. It inherits
-`@gonk/store`'s single-writer-per-namespace assumption. Rollback is isolated:
-stop writers, back up, and remove the `skills.lifecycle` namespace in the affected
-tiers. Skills remain intact, but prior replays and activation receipt recovery are
-intentionally lost.
+`@gonk/store`'s single-writer-per-namespace assumption. Pending pre-images use the
+sibling `skills.lifecycle-transactions` namespace; their atomic markers contain
+relative scope paths and opaque receipt identifiers, never raw idempotency keys.
+Rollback is isolated: stop writers, construct the registry once to reconcile all
+pending transactions, verify that no `.pending-*` directories remain, then back
+up and remove the `skills.lifecycle` namespace in the affected tiers. Skills
+remain intact, but prior replays and activation receipt recovery are intentionally
+lost.
 
 Tool projection is closed and distinct: `read`, `attach`, `activate`, and
 `test`. `createSkillToolDefinitions()` returns real `@gonk/tool-registry`
@@ -176,7 +189,7 @@ outside Core.
 ## Migration and release
 
 The Phase 0 changeset is minor because it adds a new public Core contract. Under
-the fixed `@gonk/*` release train this is destined for `0.2.0`. The already
+the fixed `@gonk/*` release train this is destined for `0.3.0`. The already
 merged context changeset must likewise be corrected to minor before that train
 is released. GR-74 closes only after extension behavior is migrated and Sigil
 consumes the Core package; landing this package alone is not completion.
@@ -184,4 +197,4 @@ consumes the Core package; landing this package alone is not completion.
 The Changesets peer-dependent option only escalates peers when their declared
 range is actually left. `@gonk/tool-registry` now declares its optional scope
 peer as compatible across pre-1 Core minors, preventing that in-range peer from
-turning the fixed train's intended `0.2.0` minor into a spurious `1.0.0` major.
+turning the fixed train's intended `0.3.0` minor into a spurious `1.0.0` major.

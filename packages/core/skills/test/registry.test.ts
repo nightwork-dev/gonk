@@ -1,9 +1,11 @@
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   renameSync,
+  rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -21,6 +23,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   createSkillActivationContributor,
   createSkillToolDefinitions,
+  FilesystemSkillLifecycleJournal,
   managedSkillDetailSchema,
   FilesystemManagedSkillRegistry,
   projectSkillTools,
@@ -38,6 +41,7 @@ import {
   skillToolProjectionSchema,
   type SkillArchiveRequest,
   type SkillActivationReceipt,
+  type SkillLifecycleJournal,
   type SkillPatchRequest,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
@@ -382,6 +386,67 @@ describe("authorized filesystem mutations", () => {
     ).toEqual({ status: "not-found" });
   });
 
+  it("rolls back a mutation when its journal commit fails and retries after restart", async () => {
+    const harness = make();
+    const crash = pendingTransactionCrashImage(harness, "journal-rollback");
+    let concurrentConstructionObservedPendingState = false;
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      lifecycleJournal: journalFailingOnce(
+        harness.env,
+        "mutation",
+        () => {
+          crash.capture();
+          expect(
+            () => new FilesystemManagedSkillRegistry({ env: harness.env })
+          ).toThrow("Another skill transaction is active in scope: project");
+          concurrentConstructionObservedPendingState = existsSync(
+            join(harness.home("project"), "skills", "journal-rollback")
+          );
+        }
+      ),
+    });
+    const request = {
+      auth: authContext("allow", "agent:mutation-rollback"),
+      idempotencyKey: "mutation-journal-failure",
+      id: "journal-rollback",
+      scope: "project" as const,
+      description: "journal rollback",
+      body: "must not survive a failed receipt write",
+    };
+
+    await expect(registry.create(request)).rejects.toThrow(
+      "injected mutation journal failure"
+    );
+    expect(concurrentConstructionObservedPendingState).toBe(true);
+    expect(await registry.get({ id: request.id, scope: request.scope })).toEqual({
+      status: "not-found",
+      id: request.id,
+    });
+    expect(
+      existsSync(join(harness.home("project"), "skills", request.id))
+    ).toBe(false);
+
+    crash.restore();
+    expect(
+      existsSync(join(harness.home("project"), "skills", request.id))
+    ).toBe(true);
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    expect(await restarted.get({ id: request.id, scope: request.scope })).toEqual({
+      status: "not-found",
+      id: request.id,
+    });
+    const retried = await restarted.create(request);
+    expect(retried.status).toBe("ok");
+    expect(
+      await restarted.getMutationReceipt({
+        auth: request.auth,
+        operation: "create",
+        idempotencyKey: request.idempotencyKey,
+      })
+    ).toMatchObject({ status: "found", receipt: { result: retried } });
+  });
+
   it("rejects pinned edits and archives even when untyped callers pass allowPinned", async () => {
     const harness = make();
     await harness.seed({
@@ -695,6 +760,67 @@ describe("authorized filesystem mutations", () => {
       status: "ok",
       receipts: [],
     });
+  });
+
+  it("rolls back activation usage when receipt persistence fails and retries after restart", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "activation-rollback",
+      body: "activation rollback body",
+    });
+    const auth = authContext("allow", "agent:activation-rollback");
+    const before = await harness.registry.get({
+      id: "activation-rollback",
+      scope: "project",
+    });
+    if (before.status !== "found") throw new Error("expected seeded skill");
+    const crash = pendingTransactionCrashImage(harness, "activation-rollback");
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      lifecycleJournal: journalFailingOnce(
+        harness.env,
+        "activation",
+        crash.capture
+      ),
+    });
+    const request = {
+      auth,
+      id: "activation-rollback",
+      requestId: "activation-journal-failure",
+      trigger: "manual" as const,
+      reason: "receipt failure rollback",
+    };
+
+    expect(await registry.activate(request)).toMatchObject({
+      status: "failed",
+      reason: "invalid",
+      message: "Activation receipt could not be persisted",
+    });
+    const rolledBack = await registry.get({ id: request.id, scope: "project" });
+    expect(rolledBack.status).toBe("found");
+    if (rolledBack.status !== "found") throw new Error("expected rolled back skill");
+    expect(rolledBack.skill.revision).toBe(before.skill.revision);
+    expect(rolledBack.skill.useCount).toBeUndefined();
+
+    crash.restore();
+    const interrupted = await registry.get({ id: request.id, scope: "project" });
+    expect(interrupted.status === "found" ? interrupted.skill.useCount : undefined).toBe(1);
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const recovered = await restarted.get({ id: request.id, scope: "project" });
+    expect(recovered.status).toBe("found");
+    if (recovered.status !== "found") throw new Error("expected recovered skill");
+    expect(recovered.skill.revision).toBe(before.skill.revision);
+    expect(recovered.skill.useCount).toBeUndefined();
+    expect(await restarted.listActivationReceipts({ auth })).toEqual({
+      status: "ok",
+      receipts: [],
+    });
+    const retried = await restarted.activate(request);
+    expect(retried.status).toBe("ready");
+    const after = await restarted.get({ id: request.id, scope: "project" });
+    expect(after.status === "found" ? after.skill.useCount : undefined).toBe(1);
+    expect((await restarted.listActivationReceipts({ auth })).receipts).toHaveLength(1);
   });
 
   it("projects distinct operations and registers only executable tool definitions", async () => {
@@ -1121,6 +1247,77 @@ describe("extension fixture parity", () => {
     });
   });
 });
+
+function journalFailingOnce(
+  env: FilesystemHarness["env"],
+  target: "mutation" | "activation",
+  beforeFailure?: () => void
+): SkillLifecycleJournal {
+  const delegate = new FilesystemSkillLifecycleJournal(env);
+  let failed = false;
+  return {
+    mutationReceiptId: (query) => delegate.mutationReceiptId(query),
+    readMutation: (query) => delegate.readMutation(query),
+    readMutationByReceiptId: (scope, receiptId) =>
+      delegate.readMutationByReceiptId(scope, receiptId),
+    writeMutation: (input) => {
+      if (target === "mutation" && !failed) {
+        failed = true;
+        beforeFailure?.();
+        throw new Error("injected mutation journal failure");
+      }
+      return delegate.writeMutation(input);
+    },
+    readActivation: (query) => delegate.readActivation(query),
+    listActivations: (securityContextKey) =>
+      delegate.listActivations(securityContextKey),
+    writeActivation: (input) => {
+      if (target === "activation" && !failed) {
+        failed = true;
+        beforeFailure?.();
+        throw new Error("injected activation journal failure");
+      }
+      delegate.writeActivation(input);
+    },
+  };
+}
+
+function pendingTransactionCrashImage(
+  harness: FilesystemHarness,
+  id: string
+): { capture(): void; restore(): void } {
+  const transactionRoot = join(
+    harness.home("project"),
+    ".agents",
+    "store",
+    "skills.lifecycle-transactions"
+  );
+  const skillDir = join(harness.home("project"), "skills", id);
+  const imageRoot = join(harness.root, `crash-${id}`);
+  const transactionImage = join(imageRoot, "transactions");
+  const skillImage = join(imageRoot, "skill");
+  return {
+    capture() {
+      mkdirSync(imageRoot, { recursive: true });
+      cpSync(transactionRoot, transactionImage, { recursive: true });
+      cpSync(skillDir, skillImage, { recursive: true });
+    },
+    restore() {
+      rmSync(transactionRoot, { recursive: true, force: true });
+      rmSync(skillDir, { recursive: true, force: true });
+      mkdirSync(dirname(transactionRoot), { recursive: true });
+      mkdirSync(dirname(skillDir), { recursive: true });
+      cpSync(transactionImage, transactionRoot, { recursive: true });
+      cpSync(skillImage, skillDir, { recursive: true });
+      const lockPath = join(transactionRoot, ".lock");
+      rmSync(lockPath, { force: true });
+      symlinkSync(
+        "99999999:00000000-0000-4000-8000-000000000000",
+        lockPath
+      );
+    },
+  };
+}
 
 function valid(
   schema: { readonly "~standard": { validate(value: unknown): unknown } },

@@ -40,22 +40,35 @@ export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
     this.store = createStore(createScope(env));
   }
 
+  mutationReceiptId(query: SkillMutationJournalQuery): string {
+    return mutationReceiptId(query);
+  }
+
   readMutation(query: SkillMutationJournalQuery): SkillMutationReceipt | undefined {
     const receiptId = mutationReceiptId(query);
-    const key = mutationKey(receiptId);
     for (const scope of SCOPE_RESOLUTION_ORDER) {
-      const record = parseMutationRecord(this.kv(scope).get(key));
+      const receipt = this.readMutationByReceiptId(scope, receiptId);
       if (
-        record &&
-        record.securityContextKey === query.securityContextKey &&
-        record.receipt.receiptId === receiptId &&
-        record.receipt.operation === query.operation &&
-        record.receipt.scope === scope
+        receipt &&
+        receipt.receiptId === receiptId &&
+        receipt.operation === query.operation &&
+        receipt.scope === scope
       ) {
-        return record.receipt;
+        const record = parseMutationRecord(this.kv(scope).get(mutationKey(receiptId)));
+        if (record?.securityContextKey === query.securityContextKey) return receipt;
       }
     }
     return undefined;
+  }
+
+  readMutationByReceiptId(
+    scope: ScopeName,
+    receiptId: string
+  ): SkillMutationReceipt | undefined {
+    const record = parseMutationRecord(this.kv(scope).get(mutationKey(receiptId)));
+    return record?.receipt.receiptId === receiptId && record.receipt.scope === scope
+      ? record.receipt
+      : undefined;
   }
 
   writeMutation(input: SkillMutationJournalWrite): SkillMutationReceipt {

@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   closeSync,
   constants,
@@ -10,11 +10,14 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
   readdirSync,
   realpathSync,
   rmSync,
   renameSync,
+  symlinkSync,
   type Dirent,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -28,10 +31,12 @@ import {
 } from "@gonk/auth";
 import type { ContextContributor } from "@gonk/context";
 import {
+  createScope,
   SCOPE_RESOLUTION_ORDER,
   resolveTierHomes,
   type ScopeName,
 } from "@gonk/scope";
+import { resolveStoreDir } from "@gonk/store";
 import { ToolError, type ToolDefinition } from "@gonk/tool-registry";
 import { stringify as stringifyYaml } from "yaml";
 
@@ -75,6 +80,7 @@ import type {
   SkillListRequest,
   SkillListResult,
   SkillLifecycle,
+  SkillLifecycleJournal,
   SkillMutationFailureReason,
   SkillMutationResult,
   SkillMutationOperation,
@@ -128,6 +134,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
   private readonly now: () => string;
   private readonly promotionApprovalProvider: FilesystemManagedSkillRegistryOptions["promotionApprovalProvider"];
   private readonly lifecycleJournal: NonNullable<FilesystemManagedSkillRegistryOptions["lifecycleJournal"]>;
+  private readonly transactionStore: FilesystemSkillTransactionStore;
 
   constructor(options: FilesystemManagedSkillRegistryOptions) {
     this.env = Object.freeze({
@@ -144,6 +151,11 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     this.promotionApprovalProvider = options.promotionApprovalProvider;
     this.lifecycleJournal =
       options.lifecycleJournal ?? new FilesystemSkillLifecycleJournal(this.env);
+    this.transactionStore = new FilesystemSkillTransactionStore(
+      this.env,
+      this.lifecycleJournal
+    );
+    this.transactionStore.recover();
   }
 
   async list(request: SkillListRequest = {}): Promise<SkillListResult> {
@@ -315,37 +327,46 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         return mutationFailed(request.id, "invalid", "Invalid supporting file path");
       }
     }
-    mkdirSync(base, { recursive: true });
-    const temp = mkdtempSync(join(base, `.${request.id}.create-`));
-    try {
-      writeFileSync(
-        join(temp, MANIFEST),
-        renderSkillManifest(request.id, request, request.body, {
-          createdAt: this.now(),
-          updatedAt: this.now(),
-          needsAudit: request.staged === true,
-        }),
-        "utf8"
-      );
-      for (const file of request.files ?? []) {
-        const target = join(temp, file.path);
-        mkdirSync(dirname(target), { recursive: true });
-        writeFileSync(target, file.content, "utf8");
-      }
-      if (request.staged !== true) {
-        readDefinition(request.scope, verifyDirectory(base, temp), request.id);
-      }
-      renameSync(temp, skillDir);
-    } catch (error) {
-      rmSync(temp, { recursive: true, force: true });
-      throw error;
-    }
-    const result = await this.mutationDetail(
-      request.id,
+    return this.transactMutation(
+      "create",
+      auth,
+      request.idempotencyKey,
+      request,
       request.scope,
-      request.staged === true ? "staged" : "active"
+      [skillDir],
+      async () => {
+        mkdirSync(base, { recursive: true });
+        const temp = mkdtempSync(join(base, `.${request.id}.create-`));
+        try {
+          writeFileSync(
+            join(temp, MANIFEST),
+            renderSkillManifest(request.id, request, request.body, {
+              createdAt: this.now(),
+              updatedAt: this.now(),
+              needsAudit: request.staged === true,
+            }),
+            "utf8"
+          );
+          for (const file of request.files ?? []) {
+            const target = join(temp, file.path);
+            mkdirSync(dirname(target), { recursive: true });
+            writeFileSync(target, file.content, "utf8");
+          }
+          if (request.staged !== true) {
+            readDefinition(request.scope, verifyDirectory(base, temp), request.id);
+          }
+          renameSync(temp, skillDir);
+        } catch (error) {
+          rmSync(temp, { recursive: true, force: true });
+          throw error;
+        }
+        return this.mutationDetail(
+          request.id,
+          request.scope,
+          request.staged === true ? "staged" : "active"
+        );
+      }
     );
-    return this.remember("create", auth, request.idempotencyKey, request, request.scope, result);
   }
 
   async patch(request: SkillPatchRequest): Promise<SkillMutationResult> {
@@ -379,11 +400,25 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       }
       const body = detail.skill.body.split(request.find).join(request.replace);
       const metadata = metadataFromDetail(detail.skill, this.now());
-      this.atomicRewriteSkillDir(skillDir, (temp) => {
-        writeFileSync(join(temp, MANIFEST), renderSkillManifest(request.id, metadata, body, {}), "utf8");
-        applyFileMutations(temp, request.writeFiles, request.removeFiles);
-      });
-      return this.remember("patch", auth, request.idempotencyKey, request, scope, await this.mutationDetail(request.id, scope, "active"));
+      return this.transactMutation(
+        "patch",
+        auth,
+        request.idempotencyKey,
+        request,
+        scope,
+        [skillDir],
+        async () => {
+          this.atomicRewriteSkillDir(skillDir, (temp) => {
+            writeFileSync(
+              join(temp, MANIFEST),
+              renderSkillManifest(request.id, metadata, body, {}),
+              "utf8"
+            );
+            applyFileMutations(temp, request.writeFiles, request.removeFiles);
+          });
+          return this.mutationDetail(request.id, scope, "active");
+        }
+      );
     }
     const target = join(skillDir, path);
     if (!isInside(skillDir, target) || !existsSync(target)) {
@@ -393,11 +428,25 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (!current.includes(request.find)) {
       return mutationFailed(request.id, "not-found", "Patch target not found");
     }
-    this.atomicRewriteSkillDir(skillDir, (temp) => {
-      writeFileSync(join(temp, path), current.split(request.find).join(request.replace), "utf8");
-      applyFileMutations(temp, request.writeFiles, request.removeFiles);
-    });
-    return this.remember("patch", auth, request.idempotencyKey, request, scope, await this.mutationDetail(request.id, scope, "active"));
+    return this.transactMutation(
+      "patch",
+      auth,
+      request.idempotencyKey,
+      request,
+      scope,
+      [skillDir],
+      async () => {
+        this.atomicRewriteSkillDir(skillDir, (temp) => {
+          writeFileSync(
+            join(temp, path),
+            current.split(request.find).join(request.replace),
+            "utf8"
+          );
+          applyFileMutations(temp, request.writeFiles, request.removeFiles);
+        });
+        return this.mutationDetail(request.id, scope, "active");
+      }
+    );
   }
 
   async archive(request: SkillArchiveRequest): Promise<SkillArchiveResult> {
@@ -428,10 +477,20 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const archiveId = archiveName(request.id, archivedAt);
     const source = this.skillDir(scope, request.id);
     const dest = join(this.lifecycleRoot(scope, "archived"), archiveId);
-    mkdirSync(dirname(dest), { recursive: true });
-    cpSync(source, dest, { recursive: true });
-    rmSync(source, { recursive: true, force: true });
-    return this.remember("archive", auth, request.idempotencyKey, request, scope, { status: "ok", id: request.id, scope, archiveId, archivedAt });
+    return this.transactMutation(
+      "archive",
+      auth,
+      request.idempotencyKey,
+      request,
+      scope,
+      [source, dest],
+      () => {
+        mkdirSync(dirname(dest), { recursive: true });
+        cpSync(source, dest, { recursive: true });
+        rmSync(source, { recursive: true, force: true });
+        return { status: "ok", id: request.id, scope, archiveId, archivedAt };
+      }
+    );
   }
 
   async restore(request: SkillRestoreRequest): Promise<SkillRestoreResult> {
@@ -455,35 +514,61 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (existsSync(dest)) return restoreFailed(request.id, "already-exists", "Live skill already exists");
     const parent = dirname(dest);
     const archiveDir = join(this.lifecycleRoot(chosen.scope, "archived"), chosen.archiveId);
-    mkdirSync(parent, { recursive: true });
-    const temp = mkdtempSync(join(parent, `.${request.id}.restore-`));
-    let restored: LoadedSkill;
-    try {
-      cpSync(archiveDir, temp, { recursive: true });
-      rmSync(join(temp, ".restored"), { force: true });
-      restored = readDefinition(chosen.scope, verifyDirectory(parent, temp), request.id);
-      if (existsSync(dest)) {
-        return restoreFailed(request.id, "already-exists", "Live skill already exists");
+    return this.transactMutation(
+      "restore",
+      auth,
+      request.idempotencyKey,
+      request,
+      chosen.scope,
+      [dest, join(archiveDir, ".restored")],
+      () => {
+        mkdirSync(parent, { recursive: true });
+        const temp = mkdtempSync(join(parent, `.${request.id}.restore-`));
+        let restored: LoadedSkill;
+        try {
+          cpSync(archiveDir, temp, { recursive: true });
+          rmSync(join(temp, ".restored"), { force: true });
+          restored = readDefinition(
+            chosen.scope,
+            verifyDirectory(parent, temp),
+            request.id
+          );
+          if (existsSync(dest)) {
+            return restoreFailed(
+              request.id,
+              "already-exists",
+              "Live skill already exists"
+            );
+          }
+          renameSync(temp, dest);
+          try {
+            writeFileAtomic(join(archiveDir, ".restored"), this.now());
+          } catch {
+            rmSync(dest, { recursive: true, force: true });
+            return restoreFailed(
+              request.id,
+              "invalid",
+              "Archive restore marker could not be recorded"
+            );
+          }
+        } catch {
+          return restoreFailed(
+            request.id,
+            "invalid",
+            "Archived skill failed validation"
+          );
+        } finally {
+          rmSync(temp, { recursive: true, force: true });
+        }
+        return {
+          status: "ok",
+          id: request.id,
+          scope: chosen.scope,
+          archiveId: chosen.archiveId,
+          revision: restored.summary.revision,
+        };
       }
-      renameSync(temp, dest);
-      try {
-        writeFileAtomic(join(archiveDir, ".restored"), this.now());
-      } catch {
-        rmSync(dest, { recursive: true, force: true });
-        return restoreFailed(request.id, "invalid", "Archive restore marker could not be recorded");
-      }
-    } catch {
-      return restoreFailed(request.id, "invalid", "Archived skill failed validation");
-    } finally {
-      rmSync(temp, { recursive: true, force: true });
-    }
-    return this.remember("restore", auth, request.idempotencyKey, request, chosen.scope, {
-      status: "ok",
-      id: request.id,
-      scope: chosen.scope,
-      archiveId: chosen.archiveId,
-      revision: restored.summary.revision,
-    });
+    );
   }
 
   async promote(request: SkillPromoteRequest): Promise<SkillMutationResult> {
@@ -506,27 +591,37 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (approval) return approval;
     const live = this.skillDir(staged.scope, request.id);
     if (existsSync(live)) return mutationFailed(request.id, "already-exists", "Live skill already exists");
-    mkdirSync(dirname(live), { recursive: true });
-    renameSync(staged.path, live);
-    const parsed = safeParseExisting(join(live, MANIFEST));
-    if (parsed) {
-      writeFileSync(
-        join(live, MANIFEST),
-        renderSkillManifest(request.id, parsed, parsed.body, {
-          updatedAt: this.now(),
-          needsAudit: false,
-        }),
-        "utf8"
-      );
-    } else {
-      const manifest = join(live, MANIFEST);
-      writeFileSync(
-        manifest,
-        readFileSync(manifest, "utf8").replace(/^needs_audit: true\n/m, ""),
-        "utf8"
-      );
-    }
-    return this.remember("promote", auth, request.idempotencyKey, request, staged.scope, await this.mutationDetail(request.id, staged.scope, "active"));
+    return this.transactMutation(
+      "promote",
+      auth,
+      request.idempotencyKey,
+      request,
+      staged.scope,
+      [staged.path, live],
+      async () => {
+        mkdirSync(dirname(live), { recursive: true });
+        renameSync(staged.path, live);
+        const parsed = safeParseExisting(join(live, MANIFEST));
+        if (parsed) {
+          writeFileSync(
+            join(live, MANIFEST),
+            renderSkillManifest(request.id, parsed, parsed.body, {
+              updatedAt: this.now(),
+              needsAudit: false,
+            }),
+            "utf8"
+          );
+        } else {
+          const manifest = join(live, MANIFEST);
+          writeFileSync(
+            manifest,
+            readFileSync(manifest, "utf8").replace(/^needs_audit: true\n/m, ""),
+            "utf8"
+          );
+        }
+        return this.mutationDetail(request.id, staged.scope, "active");
+      }
+    );
   }
 
   async pin(request: SkillPinRequest): Promise<SkillMutationResult> {
@@ -543,7 +638,22 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       () => idempotencyConflict(request.id)
     );
     if (replay) return replay;
-    return this.remember("pin", auth, request.idempotencyKey, request, scope, await this.rewriteOperationalMetadata(auth, request.id, scope, { pinned: request.pinned }, request));
+    return this.transactMutation(
+      "pin",
+      auth,
+      request.idempotencyKey,
+      request,
+      scope,
+      [this.skillDir(scope, request.id)],
+      () =>
+        this.rewriteOperationalMetadata(
+          auth,
+          request.id,
+          scope,
+          { pinned: request.pinned },
+          request
+        )
+    );
   }
 
   async recordUsage(request: SkillRecordUsageRequest): Promise<SkillMutationResult> {
@@ -562,16 +672,25 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (replay) return replay;
     const found = await this.get({ id: request.id, scope });
     if (found.status !== "found") return mutationFailed(request.id, "not-found", "Skill not found");
-    return this.remember("record-usage", auth, request.idempotencyKey, request, scope, await this.rewriteOperationalMetadata(
+    return this.transactMutation(
+      "record-usage",
       auth,
-      request.id,
+      request.idempotencyKey,
+      request,
       scope,
-      {
-        lastUsedAt: request.usedAt ?? this.now(),
-        useCount: (found.skill.useCount ?? 0) + 1,
-      },
-      request
-    ));
+      [this.skillDir(scope, request.id)],
+      () =>
+        this.rewriteOperationalMetadata(
+          auth,
+          request.id,
+          scope,
+          {
+            lastUsedAt: request.usedAt ?? this.now(),
+            useCount: (found.skill.useCount ?? 0) + 1,
+          },
+          request
+        )
+    );
   }
 
   async getMutationReceipt(
@@ -652,15 +771,28 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       return { status: "missing-requirements", id: request.id, missing: found.skill.requirements.tools, message: "Skill has unresolved tool requirements" };
     }
     const timestamp = this.now();
-    const usage = await this.rewriteOperationalMetadata(
-      auth,
-      request.id,
+    const securityKey = securityContextKey({ principal: auth.principal });
+    const snapshot = this.transactionStore.begin(
       found.skill.scope,
-      { lastUsedAt: timestamp, useCount: (found.skill.useCount ?? 0) + 1 },
-      { expectedRevision: found.skill.revision },
-      "skill.activate"
+      [this.skillDir(found.skill.scope, request.id)],
+      { kind: "rollback" }
     );
+    let usage: SkillMutationResult;
+    try {
+      usage = await this.rewriteOperationalMetadata(
+        auth,
+        request.id,
+        found.skill.scope,
+        { lastUsedAt: timestamp, useCount: (found.skill.useCount ?? 0) + 1 },
+        { expectedRevision: found.skill.revision },
+        "skill.activate"
+      );
+    } catch (error) {
+      rollbackOrThrow(snapshot, error, "Activation metadata rollback failed");
+      throw error;
+    }
     if (usage.status === "failed") {
+      snapshot.rollback();
       return {
         status: "failed",
         id: request.id,
@@ -684,12 +816,19 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       resourceKey: skillResourceKey(request.id, found.skill.scope, usage.revision),
       principal: { id: auth.principal.id, kind: auth.principal.kind },
     };
+    snapshot.setProbe({
+      kind: "activation",
+      securityContextKey: securityKey,
+      activationId: receipt.activationId,
+    });
     try {
       this.lifecycleJournal.writeActivation({
-        securityContextKey: securityContextKey({ principal: auth.principal }),
+        securityContextKey: securityKey,
         receipt,
       });
-    } catch {
+      snapshot.commit();
+    } catch (error) {
+      rollbackOrThrow(snapshot, error, "Activation metadata rollback failed");
       return {
         status: "failed",
         id: request.id,
@@ -729,6 +868,44 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (!previous) return undefined;
     if (previous.requestFingerprint === fingerprint) return previous.result as T;
     return conflict();
+  }
+
+  private async transactMutation<T extends SkillMutationReceipt["result"]>(
+    operation: SkillMutationOperation,
+    auth: AuthContext,
+    key: string,
+    request: unknown,
+    scope: SkillScope,
+    paths: readonly string[],
+    mutate: () => T | Promise<T>
+  ): Promise<T> {
+    const securityKey = securityContextKey({ principal: auth.principal });
+    const query = {
+      operation,
+      securityContextKey: securityKey,
+      idempotencyKey: key,
+    };
+    const snapshot = this.transactionStore.begin(scope, paths, {
+      kind: "mutation",
+      receiptId: this.lifecycleJournal.mutationReceiptId(query),
+    });
+    try {
+      const result = await mutate();
+      if (result.status === "failed") snapshot.rollback();
+      const remembered = this.remember(
+        operation,
+        auth,
+        key,
+        request,
+        scope,
+        result
+      );
+      if (result.status !== "failed") snapshot.commit();
+      return remembered;
+    } catch (error) {
+      rollbackOrThrow(snapshot, error, "Skill mutation rollback failed");
+      throw error;
+    }
   }
 
   private remember<T extends SkillMutationReceipt["result"]>(
@@ -1329,6 +1506,393 @@ function writeFileAtomic(path: string, content: string): void {
     renameSync(temp, path);
   } finally {
     rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+interface FilesystemSnapshot {
+  setProbe(probe: SkillTransactionProbe): void;
+  commit(): void;
+  rollback(): void;
+}
+
+type SkillTransactionProbe =
+  | { kind: "rollback" }
+  | { kind: "mutation"; receiptId: string }
+  | {
+      kind: "activation";
+      securityContextKey: string;
+      activationId: string;
+    };
+
+interface SkillTransactionMarker {
+  markerVersion: 1;
+  scope: SkillScope;
+  probe: SkillTransactionProbe;
+  entries: readonly {
+    path: string;
+    backup: string;
+    existed: boolean;
+    directory: boolean;
+  }[];
+}
+
+const SKILL_TRANSACTION_NAMESPACE = "skills.lifecycle-transactions";
+const SKILL_TRANSACTION_MARKER = "transaction.json";
+const SKILL_TRANSACTION_LOCK = ".lock";
+
+class FilesystemSkillTransactionStore {
+  private readonly scopeStore: ReturnType<typeof createScope>;
+  private readonly homes: ReadonlyMap<ScopeName, string>;
+
+  constructor(
+    env: FilesystemManagedSkillRegistryOptions["env"],
+    private readonly journal: SkillLifecycleJournal
+  ) {
+    this.scopeStore = createScope(env);
+    this.homes = resolveTierHomes(env);
+  }
+
+  begin(
+    scope: SkillScope,
+    paths: readonly string[],
+    probe: SkillTransactionProbe
+  ): FilesystemSnapshot {
+    const home = this.home(scope);
+    const namespace = this.namespace(scope);
+    mkdirSync(namespace, { recursive: true });
+    const releaseLock = this.tryAcquireLock(scope);
+    if (!releaseLock) {
+      throw new Error(`Another skill transaction is active in scope: ${scope}`);
+    }
+    const root = mkdtempSync(join(namespace, ".pending-"));
+    const entries: SkillTransactionMarker["entries"][number][] = [];
+    try {
+      for (const [index, path] of [...new Set(paths)].entries()) {
+        const relativePath = safeTransactionPath(home, path);
+        const existed = existsSync(path);
+        const directory = existed && lstatSync(path).isDirectory();
+        const backup = String(index);
+        if (existed) {
+          cpSync(path, join(root, backup), {
+            recursive: directory,
+            dereference: false,
+            preserveTimestamps: true,
+          });
+        }
+        entries.push({
+          path: relativePath,
+          backup,
+          existed,
+          directory,
+        });
+      }
+      const marker: SkillTransactionMarker = {
+        markerVersion: 1,
+        scope,
+        probe,
+        entries,
+      };
+      writeTransactionMarker(root, marker);
+      return persistentSnapshot(root, home, marker, releaseLock);
+    } catch (error) {
+      rmSync(root, { recursive: true, force: true });
+      releaseLock();
+      throw error;
+    }
+  }
+
+  recover(): void {
+    for (const scope of SCOPE_RESOLUTION_ORDER) {
+      if (!this.homes.has(scope)) continue;
+      const namespace = this.namespace(scope);
+      if (!existsSync(namespace)) continue;
+      const releaseLock = this.tryAcquireLock(scope);
+      if (!releaseLock) {
+        throw new Error(`Another skill transaction is active in scope: ${scope}`);
+      }
+      try {
+        for (const name of readdirSync(namespace).sort(compareOpaque)) {
+          const root = join(namespace, name);
+          if (!lstatSync(root).isDirectory()) continue;
+          const markerPath = join(root, SKILL_TRANSACTION_MARKER);
+          if (!existsSync(markerPath)) {
+            rmSync(root, { recursive: true, force: true });
+            continue;
+          }
+          const marker = parseTransactionMarker(readFileSync(markerPath, "utf8"));
+          if (!marker || marker.scope !== scope) {
+            throw new Error(`Invalid pending skill transaction: ${root}`);
+          }
+          const snapshot = persistentSnapshot(root, this.home(scope), marker);
+          if (this.isCommitted(marker)) snapshot.commit();
+          else snapshot.rollback();
+        }
+      } finally {
+        releaseLock();
+      }
+    }
+  }
+
+  private isCommitted(marker: SkillTransactionMarker): boolean {
+    if (marker.probe.kind === "rollback") return false;
+    if (marker.probe.kind === "mutation") {
+      return (
+        this.journal.readMutationByReceiptId(
+          marker.scope,
+          marker.probe.receiptId
+        ) !== undefined
+      );
+    }
+    return (
+      this.journal.readActivation({
+        securityContextKey: marker.probe.securityContextKey,
+        activationId: marker.probe.activationId,
+      }) !== undefined
+    );
+  }
+
+  private home(scope: ScopeName): string {
+    const home = this.homes.get(scope);
+    if (!home) throw new Error(`Cannot resolve skill transaction home: ${scope}`);
+    return home;
+  }
+
+  private namespace(scope: ScopeName): string {
+    return resolveStoreDir(
+      this.scopeStore,
+      scope,
+      SKILL_TRANSACTION_NAMESPACE
+    );
+  }
+
+  private tryAcquireLock(scope: ScopeName): (() => void) | undefined {
+    const namespace = this.namespace(scope);
+    mkdirSync(namespace, { recursive: true });
+    const lockPath = join(namespace, SKILL_TRANSACTION_LOCK);
+    const token = `${process.pid}:${randomUUID()}`;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        symlinkSync(token, lockPath);
+        let released = false;
+        return () => {
+          if (released) return;
+          if (readlinkSync(lockPath) !== token) {
+            throw new Error(`Skill transaction lock ownership changed: ${scope}`);
+          }
+          unlinkSync(lockPath);
+          released = true;
+        };
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== "EEXIST") throw error;
+        const owner = readSkillTransactionLock(lockPath);
+        if (owner !== undefined && processIsAlive(owner)) return undefined;
+        try {
+          unlinkSync(lockPath);
+        } catch (unlinkError) {
+          if (!isNodeError(unlinkError) || unlinkError.code !== "ENOENT") {
+            throw unlinkError;
+          }
+        }
+      }
+    }
+    return undefined;
+  }
+}
+
+function persistentSnapshot(
+  root: string,
+  home: string,
+  initialMarker: SkillTransactionMarker,
+  releaseLock: () => void = () => undefined
+): FilesystemSnapshot {
+  let marker = initialMarker;
+  let settled = false;
+  return {
+    setProbe(probe) {
+      if (settled) throw new Error("Skill transaction is already settled");
+      marker = { ...marker, probe };
+      writeTransactionMarker(root, marker);
+    },
+    commit() {
+      if (settled) return;
+      rmSync(root, { recursive: true, force: true });
+      settled = true;
+      releaseLock();
+    },
+    rollback() {
+      if (settled) return;
+      for (const entry of [...marker.entries].reverse()) {
+        const target = join(home, entry.path);
+        safeTransactionPath(home, target);
+        rmSync(target, { recursive: true, force: true });
+        if (!entry.existed) continue;
+        const backup = join(root, entry.backup);
+        if (!existsSync(backup)) {
+          throw new Error(`Missing skill transaction backup: ${backup}`);
+        }
+        mkdirSync(dirname(target), { recursive: true });
+        cpSync(backup, target, {
+          recursive: entry.directory,
+          dereference: false,
+          preserveTimestamps: true,
+        });
+      }
+      rmSync(root, { recursive: true, force: true });
+      settled = true;
+      releaseLock();
+    },
+  };
+}
+
+function readSkillTransactionLock(lockPath: string): number | undefined {
+  try {
+    const match = /^(\d+):[0-9a-f-]+$/.exec(readlinkSync(lockPath));
+    return match ? Number(match[1]) : undefined;
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return isNodeError(error) && error.code === "EPERM";
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function writeTransactionMarker(
+  root: string,
+  marker: SkillTransactionMarker
+): void {
+  writeFileAtomic(
+    join(root, SKILL_TRANSACTION_MARKER),
+    `${JSON.stringify(marker)}\n`
+  );
+}
+
+function parseTransactionMarker(content: string): SkillTransactionMarker | undefined {
+  try {
+    const value = JSON.parse(content) as unknown;
+    if (!isRecord(value) || !hasOnlyKeys(value, ["markerVersion", "scope", "probe", "entries"])) {
+      return undefined;
+    }
+    if (value.markerVersion !== 1 || !isSkillScope(value.scope)) return undefined;
+    const probe = parseTransactionProbe(value.probe);
+    if (!probe || !Array.isArray(value.entries)) return undefined;
+    const entries = value.entries.map(parseTransactionEntry);
+    if (entries.some((entry) => entry === undefined)) return undefined;
+    return {
+      markerVersion: 1,
+      scope: value.scope,
+      probe,
+      entries: entries as SkillTransactionMarker["entries"],
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function parseTransactionProbe(value: unknown): SkillTransactionProbe | undefined {
+  if (!isRecord(value) || typeof value.kind !== "string") return undefined;
+  if (value.kind === "rollback" && hasOnlyKeys(value, ["kind"])) {
+    return { kind: "rollback" };
+  }
+  if (
+    value.kind === "mutation" &&
+    hasOnlyKeys(value, ["kind", "receiptId"]) &&
+    isOpaqueHash(value.receiptId)
+  ) {
+    return { kind: "mutation", receiptId: value.receiptId };
+  }
+  if (
+    value.kind === "activation" &&
+    hasOnlyKeys(value, ["kind", "securityContextKey", "activationId"]) &&
+    typeof value.securityContextKey === "string" &&
+    isOpaqueHash(value.activationId)
+  ) {
+    return {
+      kind: "activation",
+      securityContextKey: value.securityContextKey,
+      activationId: value.activationId,
+    };
+  }
+  return undefined;
+}
+
+function parseTransactionEntry(
+  value: unknown
+): SkillTransactionMarker["entries"][number] | undefined {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["path", "backup", "existed", "directory"]) ||
+    typeof value.path !== "string" ||
+    !/^\d+$/.test(String(value.backup)) ||
+    typeof value.existed !== "boolean" ||
+    typeof value.directory !== "boolean"
+  ) {
+    return undefined;
+  }
+  return {
+    path: value.path,
+    backup: String(value.backup),
+    existed: value.existed,
+    directory: value.directory,
+  };
+}
+
+function safeTransactionPath(home: string, path: string): string {
+  const candidate = relative(home, path);
+  if (
+    candidate.length === 0 ||
+    isAbsolute(candidate) ||
+    candidate === ".." ||
+    candidate.startsWith(`..${sep}`)
+  ) {
+    throw new Error("Skill transaction path escapes its scope home");
+  }
+  return candidate;
+}
+
+function isOpaqueHash(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+function isSkillScope(value: unknown): value is SkillScope {
+  return (
+    typeof value === "string" &&
+    (SCOPE_RESOLUTION_ORDER as readonly string[]).includes(value)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasOnlyKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[]
+): boolean {
+  const expected = new Set(keys);
+  return Object.keys(value).every((key) => expected.has(key)) &&
+    keys.every((key) => key in value);
+}
+
+function rollbackOrThrow(
+  snapshot: FilesystemSnapshot,
+  cause: unknown,
+  message: string
+): void {
+  try {
+    snapshot.rollback();
+  } catch (rollbackError) {
+    throw new AggregateError([cause, rollbackError], message, { cause });
   }
 }
 

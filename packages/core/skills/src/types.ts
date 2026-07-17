@@ -445,7 +445,12 @@ export interface SkillActivationJournalRecord {
 }
 
 export interface SkillLifecycleJournal {
+  mutationReceiptId(query: SkillMutationJournalQuery): string;
   readMutation(query: SkillMutationJournalQuery): SkillMutationReceipt | undefined;
+  readMutationByReceiptId(
+    scope: SkillScope,
+    receiptId: string
+  ): SkillMutationReceipt | undefined;
   writeMutation(input: SkillMutationJournalWrite): SkillMutationReceipt;
   readActivation(query: SkillActivationJournalQuery): SkillActivationReceipt | undefined;
   listActivations(securityContextKey: string): readonly SkillActivationReceipt[];
