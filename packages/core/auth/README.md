@@ -75,6 +75,15 @@ const auth: AuthContext = {
 
 `AuthContext` is generic and imports no tool-registry or transport types.
 
+### Request-bound capture
+
+Use `captureAuthContext(auth)` when an authorization context crosses into an
+asynchronous request lifecycle. It validates, clones, and deeply freezes the
+principal, then binds `authorize` once. Later mutation of the host's principal
+object or replacement of its policy method cannot change the identity or
+policy function captured for that request. Class-based policy receivers remain
+supported.
+
 ## Audit redaction
 
 `redactAuthzResource()` removes resource metadata and returns the small

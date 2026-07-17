@@ -44,6 +44,8 @@ Owns:
 
 - effective-subject and verified delegation types;
 - `AuthContext` and authorization request/decision contracts;
+- `captureAuthContext()` for immutable request-bound principal snapshots and
+  once-bound authorization policy methods;
 - `securityContextKey()` for stateful transports, one-call assertions, and
   session grants;
 - `persistentGrantKey()` for constrained grants that survive an agent-session
@@ -98,6 +100,11 @@ scopes, expiry, and attributes are current claims used by policy; they are not
 stable identity. Attributes are recursively plain `AuthClaimRecord` data so the
 registry can expose an immutable snapshot to handlers without mutable `Set`,
 `Map`, date, class-instance, or function escape hatches.
+
+Every asynchronous Core enforcement boundary captures the `AuthContext` at
+entry. The shared `captureAuthContext()` helper clones and deeply freezes the
+principal and binds the policy method once, preventing mid-request mutation or
+method replacement while preserving class-based policy receivers.
 
 ## Binding keys
 

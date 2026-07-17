@@ -19,6 +19,7 @@ import type {
   ContextTokenCount,
   ResolvedContextCandidate,
 } from "./types.ts";
+import { CONTEXT_BLOCK_SEPARATOR } from "./constants.ts";
 
 export const contextCompileRequestSchema = schema<ContextCompileRequest>(
   "ContextCompileRequest",
@@ -280,7 +281,7 @@ function isContextCompilationReceipt(
   ) {
     return false;
   }
-  return (
+  const structurallyValid =
     value.kind === "context-compilation" &&
     value.receiptVersion === 1 &&
     isNonEmptyString(value.requestId) &&
@@ -296,14 +297,19 @@ function isContextCompilationReceipt(
     Array.isArray(value.dropped) &&
     value.dropped.every(isContextReceiptDrop) &&
     Array.isArray(value.blockers) &&
-    value.blockers.every(isContextBlockingReason)
-  );
+    value.blockers.every(isContextBlockingReason);
+  if (!structurallyValid) return false;
+  const receipt = value as unknown as ContextCompilationReceipt;
+  if (receipt.totalTokens > receipt.maxTokens) return false;
+  return receipt.status === "ready"
+    ? receipt.blockers.length === 0
+    : receipt.blockers.length > 0;
 }
 
 function isContextCompileResult(value: unknown): value is ContextCompileResult {
   if (!isRecord(value)) return false;
   if (value.status === "ready") {
-    return (
+    const structurallyValid =
       isExactRecord(value, [
         "status",
         "blocks",
@@ -317,19 +323,69 @@ function isContextCompileResult(value: unknown): value is ContextCompileResult {
       isNonNegativeInteger(value.totalTokens) &&
       isContextCompilationReceipt(value.receipt) &&
       value.receipt.status === "ready" &&
-      value.receipt.totalTokens === value.totalTokens
+      value.receipt.totalTokens === value.totalTokens;
+    if (!structurallyValid) return false;
+    const blocks = value.blocks as readonly CompiledContextBlock[];
+    const receipt = value.receipt as ContextCompilationReceipt;
+    return (
+      value.content ===
+        blocks.map(({ content }) => content).join(CONTEXT_BLOCK_SEPARATOR) &&
+      blocks.every(({ audience }) => audience === receipt.audience) &&
+      protocolEqual(
+        receipt.selected,
+        blocks.map(toReceiptSelection)
+      )
     );
   }
   if (value.status === "blocked") {
     return (
       isExactRecord(value, ["status", "blockers", "receipt"]) &&
       Array.isArray(value.blockers) &&
+      value.blockers.length > 0 &&
       value.blockers.every(isContextBlockingReason) &&
       isContextCompilationReceipt(value.receipt) &&
-      value.receipt.status === "blocked"
+      value.receipt.status === "blocked" &&
+      protocolEqual(value.blockers, value.receipt.blockers)
     );
   }
   return false;
+}
+
+function toReceiptSelection(
+  block: CompiledContextBlock
+): ContextReceiptSelection {
+  return {
+    candidateId: block.candidateId,
+    contributorId: block.contributorId,
+    resourceKey: block.resourceKey,
+    revision: block.revision,
+    necessity: block.necessity,
+    contentTokens: block.contentTokens,
+    renderedTokens: block.renderedTokens,
+    tokenQuality: block.tokenQuality,
+  };
+}
+
+function protocolEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((value, index) => protocolEqual(value, right[index]))
+    );
+  }
+  if (!isRecord(left) || !isRecord(right)) return false;
+  const leftKeys = Object.keys(left).sort();
+  const rightKeys = Object.keys(right).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && protocolEqual(left[key], right[key])
+    )
+  );
 }
 
 function isContextReceiptSelection(
@@ -440,6 +496,19 @@ function isContextBlockingReason(
   value: unknown
 ): value is ContextBlockingReason {
   if (!isRecord(value)) return false;
+  if (value.reason === "excluded") {
+    return (
+      isExactRecord(value, [
+        "reason",
+        "necessity",
+        "pinned",
+        "resourceKey",
+      ]) &&
+      value.necessity === "required" &&
+      value.pinned === false &&
+      isNonEmptyString(value.resourceKey)
+    );
+  }
   if (value.reason === "discovery-denied") {
     if (value.pinned === true) {
       return (

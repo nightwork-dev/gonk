@@ -1,10 +1,11 @@
 import type {
-  AuthContext,
   AuthorizationDecision,
   AuthzResource,
 } from "@gonk/auth";
+import { captureAuthContext, type AuthContext } from "@gonk/auth";
 
 import { ContextContributorRegistry } from "./registry.ts";
+import { CONTEXT_BLOCK_SEPARATOR } from "./constants.ts";
 import {
   contextCandidateSchema,
   contextCompileRequestSchema,
@@ -28,8 +29,8 @@ import type {
   ResolvedContextCandidate,
 } from "./types.ts";
 
-export const CONTEXT_COMPILER_VERSION = "0.1.0";
-export const CONTEXT_BLOCK_SEPARATOR = "\n\n";
+export const CONTEXT_COMPILER_VERSION = "0.1.1";
+export { CONTEXT_BLOCK_SEPARATOR } from "./constants.ts";
 
 export interface ContextCompilerOptions {
   registry: ContextContributorRegistry;
@@ -58,8 +59,9 @@ export class ContextCompiler {
     requireNonEmpty("configVersion", this.configVersion);
   }
 
-  async compile(request: ContextCompileRequest): Promise<ContextCompileResult> {
-    await assertValid(contextCompileRequestSchema, request, "ContextCompileRequest");
+  async compile(input: ContextCompileRequest): Promise<ContextCompileResult> {
+    assertValidSync(contextCompileRequestSchema, input, "ContextCompileRequest");
+    const request = captureCompileRequest(input);
 
     const excluded = new Set(request.excludedResourceKeys ?? []);
     const pinned = new Set(request.pinnedResourceKeys ?? []);
@@ -77,12 +79,14 @@ export class ContextCompiler {
     const discovered = await this.discover(
       request,
       contributors,
+      excluded,
+      pinned,
       drops,
       blockers
     );
     const authorized = await this.resolveAndAuthorize(
       request,
-      discovered.filter((candidate) => !excluded.has(candidate.resourceKey)),
+      discovered,
       pinned,
       drops,
       blockers
@@ -188,6 +192,8 @@ export class ContextCompiler {
   private async discover(
     request: ContextCompileRequest,
     contributors: readonly ContextContributor[],
+    excluded: ReadonlySet<string>,
+    pinned: ReadonlySet<string>,
     drops: ContextReceiptDrop[],
     blockers: ContextBlockingReason[]
   ): Promise<readonly ContextCandidate[]> {
@@ -216,6 +222,44 @@ export class ContextCompiler {
       }
 
       for (const value of values) {
+        const envelope = candidateAuthorizationEnvelope(value);
+        if (envelope && excluded.has(envelope.resourceKey)) {
+          if (envelope.necessity === "required") {
+            blockers.push({
+              reason: "excluded",
+              necessity: "required",
+              pinned: false,
+              resourceKey: envelope.resourceKey,
+            });
+          }
+          continue;
+        }
+
+        if (envelope) {
+          const discovery = await authorizeSafely(request.auth, {
+            action: "context.discover",
+            resource: discoveryResource(request.auth, envelope.resourceKey),
+          });
+          if (discovery.outcome === "deny") {
+            const isPinned = pinned.has(envelope.resourceKey);
+            if (isPinned) {
+              blockers.push({
+                reason: "discovery-denied",
+                necessity: envelope.necessity ?? "optional",
+                pinned: true,
+                resourceKey: envelope.resourceKey,
+              });
+            } else if (envelope.necessity === "required") {
+              blockers.push({
+                reason: "discovery-denied",
+                necessity: "required",
+                pinned: false,
+              });
+            }
+            continue;
+          }
+        }
+
         if (
           !(await isValid(contextCandidateSchema, value)) ||
           (value as ContextCandidate).contributorId !== contributor.id
@@ -284,38 +328,6 @@ export class ContextCompiler {
 
     for (const candidate of candidates) {
       const isPinned = pinned.has(candidate.resourceKey);
-      const discoveryResource: AuthzResource = {
-        kind: "context-candidate",
-        target: candidate.resourceKey,
-        ...(request.auth.principal.tenantId === undefined
-          ? {}
-          : { tenantId: request.auth.principal.tenantId }),
-        ...(request.auth.principal.workspaceId === undefined
-          ? {}
-          : { workspaceId: request.auth.principal.workspaceId }),
-      };
-      const discovery = await authorizeSafely(request.auth, {
-        action: "context.discover",
-        resource: discoveryResource,
-      });
-      if (discovery.outcome === "deny") {
-        if (isPinned) {
-          blockers.push({
-            reason: "discovery-denied",
-            necessity: candidate.necessity,
-            pinned: true,
-            resourceKey: candidate.resourceKey,
-          });
-        } else if (candidate.necessity === "required") {
-          blockers.push({
-            reason: "discovery-denied",
-            necessity: "required",
-            pinned: false,
-          });
-        }
-        continue;
-      }
-
       const contributor = this.registry.get(candidate.contributorId);
       let resolved: ResolvedContextCandidate | null = null;
       if (contributor) {
@@ -680,6 +692,109 @@ function claimedRequired(value: unknown): boolean {
     !Array.isArray(value) &&
     (value as { necessity?: unknown }).necessity === "required"
   );
+}
+
+function candidateAuthorizationEnvelope(value: unknown): {
+  resourceKey: string;
+  necessity?: ContextCandidate["necessity"];
+} | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const candidateValue = value as {
+    resourceKey?: unknown;
+    necessity?: unknown;
+  };
+  if (
+    typeof candidateValue.resourceKey !== "string" ||
+    candidateValue.resourceKey.trim().length === 0
+  ) {
+    return null;
+  }
+  return {
+    resourceKey: candidateValue.resourceKey,
+    ...(candidateValue.necessity === "optional" ||
+    candidateValue.necessity === "required"
+      ? { necessity: candidateValue.necessity }
+      : {}),
+  };
+}
+
+function discoveryResource(
+  auth: AuthContext,
+  resourceKey: string
+): AuthzResource {
+  return {
+    kind: "context-candidate",
+    target: resourceKey,
+    ...(auth.principal.tenantId === undefined
+      ? {}
+      : { tenantId: auth.principal.tenantId }),
+    ...(auth.principal.workspaceId === undefined
+      ? {}
+      : { workspaceId: auth.principal.workspaceId }),
+  };
+}
+
+function captureCompileRequest(
+  request: ContextCompileRequest
+): ContextCompileRequest {
+  const captured = {
+    requestId: request.requestId,
+    auth: captureAuthContext(request.auth),
+    audience: request.audience,
+    maxTokens: request.maxTokens,
+    ...(request.model === undefined ? {} : { model: request.model }),
+    ...(request.query === undefined ? {} : { query: request.query }),
+    ...(request.requestedContributorIds === undefined
+      ? {}
+      : {
+          requestedContributorIds: normalizeStringList(
+            request.requestedContributorIds
+          ),
+        }),
+    ...(request.excludedResourceKeys === undefined
+      ? {}
+      : {
+          excludedResourceKeys: normalizeStringList(
+            request.excludedResourceKeys
+          ),
+        }),
+    ...(request.pinnedResourceKeys === undefined
+      ? {}
+      : {
+          pinnedResourceKeys: normalizeStringList(request.pinnedResourceKeys),
+        }),
+  } satisfies ContextCompileRequest;
+  return Object.freeze(captured);
+}
+
+function normalizeStringList(values: readonly string[]): readonly string[] {
+  return Object.freeze([...new Set(values)].sort());
+}
+
+function assertValidSync<T>(
+  schema: {
+    readonly "~standard": {
+      validate(value: unknown):
+        | { value: T; issues?: undefined }
+        | { issues: readonly unknown[] }
+        | Promise<
+            | { value: T; issues?: undefined }
+            | { issues: readonly unknown[] }
+          >;
+    };
+  },
+  value: unknown,
+  label: string
+): void {
+  const result = schema["~standard"].validate(value);
+  if (result instanceof Promise) {
+    throw new TypeError(`${label} validator must be synchronous at capture`);
+  }
+  if ("issues" in result && result.issues) {
+    throw new TypeError(`Invalid ${label}`);
+  }
 }
 
 function requireNonEmpty(label: string, value: string): void {

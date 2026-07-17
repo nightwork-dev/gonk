@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  captureAuthContext,
   isAuthenticatedPrincipal,
   persistentGrantKey,
   redactAuthzResource,
   securityContextKey,
+  type AuthContext,
   type AuthenticatedPrincipal,
 } from "../src/index.ts";
 
@@ -38,6 +40,30 @@ function principal(
 }
 
 describe("principal binding keys", () => {
+  it("captures an immutable principal and binds the authorization policy once", async () => {
+    const sourcePrincipal = principal();
+    const context: AuthContext = {
+      principal: sourcePrincipal,
+      authorize() {
+        return { outcome: "allow" as const, reason: this.principal.tenantId! };
+      },
+    };
+    const captured = captureAuthContext(context);
+    sourcePrincipal.tenantId = "tenant-mutated";
+    context.authorize = () => ({ outcome: "deny", reason: "replacement" });
+
+    expect(captured.principal.tenantId).toBe("tenant-1");
+    expect(Object.isFrozen(captured)).toBe(true);
+    expect(Object.isFrozen(captured.principal)).toBe(true);
+    expect(Object.isFrozen(captured.principal.roles)).toBe(true);
+    expect(
+      await captured.authorize({
+        action: "context.discover",
+        resource: { kind: "context-candidate" },
+      })
+    ).toEqual({ outcome: "allow", reason: "tenant-mutated" });
+  });
+
   it("recognizes only structurally valid authenticated principals", () => {
     expect(isAuthenticatedPrincipal(principal())).toBe(true);
     expect(

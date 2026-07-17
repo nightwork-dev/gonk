@@ -176,6 +176,31 @@ export interface AuthContext {
   ): AuthorizationDecision | Promise<AuthorizationDecision>;
 }
 
+/**
+ * Capture the security-sensitive parts of an authorization context at a
+ * request boundary. Principal claims are cloned and deeply frozen, while the
+ * policy method is bound once so later replacement cannot change the policy
+ * used within the request.
+ */
+export function captureAuthContext(auth: AuthContext): Readonly<AuthContext> {
+  if (!isAuthenticatedPrincipal(auth.principal)) {
+    throw new TypeError(
+      "Authenticated principal must contain only valid plain claim data"
+    );
+  }
+  if (typeof auth.authorize !== "function") {
+    throw new TypeError("AuthContext authorize must be a function");
+  }
+  const principal = deepFreezePlainData(structuredClone(auth.principal));
+  const authorize = auth.authorize.bind(auth);
+  return Object.freeze({
+    principal,
+    authorize(request: AuthorizationRequest) {
+      return authorize(request);
+    },
+  });
+}
+
 export interface Authenticator<RequestLike> {
   authenticate(
     request: RequestLike
@@ -399,4 +424,24 @@ function isPlainClaimData(value: unknown): boolean {
     (prototype === Object.prototype || prototype === null) &&
     Object.values(value).every(isPlainClaimData)
   );
+}
+
+function deepFreezePlainData<T>(value: T): T {
+  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
+    return value;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (
+    !Array.isArray(value) &&
+    prototype !== Object.prototype &&
+    prototype !== null
+  ) {
+    throw new TypeError(
+      "Authenticated principal claims must contain only plain data"
+    );
+  }
+  for (const child of Object.values(value)) {
+    deepFreezePlainData(child);
+  }
+  return Object.freeze(value);
 }

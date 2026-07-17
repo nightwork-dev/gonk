@@ -81,18 +81,24 @@ sendToModel(result.content);
 
 ## Security boundary
 
-Compilation uses the request's canonical `AuthContext` twice:
+Compilation captures the request's canonical `AuthContext`, then uses it at
+two authorization gates:
 
-1. `context.discover` runs against a redacted `context-candidate` resource
-   containing the candidate's canonical `resourceKey`. Denied candidates are
-   never resolved.
-2. The contributor's resolved value is validated as untrusted input, then
+1. The request and authenticated principal are captured and frozen before the
+   first asynchronous contributor or policy call; `authorize` is bound once.
+2. Each untrusted descriptor's minimal redacted resource envelope is checked
+   for explicit exclusion, then `context.discover` runs before full descriptor
+   validation or cross-candidate duplicate detection. Denied candidates are
+   never resolved and cannot perturb visible validation or duplicate results.
+3. The contributor's resolved value is validated as untrusted input, then
    `context.use` runs against its authoritative `AuthzResource` before content
    reaches token accounting or the compiled artifact.
 
 Optional discovery denials are absent from caller-visible receipts, so adding a
 hidden corpus cannot change visible ordering, budget allocation, counts, or
-receipt bytes. A denied or failed required/pinned candidate returns `blocked`.
+receipt bytes. An explicitly excluded, denied, or failed required candidate—and
+any denied or failed pinned candidate—returns `blocked` with no sendable
+artifact.
 
 ## Determinism
 
@@ -131,7 +137,9 @@ Every public request/result boundary exports a Standard Schema validator:
 - `contextCompileResultSchema`
 
 Protocol discriminants are closed. Boundary validators reject unknown top-level
-fields, including free-form filter or policy bags.
+fields, including free-form filter or policy bags. Result validation also
+checks the canonical content join, exact block-to-receipt selection projection,
+token total and budget agreement, and exact ready/blocked blocker invariants.
 
 ## Receipts
 

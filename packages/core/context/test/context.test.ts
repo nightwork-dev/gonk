@@ -6,11 +6,15 @@ import type {
 import { describe, expect, it } from "vitest";
 
 import {
+  compiledContextBlockSchema,
   ContextCompiler,
   ContextContributorRegistry,
   contextCandidateSchema,
+  contextCompilationReceiptSchema,
   contextCompileRequestSchema,
   contextCompileResultSchema,
+  contextDiscoveryRequestSchema,
+  contextResolutionRequestSchema,
   contextTokenCountSchema,
   resolvedContextCandidateSchema,
   type ContextCandidate,
@@ -160,39 +164,124 @@ describe("ContextContributorRegistry", () => {
 });
 
 describe("closed Standard Schema boundaries", () => {
-  it("accepts canonical values and rejects invalid discriminants and extra bags", async () => {
+  it("rejects unknown fields and invalid discriminants at all nine exported boundaries", async () => {
     const value = candidate("one", "docs");
-    expect(await valid(contextCandidateSchema, value)).toBe(true);
-    expect(
-      await valid(contextCandidateSchema, {
-        ...value,
-        necessity: "sometimes",
-      })
-    ).toBe(false);
-    expect(
-      await valid(contextCandidateSchema, {
-        ...value,
-        filters: { secret: true },
-      })
-    ).toBe(false);
-    expect(
-      await valid(resolvedContextCandidateSchema, {
-        ...resolved(value),
-        renderer: () => "not serializable",
-      })
-    ).toBe(false);
-    expect(
-      await valid(contextCompileRequestSchema, {
-        ...request(),
-        policy: { arbitrary: true },
-      })
-    ).toBe(false);
-    expect(
-      await valid(contextTokenCountSchema, {
-        tokens: 1,
-        quality: "approximate",
-      })
-    ).toBe(false);
+    const resolvedValue = resolved(value, "one");
+    const block = {
+      candidateId: "one",
+      contributorId: "docs",
+      resourceKey: "document:one",
+      revision: "rev-1",
+      necessity: "optional" as const,
+      priority: 0,
+      audience: "model" as const,
+      content: "one",
+      contentTokens: 3,
+      renderedTokens: 3,
+      tokenQuality: "exact" as const,
+    };
+    const selection = {
+      candidateId: "one",
+      contributorId: "docs",
+      resourceKey: "document:one",
+      revision: "rev-1",
+      necessity: "optional" as const,
+      contentTokens: 3,
+      renderedTokens: 3,
+      tokenQuality: "exact" as const,
+    };
+    const receipt = {
+      kind: "context-compilation" as const,
+      receiptVersion: 1 as const,
+      requestId: "request-1",
+      timestamp: FIXED_TIME,
+      compilerVersion: "0.1.1",
+      configVersion: "test-v1",
+      status: "ready" as const,
+      audience: "model" as const,
+      maxTokens: 100,
+      totalTokens: 3,
+      selected: [selection],
+      dropped: [],
+      blockers: [],
+    };
+    const readyResult = {
+      status: "ready" as const,
+      blocks: [block],
+      content: "one",
+      totalTokens: 3,
+      receipt,
+    };
+    const discoveryRequest = {
+      requestId: "request-1",
+      audience: "model" as const,
+      principal,
+    };
+    const resolutionRequest = {
+      ...discoveryRequest,
+      candidate: value,
+    };
+    const boundaries = [
+      {
+        schema: contextCompileRequestSchema,
+        canonical: request(),
+        invalid: { ...request(), audience: "broadcast" },
+      },
+      {
+        schema: contextCandidateSchema,
+        canonical: value,
+        invalid: { ...value, necessity: "sometimes" },
+      },
+      {
+        schema: resolvedContextCandidateSchema,
+        canonical: resolvedValue,
+        invalid: { ...resolvedValue, audience: "internal" },
+      },
+      {
+        schema: contextDiscoveryRequestSchema,
+        canonical: discoveryRequest,
+        invalid: { ...discoveryRequest, audience: "internal" },
+      },
+      {
+        schema: contextResolutionRequestSchema,
+        canonical: resolutionRequest,
+        invalid: {
+          ...resolutionRequest,
+          candidate: { ...value, necessity: "sometimes" },
+        },
+      },
+      {
+        schema: contextTokenCountSchema,
+        canonical: { tokens: 1, quality: "exact" },
+        invalid: { tokens: 1, quality: "approximate" },
+      },
+      {
+        schema: compiledContextBlockSchema,
+        canonical: block,
+        invalid: { ...block, tokenQuality: "approximate" },
+      },
+      {
+        schema: contextCompilationReceiptSchema,
+        canonical: receipt,
+        invalid: { ...receipt, status: "partial" },
+      },
+      {
+        schema: contextCompileResultSchema,
+        canonical: readyResult,
+        invalid: { ...readyResult, status: "partial" },
+      },
+    ];
+
+    for (const boundary of boundaries) {
+      expect(await valid(boundary.schema, boundary.canonical)).toBe(true);
+      expect(
+        await valid(boundary.schema, {
+          ...boundary.canonical,
+          unknownProtocolField: { arbitrary: true },
+        })
+      ).toBe(false);
+      expect(await valid(boundary.schema, boundary.invalid)).toBe(false);
+    }
   });
 
   it("keeps candidate descriptors JSON-serializable", () => {
@@ -209,6 +298,80 @@ describe("closed Standard Schema boundaries", () => {
         blockers: [],
         content: "must not exist",
         receipt: {},
+      })
+    ).toBe(false);
+  });
+
+  it("enforces semantic invariants across results and receipts", async () => {
+    const registry = new ContextContributorRegistry();
+    registry.register(contributor("docs", [candidate("one", "docs")]));
+    const ready = await compiler(registry).compile(request());
+    expect(ready.status).toBe("ready");
+    if (ready.status !== "ready") return;
+
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...ready,
+        content: `${ready.content}\n\nsmuggled`,
+      })
+    ).toBe(false);
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...ready,
+        receipt: { ...ready.receipt, selected: [] },
+      })
+    ).toBe(false);
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...ready,
+        totalTokens: ready.totalTokens + 1,
+      })
+    ).toBe(false);
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...ready,
+        receipt: {
+          ...ready.receipt,
+          blockers: [
+            {
+              reason: "budget",
+              necessity: "required",
+              pinned: false,
+            },
+          ],
+        },
+      })
+    ).toBe(false);
+    expect(
+      await valid(contextCompilationReceiptSchema, {
+        ...ready.receipt,
+        totalTokens: ready.receipt.maxTokens + 1,
+      })
+    ).toBe(false);
+
+    const requiredRegistry = new ContextContributorRegistry();
+    requiredRegistry.register(
+      contributor("docs", [
+        candidate("required", "docs", "document:required", {
+          necessity: "required",
+        }),
+      ])
+    );
+    const blocked = await compiler(requiredRegistry).compile(
+      request(auth(() => ({ outcome: "deny", reason: "hidden" })))
+    );
+    expect(blocked.status).toBe("blocked");
+    if (blocked.status !== "blocked") return;
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...blocked,
+        blockers: [],
+      })
+    ).toBe(false);
+    expect(
+      await valid(contextCompileResultSchema, {
+        ...blocked,
+        receipt: { ...blocked.receipt, blockers: [] },
       })
     ).toBe(false);
   });
@@ -337,6 +500,55 @@ describe("ContextCompiler authorization", () => {
     expect(result.status).toBe("ready");
     expect(counted).toEqual([]);
     expect(JSON.stringify(result)).not.toContain("TOP SECRET BODY");
+  });
+
+  it("snapshots the request and principal before policy code can mutate them", async () => {
+    const mutablePrincipal = structuredClone(principal);
+    const observedTenants: Array<string | undefined> = [];
+    const authorizationTenants: Array<string | undefined> = [];
+    const registry = new ContextContributorRegistry();
+    const value = candidate("visible", "docs", "document:visible");
+    let compileRequest: ContextCompileRequest;
+    registry.register({
+      id: "docs",
+      discover: ({ principal: capturedPrincipal }) => {
+        observedTenants.push(capturedPrincipal.tenantId);
+        try {
+          (capturedPrincipal.roles as string[]).push("admin");
+        } catch {
+          // The captured principal is deeply frozen.
+        }
+        compileRequest.excludedResourceKeys = ["document:visible"];
+        compileRequest.maxTokens = 0;
+        return [value];
+      },
+      resolve: ({ candidate: item, principal: capturedPrincipal }) => {
+        observedTenants.push(capturedPrincipal.tenantId);
+        return resolved(item, "visible");
+      },
+    });
+    const mutableAuth: AuthContext = {
+      principal: mutablePrincipal,
+      authorize(authorization) {
+        authorizationTenants.push(authorization.resource.tenantId);
+        mutablePrincipal.tenantId = "tenant-mutated";
+        this.authorize = () => ({ outcome: "deny", reason: "replacement" });
+        return { outcome: "allow", reason: "captured policy" };
+      },
+    };
+    compileRequest = request(mutableAuth, {
+      excludedResourceKeys: [],
+      maxTokens: 100,
+    });
+
+    const result = await compiler(registry).compile(compileRequest);
+
+    expect(result.status).toBe("ready");
+    if (result.status !== "ready") return;
+    expect(result.content).toBe("visible");
+    expect(observedTenants).toEqual(["tenant-1", "tenant-1"]);
+    expect(authorizationTenants).toEqual(["tenant-1", "tenant-1"]);
+    expect(result.receipt.maxTokens).toBe(100);
   });
 });
 
@@ -650,6 +862,35 @@ describe("ContextCompiler blocking and failure behavior", () => {
       )
     ).rejects.toThrow(/both pinned and excluded/);
   });
+
+  it("blocks when the caller explicitly excludes required context", async () => {
+    const registry = new ContextContributorRegistry();
+    registry.register(
+      contributor("docs", [
+        candidate("required", "docs", "document:required", {
+          necessity: "required",
+        }),
+      ])
+    );
+
+    const result = await compiler(registry).compile(
+      request(auth(), { excludedResourceKeys: ["document:required"] })
+    );
+
+    expect(result.status).toBe("blocked");
+    if (result.status !== "blocked") return;
+    expect(result).not.toHaveProperty("content");
+    expect(result).not.toHaveProperty("blocks");
+    expect(result.blockers).toEqual([
+      {
+        reason: "excluded",
+        necessity: "required",
+        pinned: false,
+        resourceKey: "document:required",
+      },
+    ]);
+    expect(result.receipt.blockers).toEqual(result.blockers);
+  });
 });
 
 describe("hidden-corpus non-interference", () => {
@@ -673,6 +914,76 @@ describe("hidden-corpus non-interference", () => {
       outcome: authorization.resource.target?.includes("hidden") ? "deny" : "allow",
       reason: "policy",
     }));
+    const base = await compiler(baseRegistry).compile(request(policy));
+    const withHidden = await compiler(hiddenRegistry).compile(request(policy));
+
+    expect(JSON.stringify(withHidden)).toBe(JSON.stringify(base));
+  });
+
+  it("does not let a denied hidden duplicate candidate id suppress a visible candidate", async () => {
+    const visible = candidate("shared-id", "docs", "document:visible");
+    const hidden = candidate("shared-id", "docs", "document:hidden", {
+      priority: 999,
+    });
+    const baseRegistry = new ContextContributorRegistry();
+    baseRegistry.register(contributor("docs", [visible]));
+    const hiddenRegistry = new ContextContributorRegistry();
+    hiddenRegistry.register(contributor("docs", [hidden, visible]));
+    const policy = auth((authorization) => ({
+      outcome:
+        authorization.resource.target === "document:hidden" ? "deny" : "allow",
+      reason: "policy",
+    }));
+
+    const base = await compiler(baseRegistry).compile(request(policy));
+    const withHidden = await compiler(hiddenRegistry).compile(request(policy));
+
+    expect(JSON.stringify(withHidden)).toBe(JSON.stringify(base));
+  });
+
+  it("does not let an excluded duplicate candidate id suppress a visible candidate", async () => {
+    const visible = candidate("shared-id", "docs", "document:visible");
+    const excluded = candidate("shared-id", "docs", "document:excluded", {
+      priority: 999,
+    });
+    const baseRegistry = new ContextContributorRegistry();
+    baseRegistry.register(contributor("docs", [visible]));
+    const excludedRegistry = new ContextContributorRegistry();
+    excludedRegistry.register(contributor("docs", [excluded, visible]));
+
+    const base = await compiler(baseRegistry).compile(
+      request(auth(), { excludedResourceKeys: ["document:excluded"] })
+    );
+    const withExcluded = await compiler(excludedRegistry).compile(
+      request(auth(), { excludedResourceKeys: ["document:excluded"] })
+    );
+
+    expect(JSON.stringify(withExcluded)).toBe(JSON.stringify(base));
+  });
+
+  it("does not reveal a malformed descriptor behind discovery denial", async () => {
+    const visible = candidate("visible", "docs", "document:visible");
+    const malformedHidden = {
+      ...candidate("hidden", "docs", "document:hidden", {
+        priority: 999,
+      }),
+      executable: () => "must remain hidden",
+    };
+    const baseRegistry = new ContextContributorRegistry();
+    baseRegistry.register(contributor("docs", [visible]));
+    const hiddenRegistry = new ContextContributorRegistry();
+    hiddenRegistry.register({
+      id: "docs",
+      discover: () =>
+        [malformedHidden, visible] as unknown as readonly ContextCandidate[],
+      resolve: ({ candidate: item }) => resolved(item),
+    });
+    const policy = auth((authorization) => ({
+      outcome:
+        authorization.resource.target === "document:hidden" ? "deny" : "allow",
+      reason: "policy",
+    }));
+
     const base = await compiler(baseRegistry).compile(request(policy));
     const withHidden = await compiler(hiddenRegistry).compile(request(policy));
 

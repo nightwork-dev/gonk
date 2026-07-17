@@ -11,6 +11,7 @@ export type ContextCompileStatus = "ready" | "blocked";
 export type ContextDropReason =
   | "duplicate"
   | "budget"
+  | "excluded"
   | "discovery-denied"
   | "resolution-failed"
   | "use-denied"
@@ -161,6 +162,12 @@ export type ContextReceiptDrop =
     };
 
 export type ContextBlockingReason =
+  | {
+      reason: "excluded";
+      necessity: "required";
+      pinned: false;
+      resourceKey: string;
+    }
   | {
       reason: "discovery-denied";
       necessity: "required";

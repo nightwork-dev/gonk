@@ -1,5 +1,5 @@
 import {
-  isAuthenticatedPrincipal,
+  captureAuthContext,
   redactAuthzResource,
   securityContextKey,
   type AuthContext,
@@ -727,42 +727,6 @@ function defaultRequestId(): string {
 
 function defaultNow(): string {
   return new Date().toISOString();
-}
-
-function captureAuthContext(auth: AuthContext): AuthContext {
-  if (!isAuthenticatedPrincipal(auth.principal)) {
-    throw new TypeError(
-      "Authenticated principal must contain only valid plain claim data"
-    );
-  }
-  const principal = deepFreeze(structuredClone(auth.principal));
-  const authorize = auth.authorize.bind(auth);
-  return Object.freeze({
-    principal,
-    authorize(request: Parameters<AuthContext["authorize"]>[0]) {
-      return authorize(request);
-    },
-  });
-}
-
-function deepFreeze<T>(value: T): T {
-  if (value === null || typeof value !== "object" || Object.isFrozen(value)) {
-    return value;
-  }
-  const prototype = Object.getPrototypeOf(value);
-  if (
-    !Array.isArray(value) &&
-    prototype !== Object.prototype &&
-    prototype !== null
-  ) {
-    throw new TypeError(
-      "Authenticated principal claims must contain only plain data"
-    );
-  }
-  for (const child of Object.values(value)) {
-    deepFreeze(child);
-  }
-  return Object.freeze(value);
 }
 
 function toolNotFound(name: string): ToolEvent {

@@ -19,17 +19,22 @@ hooks, or rendering templates.
 
 ```text
 candidate descriptor
+  -> request/auth snapshot at synchronous entry
+  -> exclusion check on redacted resourceKey
   -> context.discover on redacted resourceKey
+  -> full descriptor validation and visible-candidate duplicate checks
   -> contributor resolve
   -> validate identity agreement and authoritative resource
   -> context.use on authoritative resource
   -> token accounting, deduplication, budgeting, artifact
 ```
 
-Denied discovery never calls `resolve`. Optional hidden candidates do not enter
-caller-visible drop counts or content-derived receipt fields, so a hidden corpus
-cannot perturb visible output. Required or pinned failures return a closed
-`blocked` result with no sendable artifact.
+Denied discovery never calls `resolve` and occurs before malformed/duplicate
+aggregation, so optional hidden candidates cannot perturb visible validation,
+drop counts, ordering, or content-derived receipt fields. Exclusions occur at
+the same early redacted boundary. An explicitly excluded required candidate,
+or any other required/pinned failure, returns a closed `blocked` result with no
+sendable artifact.
 
 Authorization audit receipts remain owned by `@gonk/auth`. Context compilation
 emits a separate content-free domain receipt and deliberately does not create a
@@ -59,10 +64,13 @@ back to individual candidates.
 
 ## Boundary discipline
 
-All public request/result boundaries ship Standard Schema validators. Candidate
-descriptors contain no content, callbacks, resolvers, renderers, filter bags, or
-policy bags. Protocol discriminants are closed; contributor IDs, resource keys,
-revisions, and model IDs remain opaque registered data.
+All public request/result boundaries ship Standard Schema validators. Result
+validation enforces canonical content joining, exact selected-block receipt
+projection, budget/total agreement, empty ready blockers, and nonempty exact
+blocked blockers. Candidate descriptors contain no content, callbacks,
+resolvers, renderers, filter bags, or policy bags. Protocol discriminants are
+closed; contributor IDs, resource keys, revisions, and model IDs remain opaque
+registered data.
 
 ## Deferred
 
