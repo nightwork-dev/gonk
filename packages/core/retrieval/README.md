@@ -9,14 +9,19 @@ index and declares that it ranks only its source-authorized corpus. A
 immutable index generations and performs deterministic BM25 ranking. Core
 applies the same discovery, returned-hit, and content gates to both modes.
 
-Phase 0 is an in-process library. It does not import `@gonk/context`, create
-embeddings, register remote sources, or provide Sigil-specific adapters.
+The base entry point remains an in-process retrieval library. The optional
+`@gonk/retrieval/context` entry point imports `@gonk/context` only to project
+explicitly selected, authorized hits into context candidates. The package does
+not create embeddings, register remote sources, or provide Sigil-specific
+adapters.
 
 ## Install
 
 ```sh
 npm i @gonk/retrieval @gonk/auth @gonk/store
 ```
+
+Install `@gonk/context` as well when using the optional context adapter.
 
 ## Coordinated source
 
@@ -147,17 +152,25 @@ authoritative final-gate denial. It also exports the mandatory native
 authorized-corpus ranking case. Source implementations can run these cases
 without depending on Vitest.
 
+## Explicit context projection
+
+`@gonk/retrieval/context` exports `createRetrievalContextContributor()` and
+`listRetrievalContextSources()`. Search remains discovery only: the contributor
+accepts explicit selected-hit references, repeats source and hit authorization,
+and resolves through `RetrievalEngine.resolve()` before content can enter the
+context compiler. Hidden sources are removed before optional health or freshness
+probes run.
+
 ## Release train
 
-This package ships on Gonk's fixed `@gonk/*` train. Its Phase 0 minor changeset
-versions `@gonk/retrieval` and the required `@gonk/auth` contract together at
-`0.2.0`. A raw tarball created before `changeset version` retains the source
-tree's `0.1.0` metadata and is not a supported release artifact.
+This package ships on Gonk's fixed `@gonk/*` train. The context-adapter changeset
+is minor and materializes the fixed Core `0.3.0` train. Raw tarballs created
+before `changeset version` retain source-tree metadata and are not supported
+release artifacts.
 
 ## Deferred beyond Phase 0
 
 - embeddings, vector search, and hybrid ranking;
-- context contributor adapters;
 - remote source registration;
 - Sigil resource adapters and UI;
 - generic registry or receipt packages.

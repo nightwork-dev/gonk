@@ -162,16 +162,15 @@ registry is introduced.
 
 ## Release train
 
-The Phase 0 changeset is minor because it adds a new public Core contract. The
-repository's fixed `@gonk/*` release group therefore versions both
-`@gonk/retrieval` and its `@gonk/auth` dependency at `0.2.0`; `changeset status`
-must report that pair before release packaging is approved.
+The Phase 1 context-adapter changeset is minor because it adds a new public
+subpath over the shipped retrieval contract. The repository's fixed `@gonk/*`
+release group therefore materializes the full Core `0.3.0` train; `changeset status`
+must report that train before release packaging is approved.
 
-Raw tarballs packed before `changeset version` still carry the source-tree
-`0.1.0` versions. Those are not release artifacts and can collide with the
-already published pre-train packages. Pre-version smoke tests must pin the
-local train explicitly; final publish smoke tests run only after Changesets has
-materialized the fixed `0.2.0` train.
+Raw tarballs packed before `changeset version` still carry source-tree versions.
+Those are not release artifacts and can collide with already published
+packages. Final publish smoke tests run only after Changesets has materialized
+the fixed `0.3.0` train.
 
 ## Deferred
 
