@@ -22,7 +22,10 @@ import {
 import {
   createRetrievalContextContributor,
   listRetrievalContextSources,
+  retrievalContextSelectionListSchema,
+  retrievalContextSourceProbeResultSchema,
 } from "../src/context-adapter.ts";
+import { validateStandard } from "../src/validation.ts";
 import { MemoryStoreBackend } from "./memory-backend.ts";
 
 const NOW = "2026-07-17T03:45:00.000Z";
@@ -153,6 +156,82 @@ describe("retrieval context adapter", () => {
     expect(JSON.stringify(sources)).not.toContain("hidden");
   });
 
+  it("keeps visible-source denied resources out of context candidates", async () => {
+    const fixture = makeFixture();
+    const deniedHit = retrievalHit(resource("visible", "denied", "r1"));
+    fixture.policy.deniedHitTargets.add(canonicalResourceKey(deniedHit.resource));
+    const registry = new ContextContributorRegistry();
+    registry.register(
+      createRetrievalContextContributor({
+        engine: fixture.engine,
+        registry: fixture.registry,
+        authForRequest: () => fixture.auth,
+        selections: () => [
+          { candidateId: "denied-hit", hit: deniedHit },
+          {
+            candidateId: "visible-hit",
+            hit: retrievalHit(resource("visible", "alpha", "r1")),
+          },
+        ],
+      })
+    );
+
+    const compiled = await new ContextCompiler({
+      registry,
+      now: () => NOW,
+      tokenCounter: { count: () => ({ tokens: 1, quality: "exact" }) },
+    }).compile({
+      requestId: "ctx-resource-gate",
+      auth: fixture.auth,
+      audience: "model",
+      maxTokens: 100,
+    });
+
+    expect(compiled.status).toBe("ready");
+    if (compiled.status !== "ready") throw new Error("expected ready context");
+    expect(compiled.content).toContain("visible alpha body");
+    expect(compiled.content).not.toContain("visible denied body");
+    expect(compiled.blocks).toHaveLength(1);
+    expect(JSON.stringify(compiled)).not.toContain("denied-hit");
+    expect(compiled.receipt.selected.map(({ resourceKey }) => resourceKey)).toEqual([
+      canonicalResourceKey(resource("visible", "alpha", "r1")),
+    ]);
+  });
+
+  it("does not disclose forged restricted hits without an authority partition", async () => {
+    const fixture = makeFixture();
+    const restrictedHit = retrievalHit(resource("visible", "restricted", "r1"), {
+      audience: "restricted",
+    });
+    const registry = new ContextContributorRegistry();
+    registry.register(
+      createRetrievalContextContributor({
+        engine: fixture.engine,
+        registry: fixture.registry,
+        authForRequest: () => fixture.auth,
+        selections: () => [{ candidateId: "restricted-candidate", hit: restrictedHit }],
+      })
+    );
+
+    const compiled = await new ContextCompiler({
+      registry,
+      now: () => NOW,
+      tokenCounter: { count: () => ({ tokens: 1, quality: "exact" }) },
+    }).compile({
+      requestId: "ctx-authority-gate",
+      auth: fixture.auth,
+      audience: "model",
+      maxTokens: 100,
+    });
+
+    expect(compiled.status).toBe("ready");
+    if (compiled.status === "ready") {
+      expect(compiled.blocks).toHaveLength(0);
+      expect(compiled.content).toBe("");
+    }
+    expect(JSON.stringify(compiled)).not.toContain("restricted-candidate");
+  });
+
   it("rejects malformed source health probe output before returning it", async () => {
     const fixture = makeFixture();
     await expect(
@@ -168,7 +247,42 @@ describe("retrieval context adapter", () => {
         },
         { requestId: "bad-probe", auth: fixture.auth }
       )
-    ).rejects.toThrow("Invalid RetrievalContextSourceStatus probe result");
+    ).rejects.toThrow("Invalid RetrievalContextSourceProbeResult");
+  });
+
+  it("exports closed schemas for selection and source status callback outputs", async () => {
+    await expect(
+      validateStandard(
+        retrievalContextSelectionListSchema,
+        [
+          {
+            candidateId: "selected",
+            hit: retrievalHit(resource("visible", "alpha", "r1")),
+          },
+        ],
+        "RetrievalContextSelectionList"
+      )
+    ).resolves.toHaveLength(1);
+    await expect(
+      validateStandard(
+        retrievalContextSelectionListSchema,
+        [
+          {
+            candidateId: "selected",
+            hit: retrievalHit(resource("visible", "alpha", "r1")),
+            extra: "not closed",
+          },
+        ],
+        "RetrievalContextSelectionList"
+      )
+    ).rejects.toThrow("Invalid RetrievalContextSelectionList");
+    await expect(
+      validateStandard(
+        retrievalContextSourceProbeResultSchema,
+        { health: "available", freshness: "fresh", extra: "not closed" },
+        "RetrievalContextSourceProbeResult"
+      )
+    ).rejects.toThrow("Invalid RetrievalContextSourceProbeResult");
   });
 
   it("fails closed when the captured auth does not match the context principal", async () => {
@@ -267,6 +381,7 @@ class TestNativeSource implements NativeRetrievalSource<{ tag?: string }> {
 
 class Policy {
   readonly hiddenSources = new Set<string>();
+  readonly deniedHitTargets = new Set<string>();
 }
 
 function authContext(policy: Policy, principalValue: AuthenticatedPrincipal): AuthContext {
@@ -279,6 +394,14 @@ function authContext(policy: Policy, principalValue: AuthenticatedPrincipal): Au
         policy.hiddenSources.has(request.resource.target)
       ) {
         return { outcome: "deny", reason: "hidden source" };
+      }
+      if (
+        request.action === "retrieval.hit.read" &&
+        request.resource.kind === "retrieval-resource" &&
+        typeof request.resource.target === "string" &&
+        policy.deniedHitTargets.has(request.resource.target)
+      ) {
+        return { outcome: "deny", reason: "denied hit" };
       }
       if (
         request.resource.kind === "retrieval-resource" &&
@@ -320,10 +443,13 @@ function resource(
   };
 }
 
-function retrievalHit(resourceValue: RetrievalResourceRef): RetrievalHit {
+function retrievalHit(
+  resourceValue: RetrievalResourceRef,
+  options: { audience?: RetrievalHit["audience"] } = {}
+): RetrievalHit {
   return {
     resource: resourceValue,
-    audience: "tenant",
+    audience: options.audience ?? "tenant",
     scores: {
       lexical: { algorithm: "native", sourceId: resourceValue.sourceId, value: 1 },
       sourcePriority: 10,
