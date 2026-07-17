@@ -1,0 +1,453 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+
+import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
+import type {
+  ManagedSkillDetail,
+  ManagedSkillSummary,
+  SkillFreshnessResult,
+  SkillGetRequest,
+  SkillGetResult,
+  SkillListRequest,
+  SkillListResult,
+  SkillOrigin,
+  SkillProvenance,
+  SkillProvenanceAnchor,
+  SkillReadRequest,
+  SkillReadResult,
+  SkillRequirement,
+  SkillResolveResult,
+  SkillTreeEntry,
+} from "./types.ts";
+
+export const skillOriginSchema = schema<SkillOrigin>("SkillOrigin", isSkillOrigin);
+export const skillRequirementSchema = schema<SkillRequirement>(
+  "SkillRequirement",
+  isSkillRequirement
+);
+export const skillProvenanceAnchorSchema = schema<SkillProvenanceAnchor>(
+  "SkillProvenanceAnchor",
+  isSkillProvenanceAnchor
+);
+export const skillProvenanceSchema = schema<SkillProvenance>(
+  "SkillProvenance",
+  isSkillProvenance
+);
+export const skillFreshnessResultSchema = schema<SkillFreshnessResult>(
+  "SkillFreshnessResult",
+  isSkillFreshnessResult
+);
+export const skillTreeEntrySchema = schema<SkillTreeEntry>(
+  "SkillTreeEntry",
+  isSkillTreeEntry
+);
+export const managedSkillSummarySchema = schema<ManagedSkillSummary>(
+  "ManagedSkillSummary",
+  isManagedSkillSummary
+);
+export const managedSkillDetailSchema = schema<ManagedSkillDetail>(
+  "ManagedSkillDetail",
+  isManagedSkillDetail
+);
+export const skillListRequestSchema = schema<SkillListRequest>(
+  "SkillListRequest",
+  isSkillListRequest
+);
+export const skillGetRequestSchema = schema<SkillGetRequest>(
+  "SkillGetRequest",
+  isSkillGetRequest
+);
+export const skillReadRequestSchema = schema<SkillReadRequest>(
+  "SkillReadRequest",
+  isSkillReadRequest
+);
+export const skillListResultSchema = schema<SkillListResult>(
+  "SkillListResult",
+  isSkillListResult
+);
+export const skillGetResultSchema = schema<SkillGetResult>(
+  "SkillGetResult",
+  isSkillGetResult
+);
+export const skillResolveResultSchema = schema<SkillResolveResult>(
+  "SkillResolveResult",
+  isSkillResolveResult
+);
+export const skillReadResultSchema = schema<SkillReadResult>(
+  "SkillReadResult",
+  isSkillReadResult
+);
+
+function schema<T>(
+  label: string,
+  check: (value: unknown) => value is T
+): StandardSchemaV1<unknown, T> {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "gonk",
+      validate: (value) =>
+        check(value)
+          ? { value }
+          : { issues: [{ message: `Invalid ${label}` }] },
+    },
+  };
+}
+
+function isSkillOrigin(value: unknown): value is SkillOrigin {
+  return (
+    isExactRecord(value, ["kind", "adapterId", "packageId"]) &&
+    isOneOf(value.kind, [
+      "gonk-managed",
+      "host-installed",
+      "package",
+      "workspace",
+    ]) &&
+    isOptionalNonEmptyString(value.adapterId) &&
+    isOptionalNonEmptyString(value.packageId)
+  );
+}
+
+function isSkillRequirement(value: unknown): value is SkillRequirement {
+  return (
+    isExactRecord(value, ["tools", "hosts", "platforms"]) &&
+    isOptionalNonEmptyStringArray(value.tools) &&
+    isOptionalNonEmptyStringArray(value.hosts) &&
+    isOptionalNonEmptyStringArray(value.platforms)
+  );
+}
+
+function isSkillProvenanceAnchor(value: unknown): value is SkillProvenanceAnchor {
+  return (
+    isExactRecord(value, ["kind", "value"]) &&
+    isOneOf(value.kind, ["file", "symbol"]) &&
+    isNonEmptyString(value.value)
+  );
+}
+
+function isSkillProvenance(value: unknown): value is SkillProvenance {
+  return (
+    isExactRecord(value, [
+      "repositoryId",
+      "packageId",
+      "version",
+      "pinnedAt",
+      "anchors",
+    ]) &&
+    isOptionalNonEmptyString(value.repositoryId) &&
+    isOptionalNonEmptyString(value.packageId) &&
+    isOptionalNonEmptyString(value.version) &&
+    isOptionalNonEmptyString(value.pinnedAt) &&
+    Array.isArray(value.anchors) &&
+    value.anchors.length > 0 &&
+    value.anchors.every(isSkillProvenanceAnchor)
+  );
+}
+
+function isSkillFreshnessResult(value: unknown): value is SkillFreshnessResult {
+  return (
+    isExactRecord(value, ["status", "summary", "checkedAt"]) &&
+    isOneOf(value.status, [
+      "fresh",
+      "stale",
+      "dead",
+      "unprobeable",
+      "unknown",
+    ]) &&
+    isOptionalNonEmptyString(value.summary) &&
+    isOptionalNonEmptyString(value.checkedAt)
+  );
+}
+
+function isSkillTreeEntry(value: unknown): value is SkillTreeEntry {
+  if (
+    isExactRecord(value, ["kind", "name", "path", "size", "contentHash"]) &&
+    value.kind === "file"
+  ) {
+    return (
+      isTreeName(value.name) &&
+      isManagedSkillPath(value.path) &&
+      isNonNegativeInteger(value.size) &&
+      isHash(value.contentHash)
+    );
+  }
+  if (
+    isExactRecord(value, ["kind", "name", "path", "children"]) &&
+    value.kind === "directory"
+  ) {
+    return (
+      isTreeName(value.name) &&
+      isManagedSkillPath(value.path) &&
+      Array.isArray(value.children) &&
+      value.children.every(isSkillTreeEntry)
+    );
+  }
+  return false;
+}
+
+function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
+  return (
+    isExactRecord(value, [
+      "id",
+      "name",
+      "description",
+      "version",
+      "author",
+      "origin",
+      "scope",
+      "lifecycle",
+      "capabilities",
+      "revision",
+      "contentHash",
+      "pinned",
+      "agentCreated",
+      "useCount",
+      "lastUsedAt",
+      "updatedAt",
+      "requirements",
+      "freshness",
+    ]) &&
+    isManagedSkillId(value.id) &&
+    isOptionalNonEmptyString(value.name) &&
+    isNonEmptyString(value.description) &&
+    isOptionalNonEmptyString(value.version) &&
+    isOptionalNonEmptyString(value.author) &&
+    isSkillOrigin(value.origin) &&
+    isScope(value.scope) &&
+    value.lifecycle === "active" &&
+    Array.isArray(value.capabilities) &&
+    value.capabilities.length > 0 &&
+    value.capabilities.every(isCapability) &&
+    isHash(value.revision) &&
+    isHash(value.contentHash) &&
+    isOptionalBoolean(value.pinned) &&
+    isOptionalBoolean(value.agentCreated) &&
+    (value.useCount === undefined || isNonNegativeInteger(value.useCount)) &&
+    isOptionalNonEmptyString(value.lastUsedAt) &&
+    isOptionalNonEmptyString(value.updatedAt) &&
+    (value.requirements === undefined || isSkillRequirement(value.requirements)) &&
+    (value.freshness === undefined || isSkillFreshnessResult(value.freshness))
+  );
+}
+
+function isManagedSkillDetail(value: unknown): value is ManagedSkillDetail {
+  if (
+    !isExactRecord(value, [
+      "id",
+      "name",
+      "description",
+      "version",
+      "author",
+      "origin",
+      "scope",
+      "lifecycle",
+      "capabilities",
+      "revision",
+      "contentHash",
+      "pinned",
+      "agentCreated",
+      "useCount",
+      "lastUsedAt",
+      "updatedAt",
+      "requirements",
+      "freshness",
+      "body",
+      "skillDir",
+      "manifestPath",
+      "supportingFiles",
+      "provenance",
+      "shadowed",
+    ])
+  ) {
+    return false;
+  }
+  const summary = pickSummary(value);
+  return (
+    isManagedSkillSummary(summary) &&
+    typeof value.body === "string" &&
+    isNonEmptyString(value.skillDir) &&
+    isNonEmptyString(value.manifestPath) &&
+    Array.isArray(value.supportingFiles) &&
+    value.supportingFiles.every(isSkillTreeEntry) &&
+    (value.provenance === undefined || isSkillProvenance(value.provenance)) &&
+    Array.isArray(value.shadowed) &&
+    value.shadowed.every(isManagedSkillSummary)
+  );
+}
+
+function isSkillListRequest(value: unknown): value is SkillListRequest {
+  return (
+    isExactRecord(value, ["scope", "includeFreshness"]) &&
+    (value.scope === undefined || isScope(value.scope)) &&
+    isOptionalBoolean(value.includeFreshness)
+  );
+}
+
+function isSkillGetRequest(value: unknown): value is SkillGetRequest {
+  return (
+    isExactRecord(value, ["id", "scope", "includeFreshness"]) &&
+    isManagedSkillId(value.id) &&
+    (value.scope === undefined || isScope(value.scope)) &&
+    isOptionalBoolean(value.includeFreshness)
+  );
+}
+
+function isSkillReadRequest(value: unknown): value is SkillReadRequest {
+  return (
+    isExactRecord(value, ["id", "path", "scope"]) &&
+    isManagedSkillId(value.id) &&
+    (value.path === undefined || isManagedSkillPath(value.path)) &&
+    (value.scope === undefined || isScope(value.scope))
+  );
+}
+
+function isSkillListResult(value: unknown): value is SkillListResult {
+  return (
+    isExactRecord(value, ["status", "skills"]) &&
+    value.status === "ok" &&
+    Array.isArray(value.skills) &&
+    value.skills.every(isManagedSkillSummary)
+  );
+}
+
+function isSkillGetResult(value: unknown): value is SkillGetResult {
+  if (isExactRecord(value, ["status", "skill"]) && value.status === "found") {
+    return isManagedSkillDetail(value.skill);
+  }
+  return (
+    isExactRecord(value, ["status", "id"]) &&
+    value.status === "not-found" &&
+    isManagedSkillId(value.id)
+  );
+}
+
+function isSkillResolveResult(value: unknown): value is SkillResolveResult {
+  if (
+    isExactRecord(value, ["status", "id", "active", "definitions"]) &&
+    value.status === "found"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      isManagedSkillDetail(value.active) &&
+      value.active.id === value.id &&
+      Array.isArray(value.definitions) &&
+      value.definitions.length > 0 &&
+      value.definitions.every(
+        (entry) => isManagedSkillSummary(entry) && entry.id === value.id
+      )
+    );
+  }
+  return (
+    isExactRecord(value, ["status", "id"]) &&
+    value.status === "not-found" &&
+    isManagedSkillId(value.id)
+  );
+}
+
+function isSkillReadResult(value: unknown): value is SkillReadResult {
+  if (
+    isExactRecord(value, [
+      "status",
+      "id",
+      "scope",
+      "path",
+      "content",
+      "contentHash",
+      "skillRevision",
+      "mediaType",
+    ]) &&
+    value.status === "found"
+  ) {
+    return (
+      isManagedSkillId(value.id) &&
+      isScope(value.scope) &&
+      isManagedSkillPath(value.path) &&
+      typeof value.content === "string" &&
+      isHash(value.contentHash) &&
+      isHash(value.skillRevision) &&
+      isOneOf(value.mediaType, ["text/markdown", "text/plain"])
+    );
+  }
+  return (
+    isExactRecord(value, ["status", "id", "path", "reason"]) &&
+    value.status === "not-found" &&
+    isManagedSkillId(value.id) &&
+    isManagedSkillPath(value.path) &&
+    isOneOf(value.reason, ["skill-not-found", "file-not-found"])
+  );
+}
+
+function pickSummary(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of [
+    "id", "name", "description", "version", "author", "origin", "scope",
+    "lifecycle", "capabilities", "revision", "contentHash", "pinned",
+    "agentCreated", "useCount", "lastUsedAt", "updatedAt", "requirements",
+    "freshness",
+  ]) {
+    if (Object.hasOwn(value, key)) out[key] = value[key];
+  }
+  return out;
+}
+
+function isExactRecord(
+  value: unknown,
+  allowedKeys: readonly string[]
+): value is Record<string, unknown> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.keys(value).every((key) => allowedKeys.includes(key))
+  );
+}
+
+function isScope(value: unknown): boolean {
+  return isOneOf(value, ["global", "persona", "project", "directory", "session"]);
+}
+
+function isCapability(value: unknown): boolean {
+  return isOneOf(value, [
+    "read", "attach", "activate", "edit", "archive", "delete", "pin", "test",
+  ]);
+}
+
+function isOneOf(value: unknown, values: readonly string[]): boolean {
+  return typeof value === "string" && values.includes(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function isOptionalNonEmptyString(value: unknown): boolean {
+  return value === undefined || isNonEmptyString(value);
+}
+
+function isOptionalBoolean(value: unknown): boolean {
+  return value === undefined || typeof value === "boolean";
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isOptionalNonEmptyStringArray(value: unknown): boolean {
+  return (
+    value === undefined ||
+    (Array.isArray(value) && value.every(isNonEmptyString))
+  );
+}
+
+function isHash(value: unknown): value is string {
+  return typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+}
+
+function isTreeName(value: unknown): value is string {
+  return (
+    isNonEmptyString(value) &&
+    value !== "." &&
+    value !== ".." &&
+    !value.includes("/") &&
+    !value.includes("\\")
+  );
+}
