@@ -42,8 +42,9 @@ can write active skills or structurally invisible staged skills. Patch supports
 body find/replace plus supporting-file writes/removals and compares
 `expectedRevision`; patch, pin, usage, and archive return structured conflicts
 with the current revision and affected paths. `idempotencyKey` is replayed by an
-in-process ledger for the filesystem registry. Pinned skills reject agent edits
-and archive by default.
+in-process ledger namespaced by operation and the canonical auth security context;
+authorization is rechecked before every replay. Pinned skills reject edits and
+archive until an authorized `pin({ pinned: false })` explicitly unpins them.
 
 Staged promotion is never implicit. `promote()` requires normal Gonk
 authorization and an injected `@gonk/tool-registry` approval provider; without
@@ -53,10 +54,13 @@ untouched.
 Activation is model-visible only through `@gonk/context`. `activate()` returns a
 readiness result and compiler candidate; `createSkillActivationContributor()`
 projects activation receipts as required model-context candidates. Tool
-projection is distinct (`read`, `attach`, `activate`, `test`): use
-`projectSkillToolDefinitions()` for `@gonk/tool-registry` definitions with
-closed Standard Schema input/output contracts, or `projectSkillTools()` for a
-lightweight catalog descriptor. There is no generic invoke verb.
+projection is distinct (`read`, `attach`, `activate`, `test`).
+`createSkillToolDefinitions()` binds real `skill-read` and `skill-activate`
+handlers to a writable registry; it emits `skill-attach` or `skill-test` only
+when the host injects the corresponding executable callback. All definitions
+have closed Standard Schema contracts and fail closed without `ctx.auth`.
+`projectSkillTools()` remains a lightweight capability descriptor. There is no
+generic invoke verb.
 
 Freshness is an injected capability. Core performs no network access: without a
 probe it reports `unknown`, and a failed probe becomes `unprobeable` without

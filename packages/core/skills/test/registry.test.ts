@@ -225,6 +225,17 @@ describe("authorized filesystem mutations", () => {
       pinned: true,
     });
     expect(pin.status).toBe("ok");
+
+    await harness.seed({ scope: "project", id: "archive-replay" });
+    const archiveRequest: SkillArchiveRequest = {
+      auth: authContext("allow", "agent:one"),
+      idempotencyKey: "archive-replay-key",
+      expectedRevision: await revisionOf(harness, "archive-replay"),
+      id: "archive-replay",
+    };
+    const archived = await harness.registry.archive(archiveRequest);
+    expect(archived.status).toBe("ok");
+    expect(await harness.registry.archive(archiveRequest)).toEqual(archived);
   });
 
   it("rejects pinned edits and archives even when untyped callers pass allowPinned", async () => {

@@ -110,19 +110,23 @@ required methods so consumers cannot accidentally treat mutation support as
 optional and fail open.
 
 Mutation requests carry `idempotencyKey`; the filesystem implementation keeps an
-in-process replay ledger keyed by request fingerprint. Reusing a key with a
-different request returns a structured conflict. Patch, pin, usage, and archive
+in-process replay ledger keyed by operation, canonical auth security context,
+and request fingerprint. Authorization runs before every replay, so a denied or
+different effective principal cannot inherit a prior result. Reusing a key with
+a different request returns a structured conflict. Patch, pin, usage, and archive
 also carry `expectedRevision`; stale callers receive the current revision and
 affected paths. Patch can update the manifest body, write supporting files, and
 remove supporting files through a copy-then-rename directory rewrite. Pinned
-skills reject agent edits and archive by default.
+skills reject edits and archive until the authorized pin API explicitly unpins
+them; patch/archive have no caller-controlled bypass.
 
 Create can write active or staged skills, but not overwrite existing live
 material. Staged skills live under `.staging` and remain invisible to list/get/read.
 Promotion requires both `skill.manage` authorization and an injected
 `@gonk/tool-registry` approval provider; a missing, required, or denied approval
-provider leaves the staged copy untouched. Restore copies from `.archive` and
-refuses to clobber a live skill.
+provider leaves the staged copy untouched. Restore validates an isolated
+temporary copy, atomically places it only when valid, marks the archive restored
+after placement, and refuses to clobber a live skill.
 
 ## Activation and tools
 
@@ -133,10 +137,14 @@ plus a compiler candidate. Model-visible content flows through
 resolution, and `context.use` authorization path.
 
 Tool projection is closed and distinct: `read`, `attach`, `activate`, and
-`test`. `projectSkillToolDefinitions()` returns real `@gonk/tool-registry`
-definitions with closed Standard Schema input/output contracts; the lighter
-`projectSkillTools()` descriptor is for catalogs. Core deliberately does not
-project a generic invoke verb.
+`test`. `createSkillToolDefinitions()` returns real `@gonk/tool-registry`
+definitions bound to a writable registry: Core always supplies executable read
+and activate handlers, while attach/test definitions exist only when the host
+injects executable callbacks. The handlers have closed Standard Schema
+contracts, require `ctx.auth`, and carry approval plus skill-resource metadata.
+The lighter `projectSkillTools()` descriptor is metadata for catalogs, including
+host-specific operations that may not be executable in a given host. Core
+deliberately does not project a generic invoke verb.
 
 ## Intentionally not lifted
 

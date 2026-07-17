@@ -396,7 +396,10 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
 
   async archive(request: SkillArchiveRequest): Promise<SkillArchiveResult> {
     const auth = captureMutationAuth(request.auth);
-    const scope = request.scope ?? (await this.selectedScope(request.id));
+    const scope =
+      request.scope ??
+      (await this.selectedScope(request.id)) ??
+      this.archiveEntries(request.id).at(-1)?.scope;
     if (!scope) return archiveFailed(request.id, "not-found", "Skill not found");
     const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
     if (denied) return archiveFailed(request.id, "denied", denied.reason);
@@ -480,8 +483,9 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
   async promote(request: SkillPromoteRequest): Promise<SkillMutationResult> {
     const auth = captureMutationAuth(request.auth);
     const staged = this.stagedSkillDir(request.id, request.scope);
-    if (!staged) return mutationFailed(request.id, "not-found", "Staged skill not found");
-    const denied = await authorizeSkill(auth, "skill.manage", request.id, staged.scope, request);
+    const scope = staged?.scope ?? request.scope ?? (await this.selectedScope(request.id));
+    if (!scope) return mutationFailed(request.id, "not-found", "Staged skill not found");
+    const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
     if (denied) return mutationFailed(request.id, "denied", denied.reason);
     const replay = this.replay<SkillMutationResult>(
       "promote",
@@ -491,6 +495,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       () => idempotencyConflict(request.id)
     );
     if (replay) return replay;
+    if (!staged) return mutationFailed(request.id, "not-found", "Staged skill not found");
     const approval = await this.approvePromotion(auth, request, staged.scope);
     if (approval) return approval;
     const live = this.skillDir(staged.scope, request.id);
