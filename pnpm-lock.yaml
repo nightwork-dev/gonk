@@ -258,6 +258,9 @@ importers:
       '@gonk/auth':
         specifier: workspace:*
         version: link:../auth
+      '@gonk/context':
+        specifier: workspace:*
+        version: link:../context
       '@gonk/store':
         specifier: workspace:*
         version: link:../store

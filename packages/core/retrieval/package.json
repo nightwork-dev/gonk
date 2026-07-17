@@ -8,6 +8,10 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./context": {
+      "types": "./dist/context.d.ts",
+      "import": "./dist/context.js"
+    },
     "./conformance": {
       "types": "./dist/conformance.d.ts",
       "import": "./dist/conformance.js"
@@ -27,6 +31,7 @@
   },
   "dependencies": {
     "@gonk/auth": "workspace:*",
+    "@gonk/context": "workspace:*",
     "@gonk/store": "workspace:*",
     "@standard-schema/spec": "catalog:"
   },

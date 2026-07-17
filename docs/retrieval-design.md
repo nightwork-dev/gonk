@@ -1,6 +1,6 @@
 # Authorized retrieval core
 
-Status: **SHIPPED — Phase 0**
+Status: **SHIPPED — Phase 0; Phase 1 adapter in progress**
 
 Package: `@gonk/retrieval`
 
@@ -15,9 +15,10 @@ source-enforced authorized native corpus, resolves content through a final
 authoritative gate, creates stable citations, and emits content-free
 retrieval-domain receipts.
 
-Retrieval does not import `@gonk/context`. Search and citation are useful on
-their own; a later adapter may turn authorized retrieval results into context
-candidates without merging the two policy boundaries.
+Retrieval search and citation remain useful on their own. The optional
+`@gonk/retrieval/context` adapter turns explicitly selected, authorized
+retrieval hits into `@gonk/context` candidates without merging the two policy
+boundaries or making search results prompt-visible by default.
 
 ## Source modes
 
@@ -62,6 +63,14 @@ metadata-only ref
   -> validate identity + tenant/workspace confinement
   -> retrieval.content.resolve
   -> label/excerpt/content or closed redacted status
+
+selected retrieval hit
+  -> adapter auth snapshot for the same context request principal
+  -> retrieval.source.discover re-check
+  -> content-free context candidate
+  -> ContextCompiler context.discover / context.use gates
+  -> RetrievalEngine.resolve final content gate
+  -> resolved context block or null
 ```
 
 Discovery-denied sources are absent from source lists, searches, and receipts.
@@ -131,6 +140,26 @@ receipt hierarchy. Receipts contain resource identities and scores where
 visible, never search text, content, hidden sources, or denial counts for hidden
 hits.
 
+## Context adapter
+
+`@gonk/retrieval/context` exports `createRetrievalContextContributor()` and
+`listRetrievalContextSources()`.
+
+The contributor consumes a host-supplied selected-hit provider. It does not run
+search, does not choose retrieval results, and does not add search hits to a
+model prompt merely because they were found. Discovery reuses the retrieval
+source registry and repeats `retrieval.source.discover` before it emits a
+content-free context candidate. Resolution calls `RetrievalEngine.resolve`, so
+stale revisions, tenant/workspace confinement, authoritative source reads, and
+the final `retrieval.content.resolve` gate remain owned by retrieval. The
+compiled model artifact still appears only after the context compiler's
+`context.discover` and `context.use` checks.
+
+Source health/freshness projection also uses the existing retrieval source
+registry. `listRetrievalContextSources()` starts from `registry.list()`, so
+hidden sources are absent before optional probes run and no second source
+registry is introduced.
+
 ## Release train
 
 The Phase 0 changeset is minor because it adds a new public Core contract. The
@@ -147,5 +176,6 @@ materialized the fixed `0.2.0` train.
 ## Deferred
 
 Phase 0 intentionally excludes embeddings, vector/hybrid search, remote source
-registration, context integration, Sigil adapters/UI, and generic registry or
-receipt packages.
+registration, Sigil adapters/UI, and generic registry or receipt packages.
+Phase 1 adds only the context adapter seam; it still excludes Deadletters corpus
+indexing, Sigil UI, and any second retrieval registry.
