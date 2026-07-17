@@ -119,11 +119,10 @@ export interface ManagedSkillSummary {
 
 export interface ManagedSkillDetail extends ManagedSkillSummary {
   body: string;
-  skillDir: string;
-  manifestPath: string;
   supportingFiles: readonly SkillTreeEntry[];
   provenance?: SkillProvenance;
-  shadowed: readonly ManagedSkillSummary[];
+  /** Other definitions of this id, labelled neutrally in scope order. */
+  otherDefinitions: readonly ManagedSkillSummary[];
 }
 
 export interface SkillListRequest {
@@ -134,6 +133,11 @@ export interface SkillListRequest {
 export interface SkillGetRequest {
   id: string;
   scope?: SkillScope;
+  includeFreshness?: boolean;
+}
+
+export interface SkillResolveRequest {
+  id: string;
   includeFreshness?: boolean;
 }
 
@@ -184,8 +188,8 @@ export interface ManagedSkillRegistry {
   list(request?: SkillListRequest): Promise<SkillListResult>;
   /** The caller must authorize detail/body disclosure before exposing this result. */
   get(request: SkillGetRequest): Promise<SkillGetResult>;
-  /** The caller must authorize scope/shadow disclosure before exposing this result. */
-  resolve(request: SkillGetRequest): Promise<SkillResolveResult>;
+  /** The caller must authorize definition-resolution disclosure before exposing this result. */
+  resolve(request: SkillResolveRequest): Promise<SkillResolveResult>;
   /** The caller must authorize content disclosure before exposing this result. */
   read(request: SkillReadRequest): Promise<SkillReadResult>;
 }

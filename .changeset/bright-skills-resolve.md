@@ -1,5 +1,5 @@
 ---
-"@gonk/skills": patch
+"@gonk/skills": minor
 ---
 
 Add the canonical managed-skill read contract: deterministic five-tier scope

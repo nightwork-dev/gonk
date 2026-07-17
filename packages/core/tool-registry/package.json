@@ -61,7 +61,7 @@
     "@standard-schema/spec": "catalog:"
   },
   "peerDependencies": {
-    "@gonk/scope": "workspace:*"
+    "@gonk/scope": "workspace:>=0.1.0 <1"
   },
   "peerDependenciesMeta": {
     "@gonk/scope": {

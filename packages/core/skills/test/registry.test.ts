@@ -1,12 +1,22 @@
-import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
+import { Worker } from "node:worker_threads";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   managedSkillDetailSchema,
+  FilesystemManagedSkillRegistry,
+  skillFreshnessResultSchema,
   skillGetRequestSchema,
   skillListResultSchema,
+  skillResolveRequestSchema,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
 
@@ -27,6 +37,17 @@ describe("closed Standard Schema contracts", () => {
     expect(valid(skillGetRequestSchema, { id: "good", scope: "future" })).toBe(false);
     expect(valid(skillGetRequestSchema, { id: "good", extra: true })).toBe(false);
     expect(valid(skillGetRequestSchema, { id: "../escape" })).toBe(false);
+    expect(valid(skillResolveRequestSchema, { id: "good" })).toBe(true);
+    expect(valid(skillResolveRequestSchema, { id: "good", scope: "global" })).toBe(false);
+    expect(
+      valid(skillFreshnessResultSchema, { status: "fresh", checkedAt: "not-a-date" })
+    ).toBe(false);
+    expect(
+      valid(skillFreshnessResultSchema, {
+        status: "fresh",
+        checkedAt: "2026-02-31T12:00:00Z",
+      })
+    ).toBe(false);
   });
 
   it("rejects leaked fields at nested and result boundaries", async () => {
@@ -44,6 +65,8 @@ describe("closed Standard Schema contracts", () => {
     expect(detail.status).toBe("found");
     if (detail.status === "found") {
       expect(valid(managedSkillDetailSchema, detail.skill)).toBe(true);
+      expect(detail.skill).not.toHaveProperty("skillDir");
+      expect(detail.skill).not.toHaveProperty("manifestPath");
       expect(valid(managedSkillDetailSchema, { ...detail.skill, extra: true })).toBe(false);
     }
   });
@@ -55,6 +78,28 @@ describe("filesystem safety and parsing", () => {
     await harness.seed({ scope: "project", id: "anchored" });
     harness.env.projectRoot = join(harness.root, "different-project");
     expect((await harness.registry.get({ id: "anchored" })).status).toBe("found");
+  });
+
+  it("rebinds the persona tier through the live resolver", async () => {
+    const harness = make();
+    const personaA = join(harness.root, "persona-a");
+    const personaB = join(harness.root, "persona-b");
+    writeSkill(personaA, "persona-live", "persona A");
+    writeSkill(personaB, "persona-live", "persona B");
+    let active = personaA;
+    const registry = new FilesystemManagedSkillRegistry({
+      env: {
+        cwd: harness.home("directory"),
+        homeRoot: harness.home("global"),
+        projectRoot: harness.home("project"),
+        resolvePersonaHome: () => active,
+      },
+    });
+    const a = await registry.get({ id: "persona-live" });
+    expect(a.status === "found" ? a.skill.body.trim() : undefined).toBe("persona A");
+    active = personaB;
+    const b = await registry.get({ id: "persona-live" });
+    expect(b.status === "found" ? b.skill.body.trim() : undefined).toBe("persona B");
   });
 
   it("rejects traversal, absolute paths, reserved IDs, and malformed IDs before I/O", async () => {
@@ -78,6 +123,19 @@ describe("filesystem safety and parsing", () => {
 
     const result = await harness.registry.list();
     expect(result.skills.map(({ id }) => id)).toEqual(["valid"]);
+  });
+
+  it("rejects invalid metadata timestamps", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "bad-time",
+      frontmatter: "id: bad-time\ndescription: invalid time\nupdated_at: yesterday",
+    });
+    expect(await harness.registry.get({ id: "bad-time" })).toEqual({
+      status: "not-found",
+      id: "bad-time",
+    });
   });
 
   it("rejects manifest and supporting-file symlinks, including in-tree links", async () => {
@@ -106,6 +164,70 @@ describe("filesystem safety and parsing", () => {
       status: "not-found",
       id: "audit",
     });
+  });
+
+  it("contains concurrent directory renames and treats raced entries as absent", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "race",
+      body: "coherent",
+      files: { "support.txt": "coherent support" },
+    });
+    const from = join(harness.home("project"), "skills", "race");
+    const away = join(harness.home("project"), "skills", "race-away");
+    const worker = new Worker(
+      `const { parentPort, workerData } = require("node:worker_threads");
+       const { renameSync } = require("node:fs");
+       for (let i = 0; i < 1000; i += 1) {
+         try { renameSync(workerData.from, workerData.away); } catch {}
+         try { renameSync(workerData.away, workerData.from); } catch {}
+       }
+       parentPort.postMessage("done");`,
+      { eval: true, workerData: { from, away } }
+    );
+    const done = new Promise<void>((resolve, reject) => {
+      worker.once("message", () => resolve());
+      worker.once("error", reject);
+    });
+    const scans = await Promise.all(
+      Array.from({ length: 150 }, () => harness.registry.get({ id: "race" }))
+    );
+    await done;
+    await worker.terminate();
+    for (const result of scans) {
+      if (result.status === "found") {
+        expect(result.skill.body.trim()).toBe("coherent");
+        expect(result.skill.supportingFiles).toHaveLength(1);
+      } else {
+        expect(result).toEqual({ status: "not-found", id: "race" });
+      }
+    }
+  });
+});
+
+describe("revision identity", () => {
+  it("changes for manifest bytes, supporting bytes, and supporting paths", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "revision",
+      body: "body one",
+      files: { "reference.txt": "reference one" },
+    });
+    const first = await revisionOf(harness, "revision");
+    await harness.seed({ scope: "project", id: "revision", body: "body two" });
+    const manifestChanged = await revisionOf(harness, "revision");
+    expect(manifestChanged).not.toBe(first);
+
+    const skillDir = join(harness.home("project"), "skills", "revision");
+    writeFileSync(join(skillDir, "reference.txt"), "reference two", "utf8");
+    const bytesChanged = await revisionOf(harness, "revision");
+    expect(bytesChanged).not.toBe(manifestChanged);
+
+    renameSync(join(skillDir, "reference.txt"), join(skillDir, "renamed.txt"));
+    const pathChanged = await revisionOf(harness, "revision");
+    expect(pathChanged).not.toBe(bytesChanged);
   });
 });
 
@@ -143,12 +265,17 @@ describe("provenance and freshness", () => {
   });
 
   it("uses an injected probe and normalizes failures to unprobeable", async () => {
-    const fresh = make({ probe: async () => ({ status: "fresh", checkedAt: "now" }) });
+    const fresh = make({
+      probe: async () => ({
+        status: "fresh",
+        checkedAt: "2026-07-16T17:45:00.000Z",
+      }),
+    });
     await fresh.seed({ scope: "project", id: "sourced", frontmatter: provenance });
     const good = await fresh.registry.get({ id: "sourced", includeFreshness: true });
     expect(good.status === "found" ? good.skill.freshness : undefined).toEqual({
       status: "fresh",
-      checkedAt: "now",
+      checkedAt: "2026-07-16T17:45:00.000Z",
     });
 
     const failed = make({ probe: () => { throw new Error("offline"); } });
@@ -162,6 +289,30 @@ describe("provenance and freshness", () => {
 });
 
 describe("extension fixture parity", () => {
+  it("reads a golden SKILL.md emitted by the actual legacy registry", async () => {
+    const harness = make();
+    const skillDir = join(harness.home("project"), "skills", "legacy-wrapped");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      readFileSync(
+        new URL("./fixtures/legacy-registry-wrapped.SKILL.md", import.meta.url),
+        "utf8"
+      ),
+      "utf8"
+    );
+    const result = await harness.registry.get({ id: "legacy-wrapped" });
+    expect(result.status).toBe("found");
+    if (result.status !== "found") return;
+    expect(result.skill.description).toBe(
+      "A deliberately long description emitted by the actual legacy SkillRegistry so yaml.stringify wraps this scalar across physical lines while preserving one logical value for compatibility testing."
+    );
+    expect(result.skill.requirements).toEqual({
+      hosts: ["cli", "mcp"],
+      platforms: ["macos", "linux"],
+    });
+  });
+
   it("reads the skill-creator legacy frontmatter vocabulary without importing it", async () => {
     const harness = make();
     await harness.seed({
@@ -199,4 +350,20 @@ function valid(
 ): boolean {
   const result = schema["~standard"].validate(value);
   return !!result && typeof result === "object" && !("issues" in result);
+}
+
+function writeSkill(home: string, id: string, body: string): void {
+  const directory = join(home, "skills", id);
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(
+    join(directory, "SKILL.md"),
+    `---\nid: ${id}\ndescription: ${id}\n---\n${body}\n`,
+    "utf8"
+  );
+}
+
+async function revisionOf(harness: FilesystemHarness, id: string): Promise<string> {
+  const result = await harness.registry.get({ id });
+  if (result.status !== "found") throw new Error(`Missing fixture: ${id}`);
+  return result.skill.revision;
 }

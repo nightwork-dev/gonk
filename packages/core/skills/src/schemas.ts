@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
+import { isIsoTimestamp } from "./validation.ts";
 import type {
   ManagedSkillDetail,
   ManagedSkillSummary,
@@ -15,6 +16,7 @@ import type {
   SkillReadRequest,
   SkillReadResult,
   SkillRequirement,
+  SkillResolveRequest,
   SkillResolveResult,
   SkillTreeEntry,
 } from "./types.ts";
@@ -59,6 +61,10 @@ export const skillGetRequestSchema = schema<SkillGetRequest>(
 export const skillReadRequestSchema = schema<SkillReadRequest>(
   "SkillReadRequest",
   isSkillReadRequest
+);
+export const skillResolveRequestSchema = schema<SkillResolveRequest>(
+  "SkillResolveRequest",
+  isSkillResolveRequest
 );
 export const skillListResultSchema = schema<SkillListResult>(
   "SkillListResult",
@@ -136,7 +142,7 @@ function isSkillProvenance(value: unknown): value is SkillProvenance {
     isOptionalNonEmptyString(value.repositoryId) &&
     isOptionalNonEmptyString(value.packageId) &&
     isOptionalNonEmptyString(value.version) &&
-    isOptionalNonEmptyString(value.pinnedAt) &&
+    isOptionalIsoTimestamp(value.pinnedAt) &&
     Array.isArray(value.anchors) &&
     value.anchors.length > 0 &&
     value.anchors.every(isSkillProvenanceAnchor)
@@ -154,7 +160,7 @@ function isSkillFreshnessResult(value: unknown): value is SkillFreshnessResult {
       "unknown",
     ]) &&
     isOptionalNonEmptyString(value.summary) &&
-    isOptionalNonEmptyString(value.checkedAt)
+    isOptionalIsoTimestamp(value.checkedAt)
   );
 }
 
@@ -222,8 +228,8 @@ function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
     isOptionalBoolean(value.pinned) &&
     isOptionalBoolean(value.agentCreated) &&
     (value.useCount === undefined || isNonNegativeInteger(value.useCount)) &&
-    isOptionalNonEmptyString(value.lastUsedAt) &&
-    isOptionalNonEmptyString(value.updatedAt) &&
+    isOptionalIsoTimestamp(value.lastUsedAt) &&
+    isOptionalIsoTimestamp(value.updatedAt) &&
     (value.requirements === undefined || isSkillRequirement(value.requirements)) &&
     (value.freshness === undefined || isSkillFreshnessResult(value.freshness))
   );
@@ -251,11 +257,9 @@ function isManagedSkillDetail(value: unknown): value is ManagedSkillDetail {
       "requirements",
       "freshness",
       "body",
-      "skillDir",
-      "manifestPath",
       "supportingFiles",
       "provenance",
-      "shadowed",
+      "otherDefinitions",
     ])
   ) {
     return false;
@@ -264,13 +268,11 @@ function isManagedSkillDetail(value: unknown): value is ManagedSkillDetail {
   return (
     isManagedSkillSummary(summary) &&
     typeof value.body === "string" &&
-    isNonEmptyString(value.skillDir) &&
-    isNonEmptyString(value.manifestPath) &&
     Array.isArray(value.supportingFiles) &&
     value.supportingFiles.every(isSkillTreeEntry) &&
     (value.provenance === undefined || isSkillProvenance(value.provenance)) &&
-    Array.isArray(value.shadowed) &&
-    value.shadowed.every(isManagedSkillSummary)
+    Array.isArray(value.otherDefinitions) &&
+    value.otherDefinitions.every(isManagedSkillSummary)
   );
 }
 
@@ -297,6 +299,14 @@ function isSkillReadRequest(value: unknown): value is SkillReadRequest {
     isManagedSkillId(value.id) &&
     (value.path === undefined || isManagedSkillPath(value.path)) &&
     (value.scope === undefined || isScope(value.scope))
+  );
+}
+
+function isSkillResolveRequest(value: unknown): value is SkillResolveRequest {
+  return (
+    isExactRecord(value, ["id", "includeFreshness"]) &&
+    isManagedSkillId(value.id) &&
+    isOptionalBoolean(value.includeFreshness)
   );
 }
 
@@ -331,6 +341,9 @@ function isSkillResolveResult(value: unknown): value is SkillResolveResult {
       value.active.id === value.id &&
       Array.isArray(value.definitions) &&
       value.definitions.length > 0 &&
+      isManagedSkillSummary(value.definitions[0]) &&
+      value.definitions[0].scope === value.active.scope &&
+      value.definitions[0].revision === value.active.revision &&
       value.definitions.every(
         (entry) => isManagedSkillSummary(entry) && entry.id === value.id
       )
@@ -421,6 +434,10 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isOptionalNonEmptyString(value: unknown): boolean {
   return value === undefined || isNonEmptyString(value);
+}
+
+function isOptionalIsoTimestamp(value: unknown): boolean {
+  return value === undefined || isIsoTimestamp(value);
 }
 
 function isOptionalBoolean(value: unknown): boolean {

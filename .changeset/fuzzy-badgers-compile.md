@@ -1,5 +1,5 @@
 ---
-"@gonk/context": patch
+"@gonk/context": minor
 "@gonk/auth": patch
 "@gonk/tool-registry": patch
 ---

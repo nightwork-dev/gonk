@@ -20,6 +20,7 @@ import {
 
 import { parseSkillDocument, type FrontmatterRecord } from "./frontmatter.ts";
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
+import { isIsoTimestamp } from "./validation.ts";
 import {
   skillGetRequestSchema,
   skillGetResultSchema,
@@ -27,6 +28,7 @@ import {
   skillListResultSchema,
   skillReadRequestSchema,
   skillReadResultSchema,
+  skillResolveRequestSchema,
   skillResolveResultSchema,
   skillFreshnessResultSchema,
 } from "./schemas.ts";
@@ -46,6 +48,7 @@ import type {
   SkillReadRequest,
   SkillReadResult,
   SkillRequirement,
+  SkillResolveRequest,
   SkillResolveResult,
   SkillScope,
   SkillTreeEntry,
@@ -58,8 +61,6 @@ const READ_CAPABILITIES = Object.freeze(["read"] as const);
 interface LoadedSkill {
   summary: ManagedSkillSummary;
   body: string;
-  skillDir: string;
-  manifestPath: string;
   supportingFiles: readonly SkillTreeEntry[];
   provenance?: SkillProvenance;
   files: ReadonlyMap<string, { bytes: Uint8Array; contentHash: string }>;
@@ -118,13 +119,13 @@ export class FilesystemManagedSkillRegistry implements ManagedSkillRegistry {
     return result;
   }
 
-  async resolve(request: SkillGetRequest): Promise<SkillResolveResult> {
-    assertValidSync(skillGetRequestSchema, request, "SkillGetRequest");
-    const captured = captureGetRequest(request);
+  async resolve(request: SkillResolveRequest): Promise<SkillResolveResult> {
+    assertValidSync(skillResolveRequestSchema, request, "SkillResolveRequest");
+    const captured = captureResolveRequest(request);
     const definitions = this.scanDefinitions().filter(
       ({ summary }) => summary.id === captured.id
     );
-    const selected = selectDefinition(definitions, captured.scope);
+    const selected = definitions[0];
     if (!selected) {
       const result: SkillResolveResult = {
         status: "not-found",
@@ -236,37 +237,47 @@ export class FilesystemManagedSkillRegistry implements ManagedSkillRegistry {
       const home = homes.get(currentScope);
       if (!home) continue;
       const skillsRoot = join(home, SKILLS_DIR);
-      if (!isDirectoryWithoutLinks(skillsRoot)) continue;
-      const realSkillsRoot = realpathSync(skillsRoot);
-      if (!isInside(home, realSkillsRoot)) continue;
-      let entries: Dirent[];
       try {
-        entries = readdirSync(realSkillsRoot, { withFileTypes: true });
+        const root = verifyDirectory(home, skillsRoot);
+        const entries: Dirent[] = readdirSync(root.realPath, {
+          withFileTypes: true,
+        });
+        entries.sort((a, b) => compareOpaque(a.name, b.name));
+        const scopeDefinitions: LoadedSkill[] = [];
+        const scopeDirs: string[] = [];
+        for (const entry of entries) {
+          if (
+            entry.name.startsWith(".") ||
+            !entry.isDirectory() ||
+            entry.isSymbolicLink() ||
+            !isManagedSkillId(entry.name)
+          ) {
+            continue;
+          }
+          try {
+            const directory = verifyDirectory(
+              root.realPath,
+              join(root.realPath, entry.name)
+            );
+            if (seenSkillDirs.has(directory.realPath)) continue;
+            const loaded = readDefinition(currentScope, directory, entry.name);
+            assertDirectoryUnchanged(directory);
+            scopeDefinitions.push(loaded);
+            scopeDirs.push(directory.realPath);
+          } catch {
+            // A renamed, malformed, or unsafe entry is absent from this scan.
+          }
+        }
+        assertDirectoryUnchanged(root);
+        for (let index = 0; index < scopeDefinitions.length; index += 1) {
+          const directory = scopeDirs[index]!;
+          if (seenSkillDirs.has(directory)) continue;
+          seenSkillDirs.add(directory);
+          out.push(scopeDefinitions[index]!);
+        }
       } catch {
+        // A raced or unsafe root contributes no partial entries.
         continue;
-      }
-      entries.sort((a, b) => compareOpaque(a.name, b.name));
-      for (const entry of entries) {
-        if (
-          entry.name.startsWith(".") ||
-          !entry.isDirectory() ||
-          entry.isSymbolicLink() ||
-          !isManagedSkillId(entry.name)
-        ) {
-          continue;
-        }
-        const skillDir = join(realSkillsRoot, entry.name);
-        if (!isDirectoryWithoutLinks(skillDir)) continue;
-        const canonicalDir = realpathSync(skillDir);
-        if (!isInside(realSkillsRoot, canonicalDir) || seenSkillDirs.has(canonicalDir)) {
-          continue;
-        }
-        seenSkillDirs.add(canonicalDir);
-        try {
-          out.push(readDefinition(currentScope, canonicalDir, entry.name));
-        } catch {
-          // One malformed or unsafe skill never makes other valid skills vanish.
-        }
       }
     }
     return out;
@@ -287,7 +298,7 @@ export class FilesystemManagedSkillRegistry implements ManagedSkillRegistry {
     includeFreshness: boolean
   ): Promise<ManagedSkillDetail> {
     const summary = await this.summaryWithFreshness(skill, includeFreshness);
-    const shadowed = await Promise.all(
+    const alternatives = await Promise.all(
       otherDefinitions.map((definition) =>
         this.summaryWithFreshness(definition, includeFreshness)
       )
@@ -295,13 +306,11 @@ export class FilesystemManagedSkillRegistry implements ManagedSkillRegistry {
     return {
       ...summary,
       body: skill.body,
-      skillDir: skill.skillDir,
-      manifestPath: skill.manifestPath,
       supportingFiles: skill.supportingFiles,
       ...(skill.provenance === undefined
         ? {}
         : { provenance: skill.provenance }),
-      shadowed,
+      otherDefinitions: alternatives,
     };
   }
 
@@ -327,23 +336,18 @@ export class FilesystemManagedSkillRegistry implements ManagedSkillRegistry {
 
 function readDefinition(
   scope: ScopeName,
-  skillDir: string,
+  skillDirectory: VerifiedDirectory,
   directoryId: string
 ): LoadedSkill {
+  const skillDir = skillDirectory.realPath;
   const manifestPath = join(skillDir, MANIFEST);
-  if (!isRegularFileWithoutLinks(manifestPath)) {
-    throw new TypeError("Skill manifest is missing or linked");
-  }
-  const realManifest = realpathSync(manifestPath);
-  if (!isInside(skillDir, realManifest)) {
-    throw new TypeError("Skill manifest escapes its directory");
-  }
-  const manifestBytes = readVerifiedFile(skillDir, realManifest);
+  const manifestBytes = readVerifiedFile(skillDir, manifestPath);
   const document = parseSkillDocument(
     new TextDecoder("utf-8", { fatal: true }).decode(manifestBytes)
   );
   const metadata = parseMetadata(document.frontmatter, directoryId);
   const tree = readSupportingTree(skillDir);
+  assertDirectoryUnchanged(skillDirectory);
   const contentHash = hashBytes(Buffer.from(document.body, "utf8"));
   const revision = hashRevision(manifestBytes, tree.files);
   const summary: ManagedSkillSummary = {
@@ -376,8 +380,6 @@ function readDefinition(
   return {
     summary,
     body: document.body,
-    skillDir,
-    manifestPath: realManifest,
     supportingFiles: tree.entries,
     ...(metadata.provenance === undefined
       ? {}
@@ -418,6 +420,12 @@ function parseMetadata(
   if (needsAudit === true) {
     throw new TypeError("Staged skill appeared in the active directory");
   }
+  if (frontmatter.created_at !== undefined || frontmatter.createdAt !== undefined) {
+    requiredIsoTimestamp(
+      frontmatter.created_at ?? frontmatter.createdAt,
+      "created_at"
+    );
+  }
   const requirements = parseRequirements(frontmatter);
   const provenance = parseProvenance(frontmatter.provenance);
   return {
@@ -454,7 +462,7 @@ function parseMetadata(
     ...((frontmatter.last_used_at ?? frontmatter.lastUsedAt) === undefined
       ? {}
       : {
-          lastUsedAt: requiredString(
+          lastUsedAt: requiredIsoTimestamp(
             frontmatter.last_used_at ?? frontmatter.lastUsedAt,
             "last_used_at"
           ),
@@ -462,7 +470,7 @@ function parseMetadata(
     ...((frontmatter.updated_at ?? frontmatter.updatedAt) === undefined
       ? {}
       : {
-          updatedAt: requiredString(
+          updatedAt: requiredIsoTimestamp(
             frontmatter.updated_at ?? frontmatter.updatedAt,
             "updated_at"
           ),
@@ -518,7 +526,7 @@ function parseProvenance(value: unknown): SkillProvenance | undefined {
     ...((value.pinned_at ?? value.pinnedAt) === undefined
       ? {}
       : {
-          pinnedAt: requiredString(
+          pinnedAt: requiredIsoTimestamp(
             value.pinned_at ?? value.pinnedAt,
             "provenance.pinned_at"
           ),
@@ -533,41 +541,32 @@ function readSupportingTree(skillDir: string): {
 } {
   const files = new Map<string, { bytes: Uint8Array; contentHash: string }>();
   const walk = (directory: string, prefix: string): SkillTreeEntry[] => {
-    const entries = readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
-      compareOpaque(a.name, b.name)
-    );
+    const verified = verifyDirectory(skillDir, directory);
+    const entries = readdirSync(verified.realPath, {
+      withFileTypes: true,
+    }).sort((a, b) => compareOpaque(a.name, b.name));
     const out: SkillTreeEntry[] = [];
     for (const entry of entries) {
       if (prefix.length === 0 && entry.name === MANIFEST) continue;
       if (entry.isSymbolicLink()) {
         throw new TypeError("Symbolic links are not valid skill files");
       }
-      const absolutePath = join(directory, entry.name);
+      const absolutePath = join(verified.realPath, entry.name);
       const path = prefix.length === 0 ? entry.name : `${prefix}/${entry.name}`;
       if (entry.isDirectory()) {
-        if (!isDirectoryWithoutLinks(absolutePath)) {
-          throw new TypeError("Linked supporting directory");
-        }
-        const real = realpathSync(absolutePath);
-        if (!isInside(skillDir, real)) {
-          throw new TypeError("Supporting directory escapes skill root");
-        }
+        const child = verifyDirectory(skillDir, absolutePath);
         out.push({
           kind: "directory",
           name: entry.name,
           path,
-          children: walk(real, path),
+          children: walk(child.realPath, path),
         });
         continue;
       }
-      if (!entry.isFile() || !isRegularFileWithoutLinks(absolutePath)) {
+      if (!entry.isFile()) {
         throw new TypeError("Unsupported supporting file type");
       }
-      const real = realpathSync(absolutePath);
-      if (!isInside(skillDir, real)) {
-        throw new TypeError("Supporting file escapes skill root");
-      }
-      const bytes = readVerifiedFile(skillDir, real);
+      const bytes = readVerifiedFile(skillDir, absolutePath);
       const contentHash = hashBytes(bytes);
       const file: SkillFileEntry = {
         kind: "file",
@@ -579,6 +578,7 @@ function readSupportingTree(skillDir: string): {
       out.push(file);
       files.set(path, { bytes, contentHash });
     }
+    assertDirectoryUnchanged(verified);
     return out;
   };
   return { entries: walk(skillDir, ""), files };
@@ -628,6 +628,48 @@ function readVerifiedFile(root: string, path: string): Uint8Array {
     return bytes;
   } finally {
     closeSync(descriptor);
+  }
+}
+
+interface VerifiedDirectory {
+  path: string;
+  realPath: string;
+  dev: number;
+  ino: number;
+}
+
+function verifyDirectory(root: string, path: string): VerifiedDirectory {
+  const before = lstatSync(path);
+  if (!before.isDirectory() || before.isSymbolicLink()) {
+    throw new TypeError("Skill directory must be a real directory");
+  }
+  const realPath = realpathSync(path);
+  if (!isInside(root, realPath)) {
+    throw new TypeError("Skill directory escapes its root");
+  }
+  const after = lstatSync(path);
+  if (
+    !after.isDirectory() ||
+    after.isSymbolicLink() ||
+    before.dev !== after.dev ||
+    before.ino !== after.ino ||
+    realpathSync(path) !== realPath
+  ) {
+    throw new TypeError("Skill directory changed during verification");
+  }
+  return { path, realPath, dev: before.dev, ino: before.ino };
+}
+
+function assertDirectoryUnchanged(directory: VerifiedDirectory): void {
+  const after = lstatSync(directory.path);
+  if (
+    !after.isDirectory() ||
+    after.isSymbolicLink() ||
+    after.dev !== directory.dev ||
+    after.ino !== directory.ino ||
+    realpathSync(directory.path) !== directory.realPath
+  ) {
+    throw new TypeError("Skill directory changed during read");
   }
 }
 
@@ -684,6 +726,17 @@ function captureGetRequest(request: SkillGetRequest): Readonly<SkillGetRequest> 
   });
 }
 
+function captureResolveRequest(
+  request: SkillResolveRequest
+): Readonly<SkillResolveRequest> {
+  return Object.freeze({
+    id: request.id,
+    ...(request.includeFreshness === undefined
+      ? {}
+      : { includeFreshness: request.includeFreshness }),
+  });
+}
+
 function captureReadRequest(
   request: SkillReadRequest
 ): Readonly<Required<Pick<SkillReadRequest, "id" | "path">> & Pick<SkillReadRequest, "scope">> {
@@ -692,24 +745,6 @@ function captureReadRequest(
     path: request.path ?? MANIFEST,
     ...(request.scope === undefined ? {} : { scope: request.scope }),
   });
-}
-
-function isDirectoryWithoutLinks(path: string): boolean {
-  try {
-    const stat = lstatSync(path);
-    return stat.isDirectory() && !stat.isSymbolicLink();
-  } catch {
-    return false;
-  }
-}
-
-function isRegularFileWithoutLinks(path: string): boolean {
-  try {
-    const stat = lstatSync(path);
-    return stat.isFile() && !stat.isSymbolicLink();
-  } catch {
-    return false;
-  }
 }
 
 function isInside(base: string, candidate: string): boolean {
@@ -726,6 +761,14 @@ function requiredString(value: unknown, label: string): string {
     throw new TypeError(`${label} must be a non-empty string`);
   }
   return value;
+}
+
+function requiredIsoTimestamp(value: unknown, label: string): string {
+  const timestamp = requiredString(value, label);
+  if (!isIsoTimestamp(timestamp)) {
+    throw new TypeError(`${label} must be an ISO 8601 timestamp`);
+  }
+  return timestamp;
 }
 
 function optionalString(value: unknown, label: string): string | undefined {

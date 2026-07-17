@@ -27,7 +27,8 @@
   },
   "dependencies": {
     "@gonk/scope": "workspace:*",
-    "@standard-schema/spec": "catalog:"
+    "@standard-schema/spec": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
