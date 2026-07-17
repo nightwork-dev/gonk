@@ -1,6 +1,8 @@
 import {
+  existsSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   renameSync,
   symlinkSync,
   writeFileSync,
@@ -9,13 +11,18 @@ import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 
 import type { AuthContext } from "@gonk/auth";
+import {
+  collectToolOutcome,
+  makeBaseContext,
+  ToolRegistry,
+} from "@gonk/tool-registry";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   createSkillActivationContributor,
+  createSkillToolDefinitions,
   managedSkillDetailSchema,
   FilesystemManagedSkillRegistry,
-  projectSkillToolDefinitions,
   projectSkillTools,
   skillActivateResultSchema,
   skillFreshnessResultSchema,
@@ -24,6 +31,8 @@ import {
   skillMutationResultSchema,
   skillResolveRequestSchema,
   skillToolProjectionSchema,
+  type SkillArchiveRequest,
+  type SkillPatchRequest,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
 
@@ -179,7 +188,46 @@ describe("authorized filesystem mutations", () => {
     expect(mismatch.reason).toBe("conflict");
   });
 
-  it("rejects pinned edits and archives by default", async () => {
+  it("authorizes every replay and namespaces idempotency by operation and principal", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "replay-safe", body: "old body" });
+    const initial = await revisionOf(harness, "replay-safe");
+    const request: SkillPatchRequest = {
+      auth: authContext("allow", "agent:one"),
+      idempotencyKey: "shared-key",
+      expectedRevision: initial,
+      id: "replay-safe",
+      find: "old",
+      replace: "new",
+    };
+    const first = await harness.registry.patch(request);
+    expect(first.status).toBe("ok");
+    expect(await harness.registry.patch(request)).toEqual(first);
+
+    const deniedReplay = await harness.registry.patch({
+      ...request,
+      auth: authContext("deny", "agent:one"),
+    });
+    expect(deniedReplay).toMatchObject({ status: "failed", reason: "denied" });
+
+    const otherPrincipal = await harness.registry.patch({
+      ...request,
+      auth: authContext("allow", "agent:two"),
+    });
+    expect(otherPrincipal).toMatchObject({ status: "failed", reason: "conflict" });
+
+    const afterPatch = await revisionOf(harness, "replay-safe");
+    const pin = await harness.registry.pin({
+      auth: authContext("allow", "agent:one"),
+      idempotencyKey: "shared-key",
+      expectedRevision: afterPatch,
+      id: "replay-safe",
+      pinned: true,
+    });
+    expect(pin.status).toBe("ok");
+  });
+
+  it("rejects pinned edits and archives even when untyped callers pass allowPinned", async () => {
     const harness = make();
     await harness.seed({
       scope: "project",
@@ -195,7 +243,8 @@ describe("authorized filesystem mutations", () => {
       id: "pinned",
       find: "do",
       replace: "please",
-    });
+      allowPinned: true,
+    } as unknown as SkillPatchRequest);
     expect(edit.status).toBe("failed");
     if (edit.status !== "failed") throw new Error("expected pinned edit failure");
     expect(edit.reason).toBe("conflict");
@@ -204,7 +253,8 @@ describe("authorized filesystem mutations", () => {
       idempotencyKey: "archive-pinned",
       expectedRevision: revision,
       id: "pinned",
-    });
+      allowPinned: true,
+    } as unknown as SkillArchiveRequest);
     expect(archive.status).toBe("failed");
     if (archive.status !== "failed") throw new Error("expected pinned archive failure");
     expect(archive.reason).toBe("conflict");
@@ -236,6 +286,33 @@ describe("authorized filesystem mutations", () => {
       status: "not-found",
       reason: "file-not-found",
     });
+  });
+
+  it("validates archived content before atomic restore and cleans failed temp state", async () => {
+    const harness = make();
+    const archiveId = "broken-2026-07-16T00-00-00-000Z";
+    const skillsRoot = join(harness.home("project"), "skills");
+    const archiveDir = join(skillsRoot, ".archive", archiveId);
+    mkdirSync(archiveDir, { recursive: true });
+    writeFileSync(
+      join(archiveDir, "SKILL.md"),
+      "---\nid: wrong-id\ndescription: broken\n---\nbroken\n",
+      "utf8"
+    );
+
+    const result = await harness.registry.restore({
+      auth: authContext(),
+      idempotencyKey: "restore-broken",
+      id: "broken",
+      scope: "project",
+      archiveId,
+    });
+    expect(result).toMatchObject({ status: "failed", reason: "invalid" });
+    expect(existsSync(join(skillsRoot, "broken"))).toBe(false);
+    expect(existsSync(join(archiveDir, ".restored"))).toBe(false);
+    expect(
+      readdirSync(skillsRoot).filter((name) => name.startsWith(".broken.restore-"))
+    ).toEqual([]);
   });
 
   it("requires an injected approval provider before promoting staged skills", async () => {
@@ -327,7 +404,9 @@ describe("authorized filesystem mutations", () => {
     expect(resolved?.content.trim()).toBe("ready body");
   });
 
-  it("projects distinct skill tools and never a generic invoke verb", () => {
+  it("projects distinct operations and registers only executable tool definitions", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "tool-ready", body: "tool body" });
     expect(projectSkillTools().map(({ operation }) => operation)).toEqual([
       "read",
       "attach",
@@ -336,13 +415,97 @@ describe("authorized filesystem mutations", () => {
     ]);
     expect(projectSkillTools().map(({ name }) => name)).not.toContain("skill-invoke");
     expect(projectSkillTools().every((tool) => valid(skillToolProjectionSchema, tool))).toBe(true);
-    expect(projectSkillToolDefinitions().map(({ name }) => name)).toEqual([
+
+    const definitions = createSkillToolDefinitions({ registry: harness.registry });
+    expect(definitions.map(({ name }) => name)).toEqual([
       "skill-read",
-      "skill-attach",
       "skill-activate",
+    ]);
+    expect(definitions.every((tool) => tool.inputJsonSchema?.additionalProperties === false)).toBe(true);
+    expect(definitions.map(({ name }) => name)).not.toContain("skill-attach");
+    expect(definitions.map(({ name }) => name)).not.toContain("skill-test");
+
+    const registry = executableToolRegistry();
+    registry.register([...definitions]);
+    const missingAuth = await collectToolOutcome(
+      registry.invoke("skill-read", { id: "tool-ready" }, makeBaseContext())
+    );
+    expect(missingAuth).toMatchObject({
+      ok: false,
+      code: "AUTHORIZATION_DENIED",
+    });
+
+    const context = makeBaseContext({ auth: authContext() });
+    const read = await collectToolOutcome(
+      registry.invoke("skill-read", { id: "tool-ready" }, context)
+    );
+    expect(read).toMatchObject({
+      ok: true,
+      data: { status: "found", id: "tool-ready", content: "tool body\n" },
+    });
+    const activate = await collectToolOutcome(
+      registry.invoke(
+        "skill-activate",
+        {
+          id: "tool-ready",
+          requestId: "tool-activation",
+          trigger: "manual",
+          reason: "registry test",
+        },
+        context
+      )
+    );
+    expect(activate).toMatchObject({
+      ok: true,
+      data: { status: "ready", receipt: { activationId: "tool-activation" } },
+    });
+  });
+
+  it("registers and invokes host attach/test tools only when callbacks exist", async () => {
+    const harness = make();
+    await harness.seed({ scope: "project", id: "hosted" });
+    const called: string[] = [];
+    const definitions = createSkillToolDefinitions({
+      registry: harness.registry,
+      attach: async (input) => {
+        called.push(`attach:${input.id}`);
+        return {
+          status: "ok",
+          operation: "attach",
+          id: input.id,
+          message: "attached",
+        };
+      },
+      test: async (input) => {
+        called.push(`test:${input.id}`);
+        return {
+          status: "ok",
+          operation: "test",
+          id: input.id,
+          message: "passed",
+        };
+      },
+    });
+    expect(definitions.map(({ name }) => name)).toEqual([
+      "skill-read",
+      "skill-activate",
+      "skill-attach",
       "skill-test",
     ]);
-    expect(projectSkillToolDefinitions().every((tool) => tool.inputJsonSchema?.additionalProperties === false)).toBe(true);
+    const registry = executableToolRegistry();
+    registry.register([...definitions]);
+    const context = makeBaseContext({ auth: authContext() });
+    expect(
+      await collectToolOutcome(
+        registry.invoke("skill-attach", { id: "hosted" }, context)
+      )
+    ).toMatchObject({ ok: true, data: { status: "ok", operation: "attach" } });
+    expect(
+      await collectToolOutcome(
+        registry.invoke("skill-test", { id: "hosted" }, context)
+      )
+    ).toMatchObject({ ok: true, data: { status: "ok", operation: "test" } });
+    expect(called).toEqual(["attach:hosted", "test:hosted"]);
   });
 });
 
@@ -687,14 +850,38 @@ async function revisionOf(harness: FilesystemHarness, id: string): Promise<strin
   return result.skill.revision;
 }
 
-function authContext(mode: "allow" | "deny" = "allow"): AuthContext {
+function executableToolRegistry(): ToolRegistry {
+  return new ToolRegistry({
+    security: {
+      approvalMode: "bypass",
+      resourceResolver: {
+        resolve: ({ input }) => {
+          const candidate = input as { id?: unknown; scope?: unknown };
+          if (typeof candidate.id !== "string") return null;
+          return {
+            kind: "skill",
+            target: candidate.id,
+            ...(typeof candidate.scope === "string"
+              ? { scope: candidate.scope as "global" | "persona" | "project" | "directory" | "session" }
+              : {}),
+          };
+        },
+      },
+    },
+  });
+}
+
+function authContext(
+  mode: "allow" | "deny" = "allow",
+  principalId = "agent:test"
+): AuthContext {
   return {
     principal: {
-      id: "agent:test",
+      id: principalId,
       kind: "agent",
       identity: {
         issuer: "test",
-        subject: "agent:test",
+        subject: principalId,
         method: "local",
       },
       roles: ["tester"],

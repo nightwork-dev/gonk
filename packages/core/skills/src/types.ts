@@ -1,6 +1,7 @@
 import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
 import type { ContextContributor } from "@gonk/context";
 import type { ScopeEnvironment } from "@gonk/scope";
+import type { ToolContext } from "@gonk/tool-registry";
 import type { ApprovalProvider } from "@gonk/tool-registry/security";
 
 export type SkillScope =
@@ -226,7 +227,6 @@ export interface SkillPatchRequest {
   replace: string;
   writeFiles?: readonly SkillMutationFile[];
   removeFiles?: readonly string[];
-  allowPinned?: boolean;
 }
 
 export interface SkillArchiveRequest {
@@ -235,7 +235,6 @@ export interface SkillArchiveRequest {
   expectedRevision: string;
   id: string;
   scope?: SkillScope;
-  allowPinned?: boolean;
 }
 
 export interface SkillRestoreRequest {
@@ -399,6 +398,30 @@ export interface SkillToolProjection {
     required: readonly string[];
     additionalProperties: false;
   };
+}
+
+export interface SkillHostToolInput {
+  id: string;
+  scope?: SkillScope;
+  path?: string;
+}
+
+export interface SkillHostToolResult {
+  status: "ok" | "failed";
+  operation: "attach" | "test";
+  id: string;
+  message: string;
+}
+
+export type SkillHostToolCallback = (
+  input: SkillHostToolInput,
+  context: ToolContext
+) => SkillHostToolResult | Promise<SkillHostToolResult>;
+
+export interface SkillToolDefinitionFactoryOptions {
+  registry: WritableManagedSkillRegistry;
+  attach?: SkillHostToolCallback;
+  test?: SkillHostToolCallback;
 }
 
 export interface ManagedSkillRegistry {

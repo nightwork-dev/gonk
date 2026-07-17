@@ -1,7 +1,7 @@
 export {
+  createSkillToolDefinitions,
   createSkillActivationContributor,
   FilesystemManagedSkillRegistry,
-  projectSkillToolDefinitions,
   projectSkillTools,
 } from "./filesystem.ts";
 export { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
@@ -75,6 +75,10 @@ export type {
   SkillResolveResult,
   SkillScope,
   SkillToolProjection,
+  SkillHostToolCallback,
+  SkillHostToolInput,
+  SkillHostToolResult,
+  SkillToolDefinitionFactoryOptions,
   SkillTreeEntry,
   WritableManagedSkillRegistry,
 } from "./types.ts";

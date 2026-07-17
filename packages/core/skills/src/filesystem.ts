@@ -6,6 +6,7 @@ import {
   existsSync,
   fstatSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -20,6 +21,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   captureAuthContext,
+  securityContextKey,
   type AuthContext,
   type AuthzAction,
   type AuthorizationDecision,
@@ -30,13 +32,14 @@ import {
   resolveTierHomes,
   type ScopeName,
 } from "@gonk/scope";
-import type { ToolDefinition } from "@gonk/tool-registry";
+import { ToolError, type ToolDefinition } from "@gonk/tool-registry";
 import { stringify as stringifyYaml } from "yaml";
 
 import { parseSkillDocument, type FrontmatterRecord } from "./frontmatter.ts";
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
 import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
 import {
+  skillActivateResultSchema,
   skillGetRequestSchema,
   skillGetResultSchema,
   skillListRequestSchema,
@@ -83,6 +86,10 @@ import type {
   SkillResolveResult,
   SkillScope,
   SkillToolProjection,
+  SkillHostToolCallback,
+  SkillHostToolInput,
+  SkillHostToolResult,
+  SkillToolDefinitionFactoryOptions,
   SkillTreeEntry,
   WritableManagedSkillRegistry,
 } from "./types.ts";
@@ -92,6 +99,19 @@ const MANIFEST = "SKILL.md";
 const STAGING_DIR = ".staging";
 const ARCHIVE_DIR = ".archive";
 const READ_CAPABILITIES = Object.freeze(["read"] as const);
+
+type SkillMutationOperation =
+  | "create"
+  | "patch"
+  | "archive"
+  | "restore"
+  | "promote"
+  | "pin"
+  | "record-usage";
+
+// ToolRegistry deliberately type-erases heterogeneous definitions at registration.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnySkillToolDefinition = ToolDefinition<any, any>;
 
 interface LoadedSkill {
   summary: ManagedSkillSummary;
@@ -264,6 +284,14 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const auth = captureMutationAuth(request.auth);
     const denied = await authorizeSkill(auth, "skill.manage", request.id, request.scope, request);
     if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillMutationResult>(
+      "create",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => idempotencyConflict(request.id)
+    );
+    if (replay) return replay;
     if (!isManagedSkillId(request.id)) {
       return mutationFailed(request.id, "invalid", "Invalid skill id");
     }
@@ -273,8 +301,6 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const base = this.lifecycleRoot(request.scope, request.staged === true ? "staged" : "active");
     const skillDir = join(base, request.id);
     const manifest = join(skillDir, MANIFEST);
-    const replay = this.replay<SkillMutationResult>(request.idempotencyKey, request);
-    if (replay) return replay;
     if (existsSync(manifest)) {
       return mutationFailed(request.id, "already-exists", "Skill already exists");
     }
@@ -283,40 +309,60 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         return mutationFailed(request.id, "invalid", "Invalid supporting file path");
       }
     }
-    mkdirSync(skillDir, { recursive: true });
-    const existing = existsSync(manifest) ? safeParseExisting(manifest) : undefined;
-    writeFileSync(
-      manifest,
-      renderSkillManifest(request.id, request, request.body, {
-        createdAt: existing?.createdAt ?? this.now(),
-        updatedAt: this.now(),
-        needsAudit: request.staged === true,
-      }),
-      "utf8"
-    );
-    for (const file of request.files ?? []) {
-      const target = join(skillDir, file.path);
-      mkdirSync(dirname(target), { recursive: true });
-      writeFileSync(target, file.content, "utf8");
+    mkdirSync(base, { recursive: true });
+    const temp = mkdtempSync(join(base, `.${request.id}.create-`));
+    try {
+      writeFileSync(
+        join(temp, MANIFEST),
+        renderSkillManifest(request.id, request, request.body, {
+          createdAt: this.now(),
+          updatedAt: this.now(),
+          needsAudit: request.staged === true,
+        }),
+        "utf8"
+      );
+      for (const file of request.files ?? []) {
+        const target = join(temp, file.path);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, file.content, "utf8");
+      }
+      if (request.staged !== true) {
+        readDefinition(request.scope, verifyDirectory(base, temp), request.id);
+      }
+      renameSync(temp, skillDir);
+    } catch (error) {
+      rmSync(temp, { recursive: true, force: true });
+      throw error;
     }
-    return this.remember(request.idempotencyKey, request, await this.mutationDetail(request.id, request.scope, request.staged === true ? "staged" : "active"));
+    const result = await this.mutationDetail(
+      request.id,
+      request.scope,
+      request.staged === true ? "staged" : "active"
+    );
+    return this.remember("create", auth, request.idempotencyKey, request, result);
   }
 
   async patch(request: SkillPatchRequest): Promise<SkillMutationResult> {
-    const replay = this.replay<SkillMutationResult>(request.idempotencyKey, request);
-    if (replay) return replay;
     const auth = captureMutationAuth(request.auth);
     const scope = request.scope ?? (await this.selectedScope(request.id));
     if (!scope) return mutationFailed(request.id, "not-found", "Skill not found");
     const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
     if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillMutationResult>(
+      "patch",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => idempotencyConflict(request.id)
+    );
+    if (replay) return replay;
     if (request.find.length === 0) return mutationFailed(request.id, "invalid", "Patch find string must be non-empty");
     const detail = await this.get({ id: request.id, scope });
     if (detail.status !== "found") return mutationFailed(request.id, "not-found", "Skill not found");
     const conflict = revisionConflict(request.id, request.expectedRevision, detail.skill.revision, [request.path ?? MANIFEST, ...(request.writeFiles ?? []).map(({ path }) => path), ...(request.removeFiles ?? [])]);
     if (conflict) return conflict;
-    if (detail.skill.pinned === true && request.allowPinned !== true) {
-      return mutationFailed(request.id, "conflict", "Pinned skills reject agent edits by default", detail.skill.revision, [request.path ?? MANIFEST]);
+    if (detail.skill.pinned === true) {
+      return mutationFailed(request.id, "conflict", "Pinned skills must be explicitly unpinned before editing", detail.skill.revision, [request.path ?? MANIFEST]);
     }
     const skillDir = this.skillDir(scope, request.id);
     const path = request.path ?? MANIFEST;
@@ -331,7 +377,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         writeFileSync(join(temp, MANIFEST), renderSkillManifest(request.id, metadata, body, {}), "utf8");
         applyFileMutations(temp, request.writeFiles, request.removeFiles);
       });
-      return this.remember(request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
+      return this.remember("patch", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
     }
     const target = join(skillDir, path);
     if (!isInside(skillDir, target) || !existsSync(target)) {
@@ -345,24 +391,28 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       writeFileSync(join(temp, path), current.split(request.find).join(request.replace), "utf8");
       applyFileMutations(temp, request.writeFiles, request.removeFiles);
     });
-    return this.remember(request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
+    return this.remember("patch", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, scope, "active"));
   }
 
   async archive(request: SkillArchiveRequest): Promise<SkillArchiveResult> {
-    const replay = this.replay<SkillArchiveResult>(request.idempotencyKey, request) as
-      | SkillArchiveResult
-      | undefined;
-    if (replay) return replay;
     const auth = captureMutationAuth(request.auth);
     const scope = request.scope ?? (await this.selectedScope(request.id));
     if (!scope) return archiveFailed(request.id, "not-found", "Skill not found");
     const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
     if (denied) return archiveFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillArchiveResult>(
+      "archive",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => archiveFailed(request.id, "conflict", "Idempotency key already used with a different request")
+    );
+    if (replay) return replay;
     const detail = await this.get({ id: request.id, scope });
     if (detail.status !== "found") return archiveFailed(request.id, "not-found", "Skill not found");
     const conflict = archiveRevisionConflict(request.id, request.expectedRevision, detail.skill.revision, [MANIFEST]);
     if (conflict) return conflict;
-    if (detail.skill.pinned === true && request.allowPinned !== true) {
+    if (detail.skill.pinned === true) {
       return archiveFailed(request.id, "conflict", "Pinned skills must be unpinned before archive");
     }
     const archivedAt = this.now();
@@ -372,14 +422,10 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     mkdirSync(dirname(dest), { recursive: true });
     cpSync(source, dest, { recursive: true });
     rmSync(source, { recursive: true, force: true });
-    return this.remember(request.idempotencyKey, request, { status: "ok", id: request.id, scope, archiveId, archivedAt });
+    return this.remember("archive", auth, request.idempotencyKey, request, { status: "ok", id: request.id, scope, archiveId, archivedAt });
   }
 
   async restore(request: SkillRestoreRequest): Promise<SkillRestoreResult> {
-    const replay = this.replay<SkillRestoreResult>(request.idempotencyKey, request) as
-      | SkillRestoreResult
-      | undefined;
-    if (replay) return replay;
     const auth = captureMutationAuth(request.auth);
     const candidates = this.archiveEntries(request.id, request.scope);
     const chosen = request.archiveId
@@ -388,24 +434,63 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (!chosen) return restoreFailed(request.id, "not-found", "Archive entry not found");
     const denied = await authorizeSkill(auth, "skill.manage", request.id, chosen.scope, request);
     if (denied) return restoreFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillRestoreResult>(
+      "restore",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => restoreFailed(request.id, "conflict", "Idempotency key already used with a different request")
+    );
+    if (replay) return replay;
     const dest = this.skillDir(chosen.scope, request.id);
     if (existsSync(dest)) return restoreFailed(request.id, "already-exists", "Live skill already exists");
-    mkdirSync(dirname(dest), { recursive: true });
-    cpSync(join(this.lifecycleRoot(chosen.scope, "archived"), chosen.archiveId), dest, { recursive: true });
-    writeFileSync(join(this.lifecycleRoot(chosen.scope, "archived"), chosen.archiveId, ".restored"), this.now(), "utf8");
-    const detail = await this.get({ id: request.id, scope: chosen.scope });
-    if (detail.status !== "found") return restoreFailed(request.id, "invalid", "Restored skill failed validation");
-    return this.remember(request.idempotencyKey, request, { status: "ok", id: request.id, scope: chosen.scope, archiveId: chosen.archiveId, revision: detail.skill.revision });
+    const parent = dirname(dest);
+    const archiveDir = join(this.lifecycleRoot(chosen.scope, "archived"), chosen.archiveId);
+    mkdirSync(parent, { recursive: true });
+    const temp = mkdtempSync(join(parent, `.${request.id}.restore-`));
+    let restored: LoadedSkill;
+    try {
+      cpSync(archiveDir, temp, { recursive: true });
+      rmSync(join(temp, ".restored"), { force: true });
+      restored = readDefinition(chosen.scope, verifyDirectory(parent, temp), request.id);
+      if (existsSync(dest)) {
+        return restoreFailed(request.id, "already-exists", "Live skill already exists");
+      }
+      renameSync(temp, dest);
+      try {
+        writeFileAtomic(join(archiveDir, ".restored"), this.now());
+      } catch {
+        rmSync(dest, { recursive: true, force: true });
+        return restoreFailed(request.id, "invalid", "Archive restore marker could not be recorded");
+      }
+    } catch {
+      return restoreFailed(request.id, "invalid", "Archived skill failed validation");
+    } finally {
+      rmSync(temp, { recursive: true, force: true });
+    }
+    return this.remember("restore", auth, request.idempotencyKey, request, {
+      status: "ok",
+      id: request.id,
+      scope: chosen.scope,
+      archiveId: chosen.archiveId,
+      revision: restored.summary.revision,
+    });
   }
 
   async promote(request: SkillPromoteRequest): Promise<SkillMutationResult> {
-    const replay = this.replay<SkillMutationResult>(request.idempotencyKey, request);
-    if (replay) return replay;
     const auth = captureMutationAuth(request.auth);
     const staged = this.stagedSkillDir(request.id, request.scope);
     if (!staged) return mutationFailed(request.id, "not-found", "Staged skill not found");
     const denied = await authorizeSkill(auth, "skill.manage", request.id, staged.scope, request);
     if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillMutationResult>(
+      "promote",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => idempotencyConflict(request.id)
+    );
+    if (replay) return replay;
     const approval = await this.approvePromotion(auth, request, staged.scope);
     if (approval) return approval;
     const live = this.skillDir(staged.scope, request.id);
@@ -430,26 +515,44 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         "utf8"
       );
     }
-    return this.remember(request.idempotencyKey, request, await this.mutationDetail(request.id, staged.scope, "active"));
+    return this.remember("promote", auth, request.idempotencyKey, request, await this.mutationDetail(request.id, staged.scope, "active"));
   }
 
   async pin(request: SkillPinRequest): Promise<SkillMutationResult> {
-    const replay = this.replay<SkillMutationResult>(request.idempotencyKey, request);
-    if (replay) return replay;
+    const auth = captureMutationAuth(request.auth);
     const scope = request.scope ?? (await this.selectedScope(request.id));
     if (!scope) return mutationFailed(request.id, "not-found", "Skill not found");
-    return this.remember(request.idempotencyKey, request, await this.rewriteOperationalMetadata(request.auth, request.id, scope, { pinned: request.pinned }, request));
+    const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
+    if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillMutationResult>(
+      "pin",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => idempotencyConflict(request.id)
+    );
+    if (replay) return replay;
+    return this.remember("pin", auth, request.idempotencyKey, request, await this.rewriteOperationalMetadata(auth, request.id, scope, { pinned: request.pinned }, request));
   }
 
   async recordUsage(request: SkillRecordUsageRequest): Promise<SkillMutationResult> {
-    const replay = this.replay<SkillMutationResult>(request.idempotencyKey, request);
-    if (replay) return replay;
+    const auth = captureMutationAuth(request.auth);
     const scope = request.scope ?? (await this.selectedScope(request.id));
     if (!scope) return mutationFailed(request.id, "not-found", "Skill not found");
+    const denied = await authorizeSkill(auth, "skill.manage", request.id, scope, request);
+    if (denied) return mutationFailed(request.id, "denied", denied.reason);
+    const replay = this.replay<SkillMutationResult>(
+      "record-usage",
+      auth,
+      request.idempotencyKey,
+      request,
+      () => idempotencyConflict(request.id)
+    );
+    if (replay) return replay;
     const found = await this.get({ id: request.id, scope });
     if (found.status !== "found") return mutationFailed(request.id, "not-found", "Skill not found");
-    return this.remember(request.idempotencyKey, request, await this.rewriteOperationalMetadata(
-      request.auth,
+    return this.remember("record-usage", auth, request.idempotencyKey, request, await this.rewriteOperationalMetadata(
+      auth,
       request.id,
       scope,
       {
@@ -497,20 +600,28 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     };
   }
 
-  private replay<T>(key: string, request: unknown): T | SkillMutationResult | undefined {
+  private replay<T>(
+    operation: SkillMutationOperation,
+    auth: AuthContext,
+    key: string,
+    request: unknown,
+    conflict: () => T
+  ): T | undefined {
     const fingerprint = stableFingerprint(request);
-    const previous = this.idempotency.get(key);
+    const previous = this.idempotency.get(idempotencyNamespace(operation, auth, key));
     if (!previous) return undefined;
     if (previous.fingerprint === fingerprint) return previous.result as T;
-    return mutationFailed(
-      key,
-      "conflict",
-      "Idempotency key already used with a different request"
-    );
+    return conflict();
   }
 
-  private remember<T>(key: string, request: unknown, result: T): T {
-    this.idempotency.set(key, {
+  private remember<T>(
+    operation: SkillMutationOperation,
+    auth: AuthContext,
+    key: string,
+    request: unknown,
+    result: T
+  ): T {
+    this.idempotency.set(idempotencyNamespace(operation, auth, key), {
       fingerprint: stableFingerprint(request),
       result,
     });
@@ -611,11 +722,13 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     if (conflict) return conflict;
     const denied = await authorizeSkill(auth, "skill.manage", id, scope, { id, scope, ...patch });
     if (denied) return mutationFailed(id, "denied", denied.reason);
-    writeFileSync(
-      join(this.skillDir(scope, id), MANIFEST),
-      renderSkillManifest(id, { ...metadataFromDetail(found.skill, found.skill.updatedAt), ...patch }, found.skill.body, {}),
-      "utf8"
-    );
+    this.atomicRewriteSkillDir(this.skillDir(scope, id), (temp) => {
+      writeFileSync(
+        join(temp, MANIFEST),
+        renderSkillManifest(id, { ...metadataFromDetail(found.skill, found.skill.updatedAt), ...patch }, found.skill.body, {}),
+        "utf8"
+      );
+    });
     return this.mutationDetail(id, scope, "active");
   }
 
@@ -813,6 +926,20 @@ function captureMutationAuth(auth: AuthContext): AuthContext {
         reason: "Invalid authenticated principal",
       }),
     };
+  }
+}
+
+function requireToolAuth(auth: AuthContext | undefined): AuthContext {
+  if (!auth) {
+    throw new ToolError(
+      "AUTHORIZATION_DENIED",
+      "Authenticated skill access is required"
+    );
+  }
+  try {
+    return captureAuthContext(auth);
+  } catch {
+    throw new ToolError("AUTHORIZATION_DENIED", "Invalid authenticated principal");
   }
 }
 
@@ -1044,6 +1171,35 @@ function applyFileMutations(
   }
 }
 
+function writeFileAtomic(path: string, content: string): void {
+  const directory = dirname(path);
+  mkdirSync(directory, { recursive: true });
+  const tempDirectory = mkdtempSync(join(directory, ".write-"));
+  const temp = join(tempDirectory, "value");
+  try {
+    writeFileSync(temp, content, "utf8");
+    renameSync(temp, path);
+  } finally {
+    rmSync(tempDirectory, { recursive: true, force: true });
+  }
+}
+
+function idempotencyNamespace(
+  operation: SkillMutationOperation,
+  auth: AuthContext,
+  key: string
+): string {
+  return `${operation}:${securityContextKey({ principal: auth.principal })}:${key}`;
+}
+
+function idempotencyConflict(id: string): SkillMutationResult {
+  return mutationFailed(
+    id,
+    "conflict",
+    "Idempotency key already used with a different request"
+  );
+}
+
 function stableFingerprint(value: unknown): string {
   return JSON.stringify(redactAuth(value), Object.keys(flattenKeys(value)).sort());
 }
@@ -1118,22 +1274,122 @@ export function createSkillActivationContributor(
 export function projectSkillTools(): readonly SkillToolProjection[] {
   return [
     toolProjection("skill-read", "read", "Read a skill manifest or supporting file."),
-    toolProjection("skill-attach", "attach", "Attach a skill file to a host surface."),
+    toolProjection("skill-attach", "attach", "Attach a skill file through a host-provided callback."),
     toolProjection("skill-activate", "activate", "Activate a skill through context projection."),
-    toolProjection("skill-test", "test", "Run host-provided skill checks."),
+    toolProjection("skill-test", "test", "Run checks through a host-provided callback."),
   ];
 }
 
-export function projectSkillToolDefinitions(): readonly ToolDefinition<
-  { id: string; scope?: SkillScope; path?: string },
-  { status: "unsupported"; operation: "read" | "attach" | "activate" | "test" }
->[] {
-  return [
-    toolDefinition("skill-read", "read", "Read a skill manifest or supporting file."),
-    toolDefinition("skill-attach", "attach", "Attach a skill file to a host surface."),
-    toolDefinition("skill-activate", "activate", "Activate a skill through context projection."),
-    toolDefinition("skill-test", "test", "Run host-provided skill checks."),
+interface SkillActivateToolInput {
+  id: string;
+  scope?: SkillScope;
+  requestId?: string;
+  trigger: SkillActivateRequest["trigger"];
+  reason: string;
+}
+
+export function createSkillToolDefinitions(
+  options: SkillToolDefinitionFactoryOptions
+): readonly AnySkillToolDefinition[] {
+  const definitions: AnySkillToolDefinition[] = [
+    {
+      name: "skill-read",
+      description: "Read a managed skill manifest or supporting file.",
+      category: "skills",
+      input: skillToolInputSchema,
+      output: skillReadResultSchema,
+      validateOutput: "strict",
+      inputJsonSchema: skillToolInputJsonSchema,
+      handler: async (input, context) => {
+        const auth = requireToolAuth(context.auth);
+        const found = await options.registry.get({
+          id: input.id,
+          ...(input.scope === undefined ? {} : { scope: input.scope }),
+        });
+        if (found.status === "found") {
+          const denied = await authorizeSkill(
+            auth,
+            "skill.read",
+            input.id,
+            found.skill.scope,
+            input
+          );
+          if (denied) throw new ToolError("AUTHORIZATION_DENIED", denied.reason);
+        }
+        return { data: await options.registry.read(input) };
+      },
+      tags: ["skills", "read"],
+      approval: "read",
+      authorization: { authLevel: "skill.read" },
+      authorizationResource: {
+        required: true,
+        kind: "skill",
+        requiredFields: ["target"],
+      },
+      capabilities: { readsFs: true, idempotent: true },
+      hints: {
+        mcp: {
+          annotations: {
+            readOnly: true,
+            destructive: false,
+            idempotent: true,
+            openWorld: false,
+          },
+        },
+      },
+    } as ToolDefinition<SkillHostToolInput, SkillReadResult>,
+    {
+      name: "skill-activate",
+      description: "Authorize and activate a managed skill for context projection.",
+      category: "skills",
+      input: skillActivateToolInputSchema,
+      output: skillActivateResultSchema,
+      validateOutput: "strict",
+      inputJsonSchema: skillActivateToolInputJsonSchema,
+      handler: async (input, context) => {
+        const auth = requireToolAuth(context.auth);
+        return {
+          data: await options.registry.activate({
+            auth,
+            id: input.id,
+            ...(input.scope === undefined ? {} : { scope: input.scope }),
+            ...(input.requestId === undefined ? {} : { requestId: input.requestId }),
+            trigger: input.trigger,
+            reason: input.reason,
+          }),
+        };
+      },
+      tags: ["skills", "activate"],
+      approval: {
+        tier: "write",
+        reason: "Activation records usage and projects skill content into context",
+      },
+      authorization: { authLevel: "skill.activate" },
+      authorizationResource: {
+        required: true,
+        kind: "skill",
+        requiredFields: ["target"],
+      },
+      capabilities: { readsFs: true, writesFs: true },
+      hints: {
+        mcp: {
+          annotations: {
+            readOnly: false,
+            destructive: false,
+            idempotent: false,
+            openWorld: false,
+          },
+        },
+      },
+    } as ToolDefinition<SkillActivateToolInput, SkillActivateResult>,
   ];
+  if (options.attach) {
+    definitions.push(hostSkillToolDefinition(options.registry, "attach", options.attach));
+  }
+  if (options.test) {
+    definitions.push(hostSkillToolDefinition(options.registry, "test", options.test));
+  }
+  return definitions;
 }
 
 function toolProjection(
@@ -1157,33 +1413,75 @@ function toolProjection(
   };
 }
 
-function toolDefinition(
-  name: string,
-  operation: "read" | "attach" | "activate" | "test",
-  description: string
-): ToolDefinition<
-  { id: string; scope?: SkillScope; path?: string },
-  { status: "unsupported"; operation: "read" | "attach" | "activate" | "test" }
-> {
+function hostSkillToolDefinition(
+  registry: WritableManagedSkillRegistry,
+  operation: "attach" | "test",
+  callback: SkillHostToolCallback
+): ToolDefinition<SkillHostToolInput, SkillHostToolResult> {
+  const authorizationAction: AuthzAction =
+    operation === "attach" ? "skill.activate" : "skill.manage";
   return {
-    name,
-    description,
+    name: `skill-${operation}`,
+    description:
+      operation === "attach"
+        ? "Attach a managed skill file through the configured host callback."
+        : "Run managed skill checks through the configured host callback.",
     category: "skills",
     input: skillToolInputSchema,
-    output: skillToolUnsupportedOutputSchema,
+    output: skillHostToolResultSchema,
     validateOutput: "strict",
-    inputJsonSchema: {
-      type: "object",
-      properties: {
-        id: { type: "string" },
-        scope: { type: "string" },
-        path: { type: "string" },
-      },
-      required: ["id"],
-      additionalProperties: false,
+    inputJsonSchema: skillToolInputJsonSchema,
+    handler: async (input, context) => {
+      const auth = requireToolAuth(context.auth);
+      const found = await registry.get({
+        id: input.id,
+        ...(input.scope === undefined ? {} : { scope: input.scope }),
+      });
+      if (found.status !== "found") {
+        return {
+          data: {
+            status: "failed",
+            operation,
+            id: input.id,
+            message: "Skill not found",
+          },
+        };
+      }
+      const denied = await authorizeSkill(
+        auth,
+        authorizationAction,
+        input.id,
+        found.skill.scope,
+        input
+      );
+      if (denied) throw new ToolError("AUTHORIZATION_DENIED", denied.reason);
+      const result = await callback(input, context);
+      if (result.operation !== operation) {
+        throw new ToolError("OUTPUT_INVALID", "Host skill callback returned the wrong operation");
+      }
+      return { data: result };
     },
-    handler: async () => ({ data: { status: "unsupported", operation } }),
     tags: ["skills", operation],
+    approval:
+      operation === "attach"
+        ? { tier: "write", reason: "Attaching changes a host surface" }
+        : { tier: "exec", reason: "Skill tests may execute host-provided checks" },
+    authorization: { authLevel: authorizationAction },
+    authorizationResource: {
+      required: true,
+      kind: "skill",
+      requiredFields: ["target"],
+    },
+    hints: {
+      mcp: {
+        annotations: {
+          readOnly: false,
+          destructive: false,
+          idempotent: false,
+          openWorld: operation === "test",
+        },
+      },
+    },
   };
 }
 
@@ -1210,7 +1508,18 @@ const skillToolInputSchema = {
   },
 };
 
-const skillToolUnsupportedOutputSchema = {
+const skillToolInputJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    scope: { type: "string", enum: [...SCOPE_RESOLUTION_ORDER] },
+    path: { type: "string" },
+  },
+  required: ["id"],
+  additionalProperties: false,
+} as const;
+
+const skillActivateToolInputSchema = {
   "~standard": {
     version: 1 as const,
     vendor: "gonk",
@@ -1218,21 +1527,57 @@ const skillToolUnsupportedOutputSchema = {
       value !== null &&
       typeof value === "object" &&
       !Array.isArray(value) &&
-      Object.keys(value).every((key) => ["status", "operation"].includes(key)) &&
-      (value as { status?: unknown }).status === "unsupported" &&
-      isOneOf((value as { operation?: unknown }).operation, [
-        "read",
-        "attach",
-        "activate",
-        "test",
-      ])
-        ? {
-            value: value as {
-              status: "unsupported";
-              operation: "read" | "attach" | "activate" | "test";
-            },
-          }
-        : { issues: [{ message: "Invalid skill tool output" }] },
+      Object.keys(value).every((key) =>
+        ["id", "scope", "requestId", "trigger", "reason"].includes(key)
+      ) &&
+      isManagedSkillId((value as { id?: unknown }).id) &&
+      ((value as { scope?: unknown }).scope === undefined ||
+        isOneOf((value as { scope?: unknown }).scope, SCOPE_RESOLUTION_ORDER)) &&
+      ((value as { requestId?: unknown }).requestId === undefined ||
+        typeof (value as { requestId?: unknown }).requestId === "string") &&
+      isOneOf((value as { trigger?: unknown }).trigger, [
+        "manual",
+        "rule",
+        "startup",
+        "session",
+      ]) &&
+      typeof (value as { reason?: unknown }).reason === "string" &&
+      (value as { reason: string }).reason.trim().length > 0
+        ? { value: value as SkillActivateToolInput }
+        : { issues: [{ message: "Invalid skill activate tool input" }] },
+  },
+};
+
+const skillActivateToolInputJsonSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string" },
+    scope: { type: "string", enum: [...SCOPE_RESOLUTION_ORDER] },
+    requestId: { type: "string" },
+    trigger: { type: "string", enum: ["manual", "rule", "startup", "session"] },
+    reason: { type: "string" },
+  },
+  required: ["id", "trigger", "reason"],
+  additionalProperties: false,
+} as const;
+
+const skillHostToolResultSchema = {
+  "~standard": {
+    version: 1 as const,
+    vendor: "gonk",
+    validate: (value: unknown) =>
+      value !== null &&
+      typeof value === "object" &&
+      !Array.isArray(value) &&
+      Object.keys(value).every((key) =>
+        ["status", "operation", "id", "message"].includes(key)
+      ) &&
+      isOneOf((value as { status?: unknown }).status, ["ok", "failed"]) &&
+      isOneOf((value as { operation?: unknown }).operation, ["attach", "test"]) &&
+      isManagedSkillId((value as { id?: unknown }).id) &&
+      typeof (value as { message?: unknown }).message === "string"
+        ? { value: value as SkillHostToolResult }
+        : { issues: [{ message: "Invalid host skill tool output" }] },
   },
 };
 
