@@ -20,7 +20,7 @@ import {
 
 import { parseSkillDocument, type FrontmatterRecord } from "./frontmatter.ts";
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
-import { isIsoTimestamp } from "./validation.ts";
+import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
 import {
   skillGetRequestSchema,
   skillGetResultSchema,
@@ -526,7 +526,7 @@ function parseProvenance(value: unknown): SkillProvenance | undefined {
     ...((value.pinned_at ?? value.pinnedAt) === undefined
       ? {}
       : {
-          pinnedAt: requiredIsoTimestamp(
+          pinnedAt: requiredIsoDateOrTimestamp(
             value.pinned_at ?? value.pinnedAt,
             "provenance.pinned_at"
           ),
@@ -767,6 +767,14 @@ function requiredIsoTimestamp(value: unknown, label: string): string {
   const timestamp = requiredString(value, label);
   if (!isIsoTimestamp(timestamp)) {
     throw new TypeError(`${label} must be an ISO 8601 timestamp`);
+  }
+  return timestamp;
+}
+
+function requiredIsoDateOrTimestamp(value: unknown, label: string): string {
+  const timestamp = requiredString(value, label);
+  if (!isIsoDateOrTimestamp(timestamp)) {
+    throw new TypeError(`${label} must be an ISO 8601 date or timestamp`);
   }
   return timestamp;
 }

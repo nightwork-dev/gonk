@@ -48,6 +48,9 @@ describe("closed Standard Schema contracts", () => {
         checkedAt: "2026-02-31T12:00:00Z",
       })
     ).toBe(false);
+    expect(
+      valid(skillFreshnessResultSchema, { status: "fresh", checkedAt: "2026-07-16" })
+    ).toBe(false);
   });
 
   it("rejects leaked fields at nested and result boundaries", async () => {
@@ -135,6 +138,17 @@ describe("filesystem safety and parsing", () => {
     expect(await harness.registry.get({ id: "bad-time" })).toEqual({
       status: "not-found",
       id: "bad-time",
+    });
+
+    await harness.seed({
+      scope: "project",
+      id: "date-only-update",
+      frontmatter:
+        "id: date-only-update\ndescription: invalid operational date\nupdated_at: 2026-07-16",
+    });
+    expect(await harness.registry.get({ id: "date-only-update" })).toEqual({
+      status: "not-found",
+      id: "date-only-update",
     });
   });
 
@@ -264,6 +278,21 @@ describe("provenance and freshness", () => {
     expect(result.skill.freshness).toEqual({ status: "unknown" });
   });
 
+  it("rejects impossible date-only provenance values", async () => {
+    const harness = make();
+    await harness.seed({
+      scope: "project",
+      id: "impossible-provenance-date",
+      frontmatter: provenance
+        .replace("id: sourced", "id: impossible-provenance-date")
+        .replace("2026-07-16T00:00:00Z", "2026-02-31"),
+    });
+    expect(await harness.registry.get({ id: "impossible-provenance-date" })).toEqual({
+      status: "not-found",
+      id: "impossible-provenance-date",
+    });
+  });
+
   it("uses an injected probe and normalizes failures to unprobeable", async () => {
     const fresh = make({
       probe: async () => ({
@@ -311,6 +340,25 @@ describe("extension fixture parity", () => {
       hosts: ["cli", "mcp"],
       platforms: ["macos", "linux"],
     });
+  });
+
+  it("reads date-only provenance emitted by the actual legacy registry", async () => {
+    const harness = make();
+    const skillDir = join(harness.home("project"), "skills", "legacy-date-only");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(
+      join(skillDir, "SKILL.md"),
+      readFileSync(
+        new URL("./fixtures/legacy-registry-date-only.SKILL.md", import.meta.url),
+        "utf8"
+      ),
+      "utf8"
+    );
+    const result = await harness.registry.get({ id: "legacy-date-only" });
+    expect(result.status).toBe("found");
+    if (result.status !== "found") return;
+    expect(result.skill.provenance?.pinnedAt).toBe("2026-07-16");
+    expect(valid(managedSkillDetailSchema, result.skill)).toBe(true);
   });
 
   it("reads the skill-creator legacy frontmatter vocabulary without importing it", async () => {

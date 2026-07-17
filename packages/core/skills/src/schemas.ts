@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
-import { isIsoTimestamp } from "./validation.ts";
+import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
 import type {
   ManagedSkillDetail,
   ManagedSkillSummary,
@@ -142,7 +142,7 @@ function isSkillProvenance(value: unknown): value is SkillProvenance {
     isOptionalNonEmptyString(value.repositoryId) &&
     isOptionalNonEmptyString(value.packageId) &&
     isOptionalNonEmptyString(value.version) &&
-    isOptionalIsoTimestamp(value.pinnedAt) &&
+    isOptionalIsoDateOrTimestamp(value.pinnedAt) &&
     Array.isArray(value.anchors) &&
     value.anchors.length > 0 &&
     value.anchors.every(isSkillProvenanceAnchor)
@@ -438,6 +438,10 @@ function isOptionalNonEmptyString(value: unknown): boolean {
 
 function isOptionalIsoTimestamp(value: unknown): boolean {
   return value === undefined || isIsoTimestamp(value);
+}
+
+function isOptionalIsoDateOrTimestamp(value: unknown): boolean {
+  return value === undefined || isIsoDateOrTimestamp(value);
 }
 
 function isOptionalBoolean(value: unknown): boolean {

@@ -1,7 +1,7 @@
 # Managed skills design
 
-> Status: **Phase 0 implemented; GR-74 remains open** until the extension-owned
-> registry is migrated and the first consumer runs against `@gonk/skills`.
+> Status: **Phase 0 implemented; GR-74 remains open** until the migration-pending
+> extension registry moves to Core and the first consumer runs against `@gonk/skills`.
 
 ## Boundary
 
@@ -11,9 +11,10 @@ filesystem implementation, and reusable conformance suite. Host catalogs,
 tool and UI projections, mutations, activation, and semantic search remain
 outside this package.
 
-This is an extraction and hardening of the useful filesystem behavior in the
-former extension-owned `skill-creator`, not a generic registry abstraction.
-Core does not depend on that extension.
+This extracts and hardens the useful filesystem behavior in the existing
+`skill-creator` extension registry, whose migration to Core is still pending.
+It is not a generic registry abstraction, and Core does not depend on that
+extension.
 
 The package depends on `@gonk/scope`, `@standard-schema/spec`, and `yaml`.
 `yaml` is intentional compatibility substrate: the legacy registry writes with
@@ -67,7 +68,9 @@ Malformed frontmatter removes only the malformed definition, never a valid
 neighbor. Parsing uses `yaml`, matching the actual legacy writer, while aliases,
 duplicate keys, non-scalar data, and invalid typed fields fail closed.
 `description` and a non-empty body are required; a declared `id` must match its
-directory. Timestamps are validated as ISO 8601 values.
+directory. Operational timestamps require ISO 8601 instants. The legacy
+provenance `pinnedAt` field also accepts a strict ISO calendar date because the
+extension contract documented and emitted date-only values.
 
 ## Revisions and files
 
