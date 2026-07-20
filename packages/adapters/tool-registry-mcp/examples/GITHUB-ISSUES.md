@@ -37,7 +37,8 @@ const mcp = createMcpServer({
 
 Credentials are resolved inside the handler after registry authorization. They
 never appear in tool input or error output. The write also passes through the
-registry approval provider before any HTTP request is made.
+registry approval provider before any HTTP request is made. Remote error bodies
+are not re-exposed; failures retain only the HTTP status and GitHub request ID.
 
 The focused test uses a real loopback HTTP server, not a mocked `fetch`. It proves
 bearer authentication, read and write behavior, denial before credential resolution

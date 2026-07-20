@@ -110,6 +110,46 @@ describe("hand-authored GitHub Issues consumer", () => {
     expect(fixture.state.comments).toEqual([]);
   });
 
+  it("requires write approval before credential resolution or business API I/O", async () => {
+    let credentialResolutions = 0;
+    const registry = new ToolRegistry({
+      security: {
+        approvalProvider: {
+          decide: () => ({
+            outcome: "required",
+            reason: "fixture requires confirmation",
+            approvalRequestId: "fixture-approval",
+          }),
+        },
+      },
+    });
+    registry.register(
+      createGitHubIssueTools(
+        options(fixture.origin, () => {
+          credentialResolutions += 1;
+          return "fixture-token";
+        })
+      )
+    );
+
+    const denied = await collectToolOutcome(
+      registry.invoke(
+        "github-issue-comment",
+        { number: 7, body: "must wait for approval" },
+        makeBaseContext({ auth: allowAuth() })
+      )
+    );
+
+    expect(denied).toMatchObject({
+      ok: false,
+      code: "APPROVAL_REQUIRED",
+      details: { approvalRequestId: "fixture-approval" },
+    });
+    expect(credentialResolutions).toBe(0);
+    expect(fixture.state.requests).toBe(0);
+    expect(fixture.state.comments).toEqual([]);
+  });
+
   it("normalizes HTTP errors without leaking credentials", async () => {
     const registry = approvedRegistry();
     registry.register(
@@ -131,7 +171,6 @@ describe("hand-authored GitHub Issues consumer", () => {
       details: {
         status: 404,
         requestId: "fixture-request-404",
-        message: "Not Found",
       },
     });
     expect(JSON.stringify(outcome)).not.toContain("fixture-token");
@@ -293,7 +332,9 @@ async function startGitHubFixture(): Promise<{
     });
   });
   const address = server.address();
-  if (!address || typeof address === "string") throw new Error("fixture did not bind");
+  if (!address || typeof address === "string") {
+    throw new Error("fixture did not bind");
+  }
   return {
     origin: `http://127.0.0.1:${address.port}`,
     state,
@@ -341,10 +382,14 @@ async function handleFixture(
     });
   }
   response.setHeader("x-github-request-id", "fixture-request-404");
-  return send(response, 404, { message: "Not Found" });
+  return send(response, 404, {
+    message: "Rejected Authorization: Bearer fixture-token",
+  });
 }
 
-async function readJson(request: IncomingMessage): Promise<Record<string, unknown>> {
+async function readJson(
+  request: IncomingMessage
+): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) chunks.push(Buffer.from(chunk));
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;

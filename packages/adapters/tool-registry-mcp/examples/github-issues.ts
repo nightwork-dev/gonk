@@ -8,7 +8,6 @@ export interface GitHubIssuesOptions {
   owner: string;
   repository: string;
   resolveToken(): string | Promise<string>;
-  fetch?: typeof globalThis.fetch;
   apiBase?: string;
   timeoutMs?: number;
 }
@@ -179,7 +178,6 @@ export function createGitHubIssueTools(
 }
 
 function createGitHubRequest(options: GitHubIssuesOptions) {
-  const fetchImpl = options.fetch ?? globalThis.fetch;
   const apiBase = options.apiBase ?? "https://api.github.com";
   const timeoutMs = options.timeoutMs ?? 15_000;
 
@@ -188,12 +186,17 @@ function createGitHubRequest(options: GitHubIssuesOptions) {
     init: { method: "GET" | "POST"; signal: AbortSignal; body?: string }
   ): Promise<unknown> {
     const token = await options.resolveToken();
-    if (!token) throw new ToolError("GITHUB_CREDENTIAL_MISSING", "GitHub token is not configured");
+    if (!token) {
+      throw new ToolError(
+        "GITHUB_CREDENTIAL_MISSING",
+        "GitHub token is not configured"
+      );
+    }
     const timeout = AbortSignal.timeout(timeoutMs);
     const signal = AbortSignal.any([init.signal, timeout]);
     let response: Response;
     try {
-      response = await fetchImpl(new URL(path, apiBase), {
+      response = await globalThis.fetch(new URL(path, apiBase), {
         method: init.method,
         signal,
         redirect: "error",
@@ -201,7 +204,9 @@ function createGitHubRequest(options: GitHubIssuesOptions) {
           Accept: "application/vnd.github+json",
           Authorization: `Bearer ${token}`,
           "X-GitHub-Api-Version": "2022-11-28",
-          ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
+          ...(init.body === undefined
+            ? {}
+            : { "Content-Type": "application/json" }),
         },
         ...(init.body === undefined ? {} : { body: init.body }),
       });
@@ -215,11 +220,12 @@ function createGitHubRequest(options: GitHubIssuesOptions) {
       throw new ToolError(
         "GITHUB_TRANSPORT_ERROR",
         "GitHub request failed",
-        error instanceof Error ? { name: error.name, message: error.message } : undefined
+        error instanceof Error
+          ? { name: error.name, message: error.message }
+          : undefined
       );
     }
 
-    const value = await response.json().catch(() => undefined);
     if (!response.ok) {
       throw new ToolError(
         "GITHUB_HTTP_ERROR",
@@ -227,11 +233,10 @@ function createGitHubRequest(options: GitHubIssuesOptions) {
         {
           status: response.status,
           requestId: response.headers.get("x-github-request-id") ?? undefined,
-          message: isRecord(value) && typeof value.message === "string" ? value.message : undefined,
         }
       );
     }
-    return value;
+    return response.json().catch(() => undefined);
   };
 }
 
