@@ -1,5 +1,27 @@
 # @gonk/tool-registry-mcp
 
+## 0.4.0
+
+### Minor Changes
+
+- [`6d417cc`](https://github.com/nightwork-dev/gonk/commit/6d417cc6bdc72c59783e5987e643cf223db0c377) Thanks [@abrisene](https://github.com/abrisene)! - Add atomic source-catalog replacement and an authenticated Streamable HTTP MCP
+  client that imports remote tools with host-owned authorization, provenance,
+  refresh, cancellation, and timeout handling.
+
+### Patch Changes
+
+- [`132d852`](https://github.com/nightwork-dev/gonk/commit/132d8525769ed69f713494779b3ee6b80b3258e7) Thanks [@abrisene](https://github.com/abrisene)! - Add a tested hand-authored GitHub API adapter example covering host-owned
+  credentials, pre-network authorization and approval, typed results, safe error
+  redaction, cancellation, timeouts, and MCP reprojection.
+
+- [#6](https://github.com/nightwork-dev/gonk/pull/6) [`b5d9a54`](https://github.com/nightwork-dev/gonk/commit/b5d9a542344db9affbc0f166d0b416cabbbb99c2) Thanks [@abrisene](https://github.com/abrisene)! - Document the Standard Schema-first tool-authoring path, expose the JSON Schema
+  annotation helper as a focused subpath, and test MCP projection from annotated
+  schemas.
+- Updated dependencies [[`6d417cc`](https://github.com/nightwork-dev/gonk/commit/6d417cc6bdc72c59783e5987e643cf223db0c377), [`b5d9a54`](https://github.com/nightwork-dev/gonk/commit/b5d9a542344db9affbc0f166d0b416cabbbb99c2)]:
+  - @gonk/tool-registry@0.4.0
+  - @gonk/tool-orchestrator@0.4.0
+  - @gonk/auth@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

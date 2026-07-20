@@ -1,5 +1,15 @@
 # @gonk/extension-spec-pi
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`6d417cc`](https://github.com/nightwork-dev/gonk/commit/6d417cc6bdc72c59783e5987e643cf223db0c377), [`b5d9a54`](https://github.com/nightwork-dev/gonk/commit/b5d9a542344db9affbc0f166d0b416cabbbb99c2)]:
+  - @gonk/tool-registry@0.4.0
+  - @gonk/tool-registry-pi@0.4.0
+  - @gonk/extension-spec@0.4.0
+  - @gonk/scope@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
