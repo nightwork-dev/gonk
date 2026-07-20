@@ -20,8 +20,17 @@ type SqliteAdapterConstructor = typeof import("@mirk/store/sqlite").SqliteAdapte
 type SqliteAdapterInstance = InstanceType<SqliteAdapterConstructor>;
 
 const SqliteAdapter: SqliteAdapterConstructor = await import("@mirk/store/sqlite")
-  .then((module) => module.SqliteAdapter)
+  .then((module) => {
+    const adapter = module.SqliteAdapter;
+    if (typeof adapter !== "function") {
+      throw new TypeError("@mirk/store/sqlite did not export SqliteAdapter");
+    }
+    return adapter;
+  })
   .catch((cause: unknown) => {
+    if (!isMissingBetterSqliteOptionalPeer(cause)) {
+      throw cause;
+    }
     throw new Error(
       "@gonk/store/sqlite requires the optional native peer better-sqlite3. Install better-sqlite3 in the host package to use the Mirk SQLite backend.",
       { cause },
@@ -417,6 +426,13 @@ function readLegacyVectors(dir: string): Map<string, VectorEntry> {
 
 function isExpired(expiresAt: number | undefined): boolean {
   return expiresAt !== undefined && Date.now() >= expiresAt;
+}
+
+function isMissingBetterSqliteOptionalPeer(cause: unknown): boolean {
+  if (!(cause instanceof Error)) return false;
+  const code = (cause as { code?: unknown }).code;
+  if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") return false;
+  return /\b(?:package|module)\s+['"]?better-sqlite3['"]?\b/.test(cause.message);
 }
 
 function validateBlobKey(key: string): void {
