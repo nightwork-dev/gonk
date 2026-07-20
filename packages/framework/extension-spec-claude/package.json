@@ -1,6 +1,6 @@
 {
   "name": "@gonk/extension-spec-claude",
-  "version": "0.4.0",
+  "version": "0.3.1",
   "type": "module",
   "description": "Claude Code materializer for @gonk/extension-spec — turns an ExtensionSpec into a Claude Code plugin tree (plugin.json, commands/*.md, hooks/hooks.json).",
   "exports": {

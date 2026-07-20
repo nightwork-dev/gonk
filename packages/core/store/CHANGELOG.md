@@ -1,20 +1,5 @@
 # @gonk/store
 
-## 0.4.0
-
-### Minor Changes
-
-- [`52943ce`](https://github.com/nightwork-dev/gonk/commit/52943cec1c37c9880d37f7f9c038f210d29efb55) Thanks [@abrisene](https://github.com/abrisene)! - Move `MirkStoreBackend`, `mirkBackendFactory`, and the Mirk SQLite path and
-  migration helpers from the `@gonk/store` root export to `@gonk/store/sqlite`.
-  `better-sqlite3` is now an optional peer dependency that hosts install only
-  when they use the SQLite backend.
-
-### Patch Changes
-
-- Updated dependencies []:
-  - @gonk/scope@0.4.0
-  - @gonk/utils@0.4.0
-
 ## 0.3.1
 
 ### Patch Changes

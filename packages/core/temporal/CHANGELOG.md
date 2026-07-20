@@ -1,12 +1,5 @@
 # @gonk/temporal
 
-## 0.4.0
-
-### Patch Changes
-
-- Updated dependencies [[`52943ce`](https://github.com/nightwork-dev/gonk/commit/52943cec1c37c9880d37f7f9c038f210d29efb55)]:
-  - @gonk/store@0.4.0
-
 ## 0.3.1
 
 ### Patch Changes
