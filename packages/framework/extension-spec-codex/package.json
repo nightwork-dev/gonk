@@ -51,6 +51,10 @@
     "vitest": "catalog:"
   },
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/nightwork-dev/gonk.git",
