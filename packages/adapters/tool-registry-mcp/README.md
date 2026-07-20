@@ -181,6 +181,51 @@ authenticated discovery and invocation must share a real principal and
 
 `hints.mcp.mcpName` overrides the advertised name. `hints.mcp.annotations` are mapped to MCP's `*Hint` fields (`readOnly` → `readOnlyHint`, etc.).
 
+## Import a remote MCP server
+
+The client direction lives in this same adapter. It connects with the official
+SDK, discovers a reviewed subset of remote tools, and atomically replaces that
+server's source-owned catalog in a `ToolRegistry`. The coordinator-owned package
+metadata must expose the `./client` subpath before this import works from a
+published package.
+
+```ts
+import { createMcpToolImporter } from "@gonk/tool-registry-mcp/client";
+
+const inbound = createMcpToolImporter({
+  registry,
+  serverId: "docs",
+  endpoint: "https://mcp.example.com/mcp",
+  allowedOrigins: ["https://mcp.example.com"],
+  selection: { allow: ["search", "fetch"] },
+  authorization: { requiredRole: "docs-reader" },
+  approval: "read",
+  resolveHeaders: async () => ({
+    Authorization: `Bearer ${await hostSecrets.require("docs-mcp-token")}`,
+  }),
+  overrides: {
+    search: { description: "Search the reviewed documentation source" },
+  },
+});
+
+await inbound.connect();
+```
+
+The endpoint and selection are configuration-owned authority. Credentials are
+resolved by the host at connect/reconnect time and never appear in tool input or
+provenance. Remote descriptions, annotations, and instructions are untrusted:
+the importer uses a local description, `on-demand` visibility, and `exec`
+approval unless reviewed local configuration overrides them. Registry
+authorization runs before the proxy handler, so a denied caller produces no
+upstream `tools/call`.
+
+The importer supports paginated discovery, `tools/list_changed`, explicit
+refresh/reconnect/close, cancellation, and request timeouts. A failed schema
+compile or refresh retains the prior complete catalog. Its deliberately small
+JSON Schema 2020-12 subset supports object/array/scalar types, properties,
+required fields, closed objects, items, enum/const, and basic length/range
+limits; unsupported keywords fail the whole candidate catalog closed.
+
 ## Development switchboard: one MCP registration, many worktrees
 
 `@gonk/tool-registry-mcp/dev` adds a deliberately small **local** router for
