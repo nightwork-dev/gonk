@@ -55,6 +55,24 @@ describe("@gonk/store/sqlite import failure handling", () => {
     await vi.resetModules();
   });
 
+  it("does not treat a prefixed package name as the missing optional peer", async () => {
+    await vi.resetModules();
+    const cause = Object.assign(
+      new Error("Cannot find package 'better-sqlite3-helper' imported from @mirk/store/sqlite"),
+      { code: "ERR_MODULE_NOT_FOUND" },
+    );
+    vi.doMock("@mirk/store/sqlite", () => ({
+      get SqliteAdapter() {
+        throw cause;
+      },
+    }));
+
+    await expect(importMirkBackendForCase("missing-better-sqlite3-helper")).rejects.toBe(cause);
+
+    vi.doUnmock("@mirk/store/sqlite");
+    await vi.resetModules();
+  });
+
   it("does not mask an unexpected @mirk/store/sqlite export shape", async () => {
     await vi.resetModules();
     vi.doMock("@mirk/store/sqlite", () => ({ SqliteAdapter: undefined }));

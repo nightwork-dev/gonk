@@ -432,7 +432,20 @@ function isMissingBetterSqliteOptionalPeer(cause: unknown): boolean {
   if (!(cause instanceof Error)) return false;
   const code = (cause as { code?: unknown }).code;
   if (code !== "ERR_MODULE_NOT_FOUND" && code !== "MODULE_NOT_FOUND") return false;
-  return /\b(?:package|module)\s+['"]?better-sqlite3['"]?\b/.test(cause.message);
+
+  const metadata = cause as Error & {
+    packageName?: unknown;
+    request?: unknown;
+    specifier?: unknown;
+  };
+  for (const specifier of [metadata.packageName, metadata.request, metadata.specifier]) {
+    if (specifier === "better-sqlite3") return true;
+  }
+
+  const quotedSpecifier = cause.message.match(
+    /\b(?:package|module)\s+(?:'([^']+)'|"([^"]+)")(?:\s|$)/,
+  );
+  return (quotedSpecifier?.[1] ?? quotedSpecifier?.[2]) === "better-sqlite3";
 }
 
 function validateBlobKey(key: string): void {
