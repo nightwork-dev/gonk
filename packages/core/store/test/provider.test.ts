@@ -9,11 +9,10 @@ import {
   createStore,
   createStoreProvider,
   FsStoreBackend,
-  mirkBackendFactory,
   resolveStoreDir,
   type BackendFactory,
 } from "../src/index.ts";
-import { mirkStoreDbPath } from "../src/mirk-backend.ts";
+import { mirkBackendFactory, mirkStoreDbPath } from "../src/mirk-backend.ts";
 
 let root: string;
 let home: string;

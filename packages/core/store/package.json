@@ -10,6 +10,10 @@
     "./types": {
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js"
+    },
+    "./sqlite": {
+      "types": "./dist/sqlite.d.ts",
+      "import": "./dist/sqlite.js"
     }
   },
   "main": "./dist/index.js",
@@ -27,11 +31,18 @@
   "dependencies": {
     "@gonk/scope": "workspace:*",
     "@gonk/utils": "workspace:*",
-    "@mirk/store": "catalog:",
-    "better-sqlite3": "catalog:"
+    "@mirk/store": "catalog:"
+  },
+  "peerDependencies": {
+    "better-sqlite3": ">=11 <13"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   },
   "devDependencies": {
-    "@types/better-sqlite3": "catalog:",
+    "better-sqlite3": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",

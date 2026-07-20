@@ -16,11 +16,10 @@ export type {
 export type { CreateStoreOptions } from "./factory.ts";
 export { createStore, resolveStoreDir } from "./factory.ts";
 export type { StoreProvider } from "./provider.ts";
-export { createStoreProvider, mirkBackendFactory } from "./provider.ts";
+export { createStoreProvider } from "./provider.ts";
 export type { FoldEvent, Reducer } from "./fold.ts";
 export { compact, FoldStore } from "./fold.ts";
 export { FsStoreBackend } from "./fs-backend.ts";
-export { MirkStoreBackend } from "./mirk-backend.ts";
 export { cosineSimilarity } from "./cosine.ts";
 export {
   BackedBlobStore,

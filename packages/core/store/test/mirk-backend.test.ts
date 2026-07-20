@@ -8,9 +8,8 @@ import {
   BackedKvStore,
   BackedLogStore,
   BackedVectorStore,
-  MirkStoreBackend,
 } from "../src/index.ts";
-import { mirkStoreDbPath } from "../src/mirk-backend.ts";
+import { MirkStoreBackend, mirkStoreDbPath } from "../src/mirk-backend.ts";
 
 let dir: string;
 

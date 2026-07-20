@@ -1,8 +1,7 @@
 import type { ScopeStore } from "@gonk/scope";
 
-import { createStore, resolveStoreDir, type CreateStoreOptions } from "./factory.ts";
-import { MirkStoreBackend } from "./mirk-backend.ts";
-import type { BackendFactory, Store } from "./types.ts";
+import { createStore, type CreateStoreOptions } from "./factory.ts";
+import type { Store } from "./types.ts";
 
 /** Central, explicit store construction surface for hosts. A provider is a
  *  `Store`, so consumers that already accept an injected `Store` can receive it
@@ -15,10 +14,4 @@ export interface StoreProvider extends Store {}
  *  backend behavior. */
 export function createStoreProvider(scope: ScopeStore, opts?: CreateStoreOptions): StoreProvider {
   return createStore(scope, opts);
-}
-
-/** Convenience factory for hosts that want the Mirk sqlite backend without
- *  assembling store paths themselves. */
-export function mirkBackendFactory(scope: ScopeStore): BackendFactory {
-  return (tier, namespace) => new MirkStoreBackend(resolveStoreDir(scope, tier, namespace));
 }

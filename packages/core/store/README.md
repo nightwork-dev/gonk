@@ -30,14 +30,23 @@ const vec  = store.vector("project", "embeddings");  // upsert / search(vector, 
 
 ## Backends
 
-Every store type delegates to a **`StoreBackend`** SPI. The shipped default, **`FsStoreBackend`**, reproduces the prior on-disk behaviour — atomic KV/blob writes, JSONL logs, JS-cosine vectors — with **zero native dependencies** (no `better-sqlite3`, no sqlite-vec; it is pure `node:fs`). A future `SqliteStoreBackend` / `RemoteStoreBackend` implements the same SPI, so "swappable backing" for the universal shapes is delivered by substituting one object, with no capability change.
+Every store type delegates to a **`StoreBackend`** SPI. The shipped default, **`FsStoreBackend`**, reproduces the prior on-disk behaviour — atomic KV/blob writes, JSONL logs, JS-cosine vectors — with **zero native dependencies** (no `better-sqlite3`, no sqlite-vec; it is pure `node:fs`). SQLite is available only through the explicit `@gonk/store/sqlite` subpath, so default consumers can install and run without native modules while hosts that choose SQLite opt into its peer dependency.
 
 ```ts
 import { createStore, FsStoreBackend } from "@gonk/store";
 // createStore(scope) uses FsStoreBackend by default; pass your own to swap the backing.
 ```
 
+```ts
+import { createStoreProvider } from "@gonk/store";
+import { mirkBackendFactory } from "@gonk/store/sqlite";
+
+// Requires better-sqlite3 in the host package.
+const provider = createStoreProvider(scope, { backendFactory: mirkBackendFactory(scope) });
+```
+
 ## Exports
 
 - `@gonk/store` — `createStore`, `resolveStoreDir`, `FsStoreBackend`, `cosineSimilarity`, and the store/backend value+type surface.
 - `@gonk/store/types` — types only (`KvStore`, `BlobStore`, `LogStore`, `VectorStore`, `Store`, `StoreBackend`, …) for client-safe imports.
+- `@gonk/store/sqlite` — explicit native-backed Mirk SQLite adapter (`MirkStoreBackend`, `mirkBackendFactory`, `mirkStoreDbPath`). This subpath fails with a descriptive peer-dependency error if `better-sqlite3` is not installed by the host.

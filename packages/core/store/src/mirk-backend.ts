@@ -1,12 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
 import { join, normalize } from "node:path";
 
-import { SqliteAdapter } from "@mirk/store/sqlite";
+import type { ScopeStore } from "@gonk/scope";
 import type { SyncStore } from "@mirk/store";
 import type { VectorStore as MirkVectorStore } from "@mirk/store/vector";
-import type Database from "better-sqlite3";
 
+import { resolveStoreDir } from "./factory.ts";
 import type {
+  BackendFactory,
   BlobPutOptions,
   KvEntry,
   StoreBackend,
@@ -14,6 +15,18 @@ import type {
   VectorFilter,
   VectorMatch,
 } from "./types.ts";
+
+type SqliteAdapterConstructor = typeof import("@mirk/store/sqlite").SqliteAdapter;
+type SqliteAdapterInstance = InstanceType<SqliteAdapterConstructor>;
+
+const SqliteAdapter: SqliteAdapterConstructor = await import("@mirk/store/sqlite")
+  .then((module) => module.SqliteAdapter)
+  .catch((cause: unknown) => {
+    throw new Error(
+      "@gonk/store/sqlite requires the optional native peer better-sqlite3. Install better-sqlite3 in the host package to use the Mirk SQLite backend.",
+      { cause },
+    );
+  });
 
 // =============================================================================
 // MirkStoreBackend — StoreBackend over @mirk/store's real sqlite source adapter
@@ -55,7 +68,7 @@ interface MetaRecord {
 
 export class MirkStoreBackend implements StoreBackend {
   readonly dbPath: string;
-  private readonly adapter: SqliteAdapter;
+  private readonly adapter: SqliteAdapterInstance;
   private readonly kv: SyncStore;
   private vectorFacet: MirkVectorStore | undefined;
 
@@ -210,10 +223,10 @@ export class MirkStoreBackend implements StoreBackend {
     const existing = this.currentVectorFacet();
     if (existing) return existing;
 
-    const db = (this.adapter as unknown as { db: Database.Database }).db;
+    const db = (this.adapter as unknown as { db: unknown }).db;
     const adapterWithDimensions = new SqliteAdapter({
       path: this.dbPath,
-      db,
+      db: db as never,
       dimensions,
       forceJsCosine: true,
     });
@@ -422,4 +435,11 @@ export function mirkStoreDbPath(dir: string): string {
 
 export function mirkStoreDbExists(dir: string): boolean {
   return existsSync(mirkStoreDbPath(dir));
+}
+
+/** Convenience factory for hosts that want the Mirk SQLite backend without
+ *  assembling store paths themselves. This native adapter is intentionally
+ *  reachable only from `@gonk/store/sqlite`, never from the package root. */
+export function mirkBackendFactory(scope: ScopeStore): BackendFactory {
+  return (tier, namespace) => new MirkStoreBackend(resolveStoreDir(scope, tier, namespace));
 }

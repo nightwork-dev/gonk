@@ -9,8 +9,8 @@ import {
   BackedLogStore,
   BackedVectorStore,
   FsStoreBackend,
-  MirkStoreBackend,
 } from "../src/index.ts";
+import { MirkStoreBackend } from "../src/mirk-backend.ts";
 
 let dir: string;
 
