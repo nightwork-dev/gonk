@@ -54,6 +54,10 @@ const DEFAULT_AUTHENTICATED_APPROVAL = Object.freeze({
 
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
+  private sourceCatalogs = new Map<
+    string,
+    ReadonlyMap<string, ToolDefinition>
+  >();
   private readonly metrics: MetricsSink;
   private readonly security: ToolRegistrySecurityOptions;
 
@@ -75,23 +79,82 @@ export class ToolRegistry {
         : [input];
     for (const def of defs) {
       if (def.requires && !def.requires()) continue;
-      if (this.tools.has(def.name) && !opts?.overwrite) {
+      if (this.has(def.name) && !opts?.overwrite) {
         throw new Error(`Tool already registered: ${def.name}`);
+      }
+      if (this.findSourceTool(def.name)) {
+        throw new Error(
+          `Tool is owned by a source catalog and cannot be overwritten: ${def.name}`
+        );
       }
       this.tools.set(def.name, def as ToolDefinition);
     }
   }
 
+  /** Atomically replace every tool owned by one external source.
+   *
+   * The candidate catalog is fully validated before the live snapshot changes.
+   * Readers therefore observe either the previous complete source catalog or the
+   * next complete source catalog; failed replacement leaves the previous catalog
+   * untouched. */
+  replaceSource(
+    sourceId: string,
+    input: ToolDefinition | ToolDefinition[] | ToolRegistry
+  ): void {
+    if (sourceId.trim().length === 0) {
+      throw new Error("Source catalog id must not be empty");
+    }
+
+    const defs =
+      input instanceof ToolRegistry
+        ? input.list()
+        : Array.isArray(input)
+          ? input
+          : [input];
+    const candidate = new Map<string, ToolDefinition>();
+
+    for (const def of defs) {
+      if (def.requires && !def.requires()) continue;
+      if (candidate.has(def.name)) {
+        throw new Error(
+          `Duplicate tool in source catalog ${sourceId}: ${def.name}`
+        );
+      }
+      if (this.tools.has(def.name)) {
+        throw new Error(
+          `Source catalog ${sourceId} conflicts with registered tool: ${def.name}`
+        );
+      }
+      const existingOwner = this.findSourceTool(def.name, sourceId);
+      if (existingOwner) {
+        throw new Error(
+          `Source catalog ${sourceId} conflicts with source ${existingOwner.sourceId}: ${def.name}`
+        );
+      }
+      candidate.set(def.name, def);
+    }
+
+    const next = new Map(this.sourceCatalogs);
+    next.set(sourceId, candidate);
+    this.sourceCatalogs = next;
+  }
+
   get(name: string): ToolDefinition | undefined {
-    return this.tools.get(name);
+    return this.tools.get(name) ?? this.findSourceTool(name)?.tool;
   }
 
   has(name: string): boolean {
-    return this.tools.has(name);
+    return this.get(name) !== undefined;
   }
 
   list(): ToolDefinition[] {
-    return Array.from(this.tools.values());
+    const catalogs = this.sourceCatalogs;
+    return [
+      ...this.tools.values(),
+      ...Array.from(catalogs.values()).flatMap((catalog) => [
+        ...catalog.values(),
+      ]),
+    ];
   }
 
   /** Compose two registries into a new one. Inputs unchanged. */
@@ -111,7 +174,7 @@ export class ToolRegistry {
       security: this.security,
     });
     for (const n of names) {
-      const t = this.tools.get(n);
+      const t = this.get(n);
       if (!t) throw new Error(`Tool not in registry: ${n}`);
       sub.register(t);
     }
@@ -123,7 +186,7 @@ export class ToolRegistry {
       metrics: this.metrics,
       security: this.security,
     });
-    for (const t of this.tools.values()) {
+    for (const t of this.list()) {
       if (pred(t)) sub.register(t);
     }
     return sub;
@@ -148,7 +211,7 @@ export class ToolRegistry {
     callStack: readonly string[],
     inheritedSecurityState: InvocationSecurityState | undefined
   ): AsyncIterable<ToolEvent> {
-    const tool = this.tools.get(name);
+    const tool = this.get(name);
     if (!tool) {
       this.metrics.onInvocation({
         tool: name,
@@ -711,6 +774,19 @@ export class ToolRegistry {
       };
       this.metrics.onInvocation(metric);
     }
+  }
+
+  private findSourceTool(
+    name: string,
+    excludingSourceId?: string
+  ): { sourceId: string; tool: ToolDefinition } | undefined {
+    const catalogs = this.sourceCatalogs;
+    for (const [sourceId, catalog] of catalogs) {
+      if (sourceId === excludingSourceId) continue;
+      const tool = catalog.get(name);
+      if (tool) return { sourceId, tool };
+    }
+    return undefined;
   }
 }
 

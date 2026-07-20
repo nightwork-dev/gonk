@@ -53,6 +53,117 @@ async function collect(stream: AsyncIterable<ToolEvent>): Promise<ToolEvent[]> {
 }
 
 describe("ToolRegistry", () => {
+  it("atomically replaces one source-owned catalog", async () => {
+    const r = new ToolRegistry();
+    const tool = (name: string, value: string): ToolDefinition => ({
+      name,
+      description: name,
+      input: passthrough(),
+      handler: async () => ({ data: { value } }),
+    });
+
+    r.replaceSource("remote-a", [
+      tool("remote-a.old", "old"),
+      tool("remote-a.kept", "v1"),
+    ]);
+    expect(r.list().map((entry) => entry.name).sort()).toEqual([
+      "remote-a.kept",
+      "remote-a.old",
+    ]);
+
+    r.replaceSource("remote-a", [
+      tool("remote-a.kept", "v2"),
+      tool("remote-a.new", "new"),
+    ]);
+
+    expect(r.has("remote-a.old")).toBe(false);
+    expect(r.list().map((entry) => entry.name).sort()).toEqual([
+      "remote-a.kept",
+      "remote-a.new",
+    ]);
+    await expect(
+      collect(r.invoke("remote-a.old", {}, makeBaseContext()))
+    ).resolves.toMatchObject([{ type: "error", code: "TOOL_NOT_FOUND" }]);
+    await expect(
+      collect(r.invoke("remote-a.kept", {}, makeBaseContext()))
+    ).resolves.toMatchObject([{ type: "result", data: { value: "v2" } }]);
+  });
+
+  it("retains the last complete source catalog when replacement fails", () => {
+    const r = new ToolRegistry();
+    const original: ToolDefinition = {
+      name: "remote-a.original",
+      description: "original",
+      input: passthrough(),
+      handler: async () => ({ data: true }),
+    };
+    r.replaceSource("remote-a", original);
+
+    expect(() =>
+      r.replaceSource("remote-a", [
+        { ...original, name: "remote-a.duplicate" },
+        { ...original, name: "remote-a.duplicate" },
+      ])
+    ).toThrow("Duplicate tool in source catalog remote-a");
+    expect(r.list().map((entry) => entry.name)).toEqual([
+      "remote-a.original",
+    ]);
+  });
+
+  it("never exposes a partially built source catalog to concurrent readers", () => {
+    const r = new ToolRegistry();
+    const observed: string[][] = [];
+    const tool = (name: string): ToolDefinition => ({
+      name,
+      description: name,
+      input: passthrough(),
+      handler: async () => ({ data: true }),
+    });
+    r.replaceSource("remote-a", [
+      tool("remote-a.old-1"),
+      tool("remote-a.old-2"),
+    ]);
+
+    const candidate = [tool("remote-a.new-1"), tool("remote-a.new-2")];
+    candidate[1] = {
+      ...candidate[1]!,
+      requires: () => {
+        observed.push(r.list().map((entry) => entry.name).sort());
+        return true;
+      },
+    };
+    r.replaceSource("remote-a", candidate);
+    observed.push(r.list().map((entry) => entry.name).sort());
+
+    expect(observed).toEqual([
+      ["remote-a.old-1", "remote-a.old-2"],
+      ["remote-a.new-1", "remote-a.new-2"],
+    ]);
+  });
+
+  it("rejects collisions across local registrations and source catalogs", () => {
+    const r = new ToolRegistry();
+    const tool: ToolDefinition = {
+      name: "shared-name",
+      description: "shared",
+      input: passthrough(),
+      handler: async () => ({ data: true }),
+    };
+    r.register(tool);
+    expect(() => r.replaceSource("remote-a", tool)).toThrow(
+      "conflicts with registered tool"
+    );
+
+    const sourced = new ToolRegistry();
+    sourced.replaceSource("remote-a", tool);
+    expect(() => sourced.register(tool, { overwrite: true })).toThrow(
+      "owned by a source catalog"
+    );
+    expect(() => sourced.replaceSource("remote-b", tool)).toThrow(
+      "conflicts with source remote-a"
+    );
+  });
+
   it("keeps runtime validation and advertised JSON Schema on one annotated Standard Schema value", async () => {
     const inputSchema = shape<{ text: string }>(
       (value): value is { text: string } =>
