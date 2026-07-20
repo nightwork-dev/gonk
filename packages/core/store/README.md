@@ -4,7 +4,7 @@ Backing-agnostic persistence primitives for gonk capabilities. The same idea for
 
 **Why it exists.** Capabilities used to persist by reaching *past* scope straight to the filesystem — opening `better-sqlite3`, writing JSON/JSONL at paths they assembled themselves. That hardcodes both the location (drifting from the canonical `.agents/` home) and the backing (you can't move a capability that `new Database()`s to anything else without rewriting it). One rule fixes both: **persist through a store the foundation provides, never through a path you assemble.**
 
-**Who uses it.** The `@gonk/*` extension capabilities — `jobs`, `work-items`, `curator`, `reflector`, `self-model-reflector`, `rlm` (cache + traces), and `memory` (KV + curated blobs) — obtain their store from `createStore(scope)` and never see a path. Relational domains (memory triples/sessions, knowledge FTS5, traces index) deliberately stay on their own capability-local interfaces rather than forcing SQL through the universal store; see [the design doc](../../../docs/store-abstraction-design.md) for that line.
+**Who uses it.** The `@gonk/*` extension capabilities — `jobs`, `work-items`, `curator`, `reflector`, `self-model-reflector`, `rlm` (cache + traces), and `memory` (KV + curated blobs) — obtain their store from `createStore(scope)` and never see a path. Relational domains (memory triples/sessions, knowledge FTS5, traces index) deliberately stay on their own capability-local interfaces rather than forcing SQL through the universal store.
 
 **How often.** On every persist — it is the write path for capability state.
 

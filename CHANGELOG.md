@@ -37,7 +37,7 @@ The `0.0.15` fix de-forked the cwd hash, but the deeper error was using the cwd 
 ## [0.0.10] — 2026-06-19
 
 ### Added
-- `@gonk/store` — backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN), each obtained from `createStore(scope).{kv,blob,log,vector}(tier, namespace)`. A `StoreBackend` SPI with a pure-`fs` default (`FsStoreBackend`: atomic temp+rename writes, JSONL logs, JS-cosine vectors) — **zero native dependencies in core**, swappable for sqlite/remote without touching a caller. Locations resolve through scope's substrate dir, so all five tiers work identically and the capability never assembles a path. See [`docs/store-abstraction-design.md`](docs/store-abstraction-design.md).
+- `@gonk/store` — backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN), each obtained from `createStore(scope).{kv,blob,log,vector}(tier, namespace)`. A `StoreBackend` SPI with a pure-`fs` default (`FsStoreBackend`: atomic temp+rename writes, JSONL logs, JS-cosine vectors) — **zero native dependencies in core**, swappable for sqlite/remote without touching a caller. Locations resolve through scope's substrate dir, so all five tiers work identically and the capability never assembles a path.
 - `@gonk/scope`: `store` added to the substrate kinds, so a tier's store dir resolves alongside `memory` / `knowledge` / `sessions` under the same `.agents`-preferring policy.
 
 ## [0.0.9] — 2026-06-19

@@ -8,7 +8,7 @@ import type { ScopeName } from "@gonk/scope";
 // resolves the on-disk location through scope's substrate resolution, so a
 // caller never sees — and never assembles — a path. Every store delegates to a
 // low-level `StoreBackend` SPI; swapping the backend swaps the backing with no
-// caller change. See design store-abstraction-design.md §4.
+// caller change.
 
 /** Keyed records with optional per-entry TTL. Expired entries read as
  *  `undefined` and are pruned on access. */
