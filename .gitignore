@@ -9,3 +9,11 @@ dist/
 
 # Local working docs / scratch — never version-controlled
 *.local/
+
+# Agent/runtime state — generated locally, never publishable source
+.agents/memory/
+.agents/store/
+/traces/
+/packages/*/*/.agents/memory/
+/packages/*/*/.agents/store/
+/packages/*/*/traces/
