@@ -236,21 +236,21 @@ plugin or editing host configuration.
 ```json
 {
   "version": 1,
-  "active": "tapestry-review",
+  "active": "app-review",
   "environments": [
     {
-      "id": "tapestry-main",
-      "repo": "/Users/me/Dev/apps/tapestry",
+      "id": "app-main",
+      "repo": "./apps/example",
       "branch": "main",
       "endpoint": "http://127.0.0.1:4173/mcp",
-      "database": "/Users/me/.local/share/tapestry/tapestry.db"
+      "database": "./.data/example.db"
     },
     {
-      "id": "tapestry-review",
-      "repo": "/Users/me/Dev/apps/worktrees/tapestry-review",
+      "id": "app-review",
+      "repo": "./worktrees/example-review",
       "branch": "feat/story-review",
       "endpoint": "http://127.0.0.1:4179/mcp",
-      "database": "/tmp/tapestry-review.db"
+      "database": "./.data/example-review.db"
     }
   ]
 }
@@ -264,7 +264,7 @@ gonk-mcp-dev serve --config ~/.config/gonk/dev-mcp.json --port 8810
 
 gonk-mcp-dev list
 gonk-mcp-dev current
-gonk-mcp-dev use tapestry-main
+gonk-mcp-dev use app-main
 ```
 
 The router reads the manifest at every **new** MCP initialization. Existing MCP
@@ -278,7 +278,7 @@ write-capable.
 
 The switchboard does not run app code itself. Each environment must first expose
 its own Gonk `ToolRegistry` through `createHttpMcpServer`; this keeps the
-transport reusable for Tapestry, Deadletters, and future applications, while
+transport reusable across applications while
 keeping code target and data target separate in the manifest.
 
 ## Tool input schema

@@ -11,6 +11,10 @@
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
     "./dev": {
       "types": "./dist/dev/index.d.ts",
       "import": "./dist/dev/index.js"
