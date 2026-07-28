@@ -1,4 +1,4 @@
-# gonk
+<p align="center"><img src="assets/banner.png" alt="gonk — brushed-chrome wordmark over a hot-magenta neon line" width="880"></p>
 
 > **Write an agent capability once. Run it in every host.** The lingua franca that ends the rewrite — define a tool against a small set of host-agnostic primitives, and surface it natively through the CLI, an MCP server, a Pi agent, or Claude Code.
 
