@@ -68,8 +68,8 @@ async function setup(): Promise<{ a: Target; b: Target; configPath: string; url:
     version: 1,
     active: "alpha",
     environments: [
-      { id: "alpha", repo: "/work/tapestry", branch: "main", endpoint: `http://127.0.0.1:${a.port}/mcp`, database: "/data/canonical.db", headers: { Authorization: "Bearer alpha-target" } },
-      { id: "beta", repo: "/work/tapestry-review", branch: "feat/review", endpoint: `http://127.0.0.1:${b.port}/mcp`, database: "/data/isolated.db" },
+      { id: "alpha", repo: "/work/service", branch: "main", endpoint: `http://127.0.0.1:${a.port}/mcp`, database: "/data/canonical.db", headers: { Authorization: "Bearer alpha-target" } },
+      { id: "beta", repo: "/work/service-review", branch: "feat/review", endpoint: `http://127.0.0.1:${b.port}/mcp`, database: "/data/isolated.db" },
     ],
   }, configPath);
   const router = createDevMcpRouter({ configPath, port: 0 });

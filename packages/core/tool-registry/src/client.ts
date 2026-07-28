@@ -49,8 +49,8 @@ export type ClientFor<Tools extends readonly AnyNamedTool[]> = {
 
 /** Dotted segments, each starting `[a-z]` and otherwise camelCase (`[A-Za-z0-9]`),
  *  e.g. `piece.get`, `audioBuild.propose`, `profile.binding.list`. Matches how
- *  real consumers name ops (tapestry uses camelCase-dotted, not kebab — despite
- *  the aspirational "kebab-case" note on `ToolDefinition.name`). Enforcing it is
+ *  existing consumers name ops (camelCase-dotted, not kebab — despite the
+ *  aspirational "kebab-case" note on `ToolDefinition.name`). Enforcing it is
  *  what lets `DotToCamel` (type) and `dotToCamel` (runtime) stay provably
  *  identical: every dot is followed by a lowercase letter, so `Capitalize<Tail>`
  *  and the runtime `/\.([a-z])/` transform cannot diverge — this rules out the
