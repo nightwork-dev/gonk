@@ -1,6 +1,6 @@
 {
   "name": "@gonk/temporal",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "type": "module",
   "description": "The time-and-activity decision primitive: a pure temporal-awareness surface (wall-clock, session elapsed, turn index, idle signals), the periodic-run scheduler (shouldRun — interval-elapsed + idle), and the persistent-presence policy (wake/defer). Subsumes the former @gonk/scheduler.",
   "exports": {

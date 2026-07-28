@@ -228,7 +228,7 @@ async function createSdkConnection(
   options: McpImporterConnectionFactoryOptions
 ): Promise<McpImporterConnection> {
   const client = new Client(
-    { name: "gonk-mcp-importer", version: "0.3.1" },
+    { name: "gonk-mcp-importer", version: "0.4.0" },
     {
       capabilities: {},
       listChanged: {

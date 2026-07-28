@@ -1,5 +1,16 @@
 # @gonk/channel
 
+## 0.4.0
+
+### Patch Changes
+
+- Make the public conformance suite runner-neutral so consumers can import and
+  adapt it without installing Vitest as a runtime dependency.
+
+- Updated dependencies [[`92df856`](https://github.com/nightwork-dev/gonk/commit/92df8563b9907d54978376305f4ad9a642512d33), [`92df856`](https://github.com/nightwork-dev/gonk/commit/92df8563b9907d54978376305f4ad9a642512d33)]:
+  - @gonk/tool-registry@0.4.0
+  - @gonk/scope@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes

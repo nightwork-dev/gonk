@@ -75,7 +75,7 @@ New here? Application scaffolds can import **`@gonk/core`** for the common
 auth + scope + registry surface. Published libraries and host adapters should
 usually import the focused package they actually need, especially
 **`@gonk/tool-registry`** (define a tool) and **`@gonk/scope`** (read and write
-its config). `@gonk/core` is a convenience barrel on the same `0.3.1` train, not
+its config). `@gonk/core` is a convenience barrel on the same `0.4.0` train, not
 a separate foundation.
 
 | Package | What it is |

@@ -1,10 +1,7 @@
-// @gonk/channel — the conformance suite factory (spec §8). A transport package
-// (transport-websocket / transport-signal) imports `channelConformance` and runs
-// it against its own channel to assert the IChannel contract. This package runs
-// it against an InternalChannel pair. Importing `vitest` here keeps the test DSL
-// out of the runtime types/registry surface; tsup marks vitest external (devDep).
+// @gonk/channel — the runner-neutral conformance suite factory (spec §8). A
+// transport package adapts its test runner and runs the suite against its own
+// channel to assert the IChannel contract.
 
-import { describe, expect, it } from "vitest";
 import type { ConnectAddress, IChannel, Message } from "./types.ts";
 
 /** A factory yielding a connected loopback: `local` is the channel under test;
@@ -20,20 +17,31 @@ export interface ConformancePair {
   peerAddress: ConnectAddress;
 }
 
+export interface ChannelConformanceRunner {
+  describe(name: string, suite: () => void): void;
+  test(name: string, test: () => void | Promise<void>): void;
+}
+
 /** Run the IChannel conformance suite against a channel implementation. The
  *  factory must return a FRESH disconnected pair per invocation. */
-export function channelConformance(makeChannel: () => ConformancePair): void {
-  describe("IChannel conformance", () => {
-    it("connect() flips isConnected() to true; disconnect() flips it back", async () => {
-      const { local } = makeChannel();
-      expect(local.isConnected()).toBe(false);
-      await local.connect();
-      expect(local.isConnected()).toBe(true);
-      await local.disconnect();
-      expect(local.isConnected()).toBe(false);
-    });
+export function channelConformance(
+  makeChannel: () => ConformancePair,
+  runner: ChannelConformanceRunner
+): void {
+  runner.describe("IChannel conformance", () => {
+    runner.test(
+      "connect() flips isConnected() to true; disconnect() flips it back",
+      async () => {
+        const { local } = makeChannel();
+        assert(!local.isConnected(), "channel started connected");
+        await local.connect();
+        assert(local.isConnected(), "connect() did not connect the channel");
+        await local.disconnect();
+        assert(!local.isConnected(), "disconnect() did not disconnect the channel");
+      }
+    );
 
-    it("send() returns a Message with filled id and timestamp", async () => {
+    runner.test("send() returns a Message with filled id and timestamp", async () => {
       const { local, peer, localAddress, peerAddress } = makeChannel();
       await local.connect();
       await peer.connect();
@@ -43,38 +51,41 @@ export function channelConformance(makeChannel: () => ConformancePair): void {
         to: peerAddress,
         content: [{ type: "text", text: "hi" }],
       });
-      expect(typeof msg.id).toBe("string");
-      expect(msg.id.length).toBeGreaterThan(0);
-      expect(typeof msg.timestamp).toBe("number");
-      expect(msg.timestamp).toBeGreaterThanOrEqual(before);
+      assert(typeof msg.id === "string", "send() returned a non-string id");
+      assert(msg.id.length > 0, "send() returned an empty id");
+      assert(typeof msg.timestamp === "number", "send() returned a non-number timestamp");
+      assert(msg.timestamp >= before, "send() returned a stale timestamp");
     });
 
-    it("onMessage fires on a loopback peer's send; unsubscribe stops it", async () => {
-      const { local, peer, localAddress, peerAddress } = makeChannel();
-      await local.connect();
-      await peer.connect();
+    runner.test(
+      "onMessage fires on a loopback peer's send; unsubscribe stops it",
+      async () => {
+        const { local, peer, localAddress, peerAddress } = makeChannel();
+        await local.connect();
+        await peer.connect();
 
-      const received: Message[] = [];
-      const unsubscribe = local.onMessage((m) => received.push(m));
+        const received: Message[] = [];
+        const unsubscribe = local.onMessage((m) => received.push(m));
 
-      await peer.send({
-        from: peerAddress,
-        to: localAddress,
-        content: [{ type: "text", text: "first" }],
-      });
-      expect(received).toHaveLength(1);
-      expect(received[0]?.content).toEqual([{ type: "text", text: "first" }]);
+        await peer.send({
+          from: peerAddress,
+          to: localAddress,
+          content: [{ type: "text", text: "first" }],
+        });
+        assert(received.length === 1, "onMessage did not receive the peer message");
+        equal(received[0]?.content, [{ type: "text", text: "first" }]);
 
-      unsubscribe();
-      await peer.send({
-        from: peerAddress,
-        to: localAddress,
-        content: [{ type: "text", text: "second" }],
-      });
-      expect(received).toHaveLength(1); // unsubscribe stopped delivery
-    });
+        unsubscribe();
+        await peer.send({
+          from: peerAddress,
+          to: localAddress,
+          content: [{ type: "text", text: "second" }],
+        });
+        assert(received.length === 1, "unsubscribe did not stop delivery");
+      }
+    );
 
-    it("connection-state transitions emit prev/next pairs", async () => {
+    runner.test("connection-state transitions emit prev/next pairs", async () => {
       const { local } = makeChannel();
       const ext = local as IChannel & {
         onConnectionStateChange?: (
@@ -87,11 +98,17 @@ export function channelConformance(makeChannel: () => ConformancePair): void {
       const transitions: Array<[string, string]> = [];
       ext.onConnectionStateChange((prev, next) => transitions.push([prev, next]));
       await local.connect();
-      expect(transitions).toContainEqual(["disconnected", "connecting"]);
-      expect(transitions).toContainEqual(["connecting", "connected"]);
+      assert(
+        includesPair(transitions, ["disconnected", "connecting"]),
+        "missing disconnected-to-connecting transition"
+      );
+      assert(
+        includesPair(transitions, ["connecting", "connected"]),
+        "missing connecting-to-connected transition"
+      );
     });
 
-    it("default capability ops resolve without throwing", async () => {
+    runner.test("default capability ops resolve without throwing", async () => {
       const { local, peerAddress } = makeChannel();
       await local.connect();
       const ext = local as IChannel & {
@@ -99,11 +116,33 @@ export function channelConformance(makeChannel: () => ConformancePair): void {
         sendTypingIndicator?: (to: ConnectAddress, ms?: number) => Promise<void>;
       };
       if (typeof ext.sendReaction === "function") {
-        await expect(ext.sendReaction("m1", peerAddress, "👍")).resolves.toBeUndefined();
+        const result = await ext.sendReaction("m1", peerAddress, "👍");
+        assert(result === undefined, "sendReaction() did not resolve to undefined");
       }
       if (typeof ext.sendTypingIndicator === "function") {
-        await expect(ext.sendTypingIndicator(peerAddress)).resolves.toBeUndefined();
+        const result = await ext.sendTypingIndicator(peerAddress);
+        assert(result === undefined, "sendTypingIndicator() did not resolve to undefined");
       }
     });
   });
+}
+
+function includesPair(
+  pairs: ReadonlyArray<readonly [string, string]>,
+  expected: readonly [string, string]
+): boolean {
+  return pairs.some(([previous, next]) => {
+    return previous === expected[0] && next === expected[1];
+  });
+}
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(`Channel conformance: ${message}`);
+}
+
+function equal(actual: unknown, expected: unknown): void {
+  assert(
+    JSON.stringify(actual) === JSON.stringify(expected),
+    `expected ${JSON.stringify(expected)}, received ${JSON.stringify(actual)}`
+  );
 }

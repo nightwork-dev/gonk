@@ -34,8 +34,11 @@ import {
   ReconnectionManager,
 } from "@gonk/channel/base";
 
-// conformance — the IChannel contract suite (uses vitest).
-import { channelConformance } from "@gonk/channel/conformance";
+// conformance — the runner-neutral IChannel contract suite.
+import {
+  channelConformance,
+  type ChannelConformanceRunner,
+} from "@gonk/channel/conformance";
 ```
 
 ## Addresses
@@ -78,12 +81,31 @@ A transport package imports `channelConformance` and runs it against a fresh, di
 ```ts
 import { channelConformance } from "@gonk/channel/conformance";
 import { createInternalChannelPair } from "@gonk/channel/base";
+import { describe, it } from "vitest";
 
-channelConformance(() => {
-  const { local, peer } = createInternalChannelPair("a@host", "b@host");
-  return { local, peer, localAddress: ..., peerAddress: ... };
-});
+channelConformance(
+  () => {
+    const { channelA: local, channelB: peer } = createInternalChannelPair({
+      idA: "local",
+      idB: "peer",
+    });
+    return {
+      local,
+      peer,
+      localAddress: { host: "example", persona: "local" },
+      peerAddress: { host: "example", persona: "peer" },
+    };
+  },
+  {
+    describe: (name, suite) => describe(name, suite),
+    test: (name, test) => it(name, test),
+  }
+);
 ```
+
+The adapter is deliberately tiny: use the equivalent suite and test functions
+from Jest, `node:test`, or another runner without adding Vitest to production
+dependencies.
 
 ## License
 

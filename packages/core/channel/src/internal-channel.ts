@@ -20,8 +20,8 @@ export interface InternalChannelPair {
 
 let pairCounter = 0;
 
-/** Create a connected loopback pair. A's `send` is delivered to B's `onMessage`
- *  and vice versa; same for events. */
+/** Create a linked, initially disconnected loopback pair. A's `send` is
+ *  delivered to B's `onMessage` and vice versa; same for events. */
 export function createInternalChannelPair(options?: {
   idA?: string;
   idB?: string;

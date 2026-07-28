@@ -7,7 +7,7 @@ Use `@gonk/core` when you are building an application and want the common
 foundation in one import: auth contracts, scope, and the tool registry. Use the
 focused packages (`@gonk/tool-registry`, `@gonk/scope`, `@gonk/auth`) when you
 are publishing a smaller library or adapter and want the tightest dependency
-surface. Both are on the current `0.3.1` release train; `@gonk/core` is a
+surface. Both are on the current `0.4.0` release train; `@gonk/core` is a
 convenience barrel, not a second API.
 
 ## One schema source

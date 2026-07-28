@@ -12,7 +12,4 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   splitting: false,
-  // conformance.ts imports vitest — it lives behind @gonk/channel/conformance,
-  // NOT the root entry, so runtime consumers are never exposed to vitest.
-  external: ["vitest"],
 });

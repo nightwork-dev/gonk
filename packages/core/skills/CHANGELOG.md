@@ -1,5 +1,16 @@
 # @gonk/skills
 
+## 0.4.0
+
+### Patch Changes
+
+- Updated dependencies [[`92df856`](https://github.com/nightwork-dev/gonk/commit/92df8563b9907d54978376305f4ad9a642512d33), [`92df856`](https://github.com/nightwork-dev/gonk/commit/92df8563b9907d54978376305f4ad9a642512d33), [`92df856`](https://github.com/nightwork-dev/gonk/commit/92df8563b9907d54978376305f4ad9a642512d33)]:
+  - @gonk/tool-registry@0.4.0
+  - @gonk/store@0.4.0
+  - @gonk/auth@0.4.0
+  - @gonk/context@0.4.0
+  - @gonk/scope@0.4.0
+
 ## 0.3.1
 
 ### Patch Changes
