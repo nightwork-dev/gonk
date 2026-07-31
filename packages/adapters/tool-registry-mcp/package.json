@@ -1,6 +1,6 @@
 {
   "name": "@gonk/tool-registry-mcp",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "type": "module",
   "exports": {
     ".": {
@@ -37,10 +37,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "catalog:",
     "@gonk/auth": "workspace:*",
     "@gonk/tool-registry": "workspace:*",
-    "@gonk/tool-orchestrator": "workspace:*"
+    "@gonk/tool-orchestrator": "workspace:*",
+    "@modelcontextprotocol/client": "catalog:",
+    "@modelcontextprotocol/server": "catalog:"
   },
   "devDependencies": {
     "@standard-schema/spec": "catalog:",

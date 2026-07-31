@@ -1,8 +1,12 @@
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { RequestOptions } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import type {
+  RequestOptions,
+  Tool as McpTool,
+  Transport,
+} from "@modelcontextprotocol/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 import {
@@ -47,7 +51,6 @@ export interface McpImporterConnection {
   ): Promise<{ tools: McpTool[]; nextCursor?: string }>;
   callTool(
     params: { name: string; arguments?: Record<string, unknown> },
-    resultSchema?: unknown,
     options?: RequestOptions
   ): Promise<unknown>;
   close(): Promise<void>;
@@ -330,7 +333,6 @@ function materializeTool(input: {
         result = asCallResult(
           await client.callTool(
             { name: tool.name, arguments: asRecord(args) },
-            undefined,
             {
               signal: ctx.signal,
               timeout: options.requestTimeoutMs ?? DEFAULT_TIMEOUT_MS,

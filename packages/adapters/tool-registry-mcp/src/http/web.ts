@@ -1,10 +1,9 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
-
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
-
+import {
+  WebStandardStreamableHTTPServerTransport,
+  isInitializeRequest,
+} from "@modelcontextprotocol/server";
+import type { AuthInfo, Transport } from "@modelcontextprotocol/server";
 import {
   isAuthenticatedPrincipal,
   securityContextKey,
@@ -209,11 +208,11 @@ export function createWebMcpHandler(
       const adapter = createMcpServer({
         ...options,
         writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
-        makeAuthContext: async (extra) => {
-          const principal = principalFromAuthInfo(extra.authInfo);
+        makeAuthContext: async (ctx) => {
+          const principal = principalFromAuthInfo(ctx.http?.authInfo);
           if (
             !principal ||
-            isExpired(extra.authInfo, principal) ||
+            isExpired(ctx.http?.authInfo, principal) ||
             !hasStatefulDelegationBinding(principal)
           ) {
             throw new UnauthorizedError();
@@ -221,7 +220,7 @@ export function createWebMcpHandler(
           if (!hostMakeAuthContext) {
             return allowAllAuthContext(principal);
           }
-          const hostContext = await hostMakeAuthContext(extra);
+          const hostContext = await hostMakeAuthContext(ctx);
           if (
             securityContextKey({ principal: hostContext.principal }) !==
             securityContextKey({ principal })

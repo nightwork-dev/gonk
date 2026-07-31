@@ -15,5 +15,8 @@ export default defineConfig({
   clean: true,
   target: "es2022",
   splitting: false,
-  external: ["@modelcontextprotocol/sdk"],
+  external: [
+    "@modelcontextprotocol/client",
+    "@modelcontextprotocol/server",
+  ],
 });

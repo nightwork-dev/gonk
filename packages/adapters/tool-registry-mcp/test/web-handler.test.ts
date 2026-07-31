@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { AuthenticatedPrincipal } from "@gonk/auth";
 import type { AuthSecurityReceipt } from "@gonk/auth";
 import { ToolRegistry, passthrough } from "@gonk/tool-registry";

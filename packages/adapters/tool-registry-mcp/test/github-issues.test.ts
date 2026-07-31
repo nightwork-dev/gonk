@@ -1,7 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
 import {
   ToolRegistry,
