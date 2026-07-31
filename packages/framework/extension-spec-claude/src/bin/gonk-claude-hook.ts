@@ -4,17 +4,18 @@
  *  Invoked by a materialized `hooks.json` as:
  *    node gonk-claude-hook.js <specId> <specEvent>
  *  with the Claude hook payload on stdin and `CLAUDE_PLUGIN_ROOT` set to the
- *  plugin directory. It loads that plugin's bundled spec (`dist/hook-spec.js`,
- *  default export = spec or `() => spec`), runs the requested hook, and writes
- *  Claude's hook output JSON to stdout.
+ *  plugin directory. It loads that plugin's bundled spec
+ *  (`dist/hook-spec.mjs`, falling back to `dist/hook-spec.cjs`; default export
+ *  = spec or `() => spec`), runs the requested hook, and writes Claude's hook
+ *  output JSON to stdout.
  *
  *  Fails soft: any error prints `{}` so a misconfigured hook never breaks the
  *  session. */
 
-import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { runClaudeHook } from "../run-hook.ts";
+import { resolveClaudeHookSpecPath } from "../spec-path.ts";
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";
@@ -42,7 +43,7 @@ async function main(): Promise<void> {
   }
 
   try {
-    const specPath = join(root, "dist", "hook-spec.cjs");
+    const specPath = resolveClaudeHookSpecPath(root);
     const mod = (await import(pathToFileURL(specPath).href)) as Record<string, unknown>;
     // Unwrap CJS-interop default nesting: import() of a CJS bundle yields
     // { default: module.exports }, and tsup's `export default` adds another
