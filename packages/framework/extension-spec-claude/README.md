@@ -36,7 +36,13 @@ const manifest = materializeClaudePlugin({
 
 ## Hook placement
 
-Spec-side hook events (`session_start`, `session_end`, `turn_complete`, `before_provider_request`) are mapped to Claude hook events by `defaultHookPlacement`. The default dispatch binary is `gonk-claude-hook`; pass `hookDispatchBinary` to override (e.g. an absolute `node <path>` form during install).
+Spec-side hook events are mapped consistently by the materializer and runtime:
+`session_start` → `SessionStart`, `session_end` → `SessionEnd`,
+`turn_complete` → `Stop`, and `before_provider_request` →
+`UserPromptSubmit`. The default dispatch binary is `gonk-claude-hook`; pass
+`hookDispatchBinary` to override (e.g. an absolute `node <path>` form during
+install). `SessionEnd` handlers run for cleanup/logging side effects; Claude
+does not accept context or decision output for that event.
 
 ## MCP server convention
 

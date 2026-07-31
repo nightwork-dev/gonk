@@ -39,14 +39,62 @@ describe("runClaudeHook", () => {
     expect(out.hookSpecificOutput?.hookEventName).toBe("UserPromptSubmit");
   });
 
+  it("invokes turn_complete handlers through Claude's Stop hook", async () => {
+    let invoked = false;
+    const spec: ExtensionSpec = {
+      id: "t",
+      description: "t",
+      hooks: {
+        turn_complete: (_event, ctx) => {
+          invoked = true;
+          (ctx as ClaudeHookContext).injectContext("run the completion check");
+        },
+      },
+    };
+
+    const out = await runClaudeHook(spec, {
+      specEvent: "turn_complete",
+      payload: { hook_event_name: "Stop" },
+    });
+
+    expect(invoked).toBe(true);
+    expect(out).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "Stop",
+        additionalContext: "run the completion check",
+      },
+    });
+  });
+
+  it("invokes session_end handlers for side effects without emitting unsupported output", async () => {
+    let invoked = false;
+    const spec: ExtensionSpec = {
+      id: "t",
+      description: "t",
+      hooks: {
+        session_end: (_event, ctx) => {
+          invoked = true;
+          (ctx as ClaudeHookContext).injectContext("cannot be delivered");
+        },
+      },
+    };
+
+    const out = await runClaudeHook(spec, {
+      specEvent: "session_end",
+      payload: { hook_event_name: "SessionEnd", reason: "other" },
+    });
+
+    expect(invoked).toBe(true);
+    expect(out).toEqual({});
+  });
+
   it("returns {} when nothing is injected", async () => {
     const out = await runClaudeHook(specWith(() => {}), { specEvent: "session_start", payload: {} });
     expect(out).toEqual({});
   });
 
-  it("returns {} for an unmapped event or a spec with no matching handler", async () => {
+  it("returns {} for an event with no matching handler", async () => {
     const spec = specWith((_e, ctx) => (ctx as ClaudeHookContext).injectContext("x"));
-    // turn_complete has no inject-capable Claude mapping in the hook runtime.
     expect(await runClaudeHook(spec, { specEvent: "turn_complete", payload: {} })).toEqual({});
     expect(
       await runClaudeHook({ id: "t", description: "t" }, { specEvent: "session_start", payload: {} }),

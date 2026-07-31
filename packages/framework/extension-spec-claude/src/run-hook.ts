@@ -30,12 +30,23 @@ export interface ClaudeHookOutput {
   hookSpecificOutput?: { hookEventName: string; additionalContext: string };
 }
 
-/** Spec hook event → Claude hook event. Only events that can inject context
- *  are mapped; others produce no output. */
+/** Spec hook event → Claude hook event. Keep this aligned with the materializer's
+ *  placement map so a generated hook always invokes its declared handler. */
 const SPEC_TO_CLAUDE_EVENT: Record<string, string> = {
   session_start: "SessionStart",
+  session_end: "SessionEnd",
+  turn_complete: "Stop",
   before_provider_request: "UserPromptSubmit",
 };
+
+/** Claude accepts additionalContext only on these mapped events. SessionEnd
+ *  still invokes its handler for cleanup/logging side effects, then returns no
+ *  output because that event has no decision or context control. */
+const CONTEXT_OUTPUT_EVENTS = new Set([
+  "SessionStart",
+  "Stop",
+  "UserPromptSubmit",
+]);
 
 /** Invoke a spec's hook handler for `specEvent` and return the Claude hook
  *  output. Returns `{}` when there is no handler, no mapping, or nothing was
@@ -68,6 +79,6 @@ export async function runClaudeHook(
   await handler(payload, ctx);
 
   const additionalContext = captured.join("\n\n");
-  if (!additionalContext) return {};
+  if (!additionalContext || !CONTEXT_OUTPUT_EVENTS.has(hookEventName)) return {};
   return { hookSpecificOutput: { hookEventName, additionalContext } };
 }

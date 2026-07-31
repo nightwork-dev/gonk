@@ -48,7 +48,7 @@ implements Standard Schema (Zod, Valibot, ArkType). Use
 enough. Avoid maintaining `input` and `inputJsonSchema` as parallel sources
 unless you are intentionally overriding an adapter surface.
 
-See [../../docs/tool-authoring.md](../../docs/tool-authoring.md) for registry
+See [../../../docs/tool-authoring.md](../../../docs/tool-authoring.md) for registry
 composition, authenticated writes, and embedded MCP routes.
 
 ## ToolDefinition
