@@ -1,6 +1,6 @@
 {
   "name": "@gonk/extension-spec-pi",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "Pi runtime for @gonk/extension-spec — turns an ExtensionSpec into a registered Pi extension (tools, slash command, auto-generated settings TUI, presets).",
   "exports": {

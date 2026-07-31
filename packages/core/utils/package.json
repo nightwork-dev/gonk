@@ -1,6 +1,6 @@
 {
   "name": "@gonk/utils",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "Zero-dependency utility primitives for the gonk harness. Code-split per concern and per platform: @gonk/utils/path is pure, browser-safe path containment; @gonk/utils/fs is Node-only atomic writes. Import the subpath so unbundled (and non-Node) consumers load only what they use.",
   "sideEffects": false,
