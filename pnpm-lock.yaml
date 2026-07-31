@@ -13,8 +13,8 @@ catalogs:
       specifier: 7.10.1
       version: 7.10.1
     '@mirk/store':
-      specifier: 0.6.1
-      version: 0.6.1
+      specifier: 0.8.1
+      version: 0.8.1
     '@modelcontextprotocol/client':
       specifier: 2.0.0
       version: 2.0.0
@@ -349,7 +349,7 @@ importers:
         version: link:../utils
       '@mirk/store':
         specifier: 'catalog:'
-        version: 0.6.1(better-sqlite3@12.10.0)
+        version: 0.8.1(better-sqlite3@12.10.0)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -1231,8 +1231,8 @@ packages:
   '@manypkg/get-packages@1.1.3':
     resolution: {integrity: sha512-fo+QhuU3qE/2TQMQmbVMqaQ6EWbMhi4ABWP+O4AM1NqPBuy0OrApV5LO6BrrgnhtAHS2NH6RrVk9OL181tTi8A==}
 
-  '@mirk/store@0.6.1':
-    resolution: {integrity: sha512-kvtFADcW1O7sh1JsSeLoLEK5exX03hBpBcRgRuKFbunfbv2Zc20S34/9dQSpjiHmqzs817t28xLrdZVzM1M+zg==}
+  '@mirk/store@0.8.1':
+    resolution: {integrity: sha512-dTmLCgYwCFA8OPut1eADHiHI7z3HRHvfuZ3aRyoatKoMN3o74iTxVAc5Xo6yNE3zev/4gdojuFBDZdcLJkXuZw==}
     peerDependencies:
       better-sqlite3: ^11.0.0 || ^12.0.0
       sqlite-vec: ^0.1.0
@@ -3643,7 +3643,7 @@ snapshots:
       globby: 11.1.0
       read-yaml-file: 1.1.0
 
-  '@mirk/store@0.6.1(better-sqlite3@12.10.0)':
+  '@mirk/store@0.8.1(better-sqlite3@12.10.0)':
     optionalDependencies:
       better-sqlite3: 12.10.0
 
