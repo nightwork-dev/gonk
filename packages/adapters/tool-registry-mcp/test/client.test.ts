@@ -1,5 +1,5 @@
 import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
-import type { Tool as McpTool } from "@modelcontextprotocol/sdk/types.js";
+import type { Tool as McpTool } from "@modelcontextprotocol/client";
 import {
   ToolRegistry,
   collectToolOutcome,
@@ -77,7 +77,6 @@ class FakeConnection implements McpImporterConnection {
 
   async callTool(
     params: { name: string; arguments?: Record<string, unknown> },
-    _schema?: unknown,
     options?: { signal?: AbortSignal; timeout?: number }
   ) {
     this.calls.push({

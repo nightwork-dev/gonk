@@ -1,12 +1,12 @@
 # @gonk/tool-registry-mcp
 
-MCP adapter — exposes a `ToolRegistry` or `Orchestrator` over the Model Context Protocol via the official `@modelcontextprotocol/sdk`.
+MCP adapter — exposes a `ToolRegistry` or `Orchestrator` over the Model Context Protocol via the official MCP TypeScript SDK v2 packages.
 
 ## Usage
 
 ```ts
 import { createMcpServer } from "@gonk/tool-registry-mcp";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 
 const adapter = createMcpServer({
   serverName: "todo",
@@ -14,11 +14,20 @@ const adapter = createMcpServer({
   source: orchestrator,
   writeToolPolicy: "warn", // | "require-allowlist" | "permissive"
   allowlist: ["safe-write-tool"], // only used with require-allowlist
-  makeAuthContext: (request) => policy.authContextFor(request.authInfo),
+  makeAuthContext: (request) =>
+    policy.authContextFor(request.http?.authInfo),
 });
 
 await adapter.connect(new StdioServerTransport());
 ```
+
+The adapter uses the split MCP TypeScript SDK v2 packages while retaining the
+SDK's default legacy-era negotiation. It does not opt into the distinct
+2026-07-28 protocol flow: Gonk's HTTP boundary is intentionally stateful and
+pins each authenticated session to a security context. Modern-era
+`server/discover`, stateless request state, and `subscriptions/listen` adoption
+need a separate lifecycle and authorization design rather than riding along
+with this dependency migration.
 
 ## Running it over HTTP (local vs. remote)
 
@@ -112,7 +121,7 @@ const mcp = createWebMcpHandler({
   },
   makeAuthContext: (request) =>
     appPolicy.authContextFor(
-      request.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]
+      request.http?.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]
     ),
   makeContext: () => ({
     host: { invoker: "agent", profileId: "automation" },

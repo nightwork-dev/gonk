@@ -181,8 +181,10 @@ const mcp = createWebMcpHandler({
       extra: { [GONK_AUTH_INFO_PRINCIPAL]: principal },
     };
   },
-  makeAuthContext: (extra): AuthContext =>
-    authContextFor(extra.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]),
+  makeAuthContext: (context): AuthContext =>
+    authContextFor(
+      context.http?.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]
+    ),
   makeContext: () => ({
     host: { invoker: "agent", surface: "mcp" },
   }),

@@ -4,14 +4,6 @@ packages:
 # Write exact versions (no ^ range) on `pnpm add`.
 savePrefix: ""
 
-# Pin the MCP SDK's HTTP-transport deps to the newest releases >7 days old, so a fresh
-# lockfile satisfies the supply-chain cooldown below. hono@4.12.25 satisfies the SDK's
-# ^4.11.4; body-parser@2.2.2 (via express@5's ^2.2.1) sidesteps the just-published
-# 2.3.0. Bump these deliberately when revisiting @modelcontextprotocol/sdk.
-overrides:
-  hono: 4.12.25
-  body-parser: 2.2.2
-
 # Supply-chain cooldown: refuse to install any version published less than this
 # many minutes ago (7 days). Defends against pulling a just-published compromised
 # release before it is detected and yanked. Only affects fresh resolution — a
@@ -33,7 +25,13 @@ minimumReleaseAge: 10080
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
 # @mirk/store is pinned exactly; currently validated through local Verdaccio at 0.6.1.
+# The MCP v2.0.0 train was reviewed and verified ahead of the normal seven-day
+# cooldown. Keep these selectors version-specific so later MCP releases return
+# to the default quarantine.
 minimumReleaseAgeExclude:
+  - "@modelcontextprotocol/client@2.0.0"
+  - "@modelcontextprotocol/core@2.0.0"
+  - "@modelcontextprotocol/server@2.0.0"
   - "@earendil-works/*"
   - "@mariozechner/*"
   - "@aws-sdk/*"
@@ -49,7 +47,8 @@ minimumReleaseAgeExclude:
 catalog:
   "@earendil-works/pi-agent-core": 0.77.0
   "@inquirer/prompts": 7.10.1
-  "@modelcontextprotocol/sdk": 1.29.0
+  "@modelcontextprotocol/client": 2.0.0
+  "@modelcontextprotocol/server": 2.0.0
   "@mirk/store": 0.6.1
   "@standard-schema/spec": 1.1.0
   "@types/better-sqlite3": 7.6.13

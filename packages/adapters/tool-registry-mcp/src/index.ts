@@ -1,15 +1,10 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import type { RequestHandlerExtra } from "@modelcontextprotocol/sdk/shared/protocol.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  type CallToolResult,
-  type ListToolsResult,
-  type ServerNotification,
-  type ServerRequest,
-} from "@modelcontextprotocol/sdk/types.js";
-
+import { Server } from "@modelcontextprotocol/server";
+import type {
+  CallToolResult,
+  ListToolsResult,
+  ServerContext,
+  Transport,
+} from "@modelcontextprotocol/server";
 import {
   type AuthContext,
   type AuthorizationDecision,
@@ -45,7 +40,7 @@ export interface McpAdapterOptions {
   /** Build the canonical request authorization context. Called for tools/list
    *  and tools/call. Raw credentials remain in MCP request extras. */
   makeAuthContext?(
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+    extra: ServerContext
   ): AuthContext | Promise<AuthContext>;
   writeToolPolicy?: WriteToolPolicy;
   allowlist?: string[];
@@ -55,7 +50,7 @@ export interface McpAdapterOptions {
    *  authorization belong exclusively in `makeAuthContext` so discovery and
    *  invocation cannot resolve different policy. */
   makeContext?: (
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+    extra: ServerContext
   ) => McpToolContext | Promise<McpToolContext>;
 }
 
@@ -105,13 +100,13 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
   }
 
   async function requestAuth(
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+    extra: ServerContext
   ): Promise<AuthContext | undefined> {
     return options.makeAuthContext?.(extra);
   }
 
   async function requestContext(
-    extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+    extra: ServerContext
   ): Promise<McpToolContext | undefined> {
     const context = await options.makeContext?.(extra);
     if (
@@ -132,13 +127,13 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
   }
 
   server.setRequestHandler(
-    ListToolsRequestSchema,
+    "tools/list",
     async (
       _request,
-      extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+      ctx: ServerContext
     ): Promise<ListToolsResult> => {
-      await requestContext(extra);
-      const auth = await requestAuth(extra);
+      await requestContext(ctx);
+      const auth = await requestAuth(ctx);
       const candidates = applyWritePolicy(activeTools());
       const tools = auth
         ? await filterDiscoverable(candidates, auth)
@@ -158,10 +153,10 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
   );
 
   server.setRequestHandler(
-    CallToolRequestSchema,
+    "tools/call",
     async (
       request,
-      extra: RequestHandlerExtra<ServerRequest, ServerNotification>
+      ctx: ServerContext
     ): Promise<CallToolResult> => {
       const requestedName = request.params.name;
       const tool = activeTools().find(
@@ -178,11 +173,11 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         tool,
         request.params.arguments ?? {}
       );
-      const invocationContext = await requestContext(extra);
-      const auth = await requestAuth(extra);
+      const invocationContext = await requestContext(ctx);
+      const auth = await requestAuth(ctx);
       const baseCtx = {
         ...makeBaseContext({
-          signal: extra.signal,
+          signal: ctx.mcpReq.signal,
           log: makeMcpLogger(server),
         }),
         ...(options.scope ? { scope: options.scope } : {}),

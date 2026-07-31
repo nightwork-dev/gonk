@@ -1,8 +1,9 @@
 import { request } from "node:http";
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
-import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from "@modelcontextprotocol/client";
+import type { Transport } from "@modelcontextprotocol/client";
 import { ToolRegistry, passthrough } from "@gonk/tool-registry";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -120,6 +121,8 @@ describe("HTTP-MCP server — real SDK client round-trip", () => {
     const { url } = await start();
     const client = await connect(url);
     const { tools } = await client.listTools();
+    expect(client.getProtocolEra()).toBe("legacy");
+    expect(client.getNegotiatedProtocolVersion()).toBe("2025-11-25");
     expect(tools.map((t) => t.name).sort()).toEqual(["add", "echo"]);
     expect(tools.find((t) => t.name === "echo")?.inputSchema.type).toBe(
       "object"

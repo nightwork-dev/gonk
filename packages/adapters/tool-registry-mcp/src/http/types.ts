@@ -1,5 +1,4 @@
-import type { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-
+import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { AuthAuditSink } from "@gonk/auth";
 
 import type { McpAdapterOptions } from "../index.ts";
