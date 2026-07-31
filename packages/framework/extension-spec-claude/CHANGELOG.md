@@ -1,5 +1,12 @@
 # @gonk/extension-spec-claude
 
+## 0.5.1
+
+### Patch Changes
+
+- Allow the Claude hook dispatcher to load ESM hook runtimes while retaining
+  the existing CommonJS fallback.
+
 ## 0.4.0
 
 ### Patch Changes

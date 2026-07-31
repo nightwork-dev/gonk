@@ -1,6 +1,6 @@
 {
   "name": "@gonk/context",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "type": "module",
   "description": "Authorized deterministic context compilation with serializable candidates, in-process contributors, token budgeting, and redacted receipts.",
   "exports": {
