@@ -1,6 +1,6 @@
 {
   "name": "@gonk/retrieval",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "type": "module",
   "description": "Authorized source discovery, immutable lexical indexing, search, resolution, citations, and redacted retrieval receipts.",
   "exports": {
