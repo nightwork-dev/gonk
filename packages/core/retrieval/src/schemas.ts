@@ -11,6 +11,15 @@ import type {
   RetrievalCitationResolution,
   RetrievalCitationResolveRequest,
   RetrievalDocument,
+  RetrievalEvidenceBudget,
+  RetrievalEvidenceContributorReceipt,
+  RetrievalEvidenceDropReceipt,
+  RetrievalEvidencePacket,
+  RetrievalEvidenceRanking,
+  RetrievalEvidenceReceipt,
+  RetrievalEvidenceResult,
+  RetrievalEvidenceSelectionReceipt,
+  RetrievalEvidenceSourceRef,
   RetrievalFacet,
   RetrievalFragmentRef,
   RetrievalHit,
@@ -97,6 +106,18 @@ export const retrievalSearchResultSchema = schema<RetrievalSearchResult>(
 export const retrievalHitSchema = schema<RetrievalHit>(
   "RetrievalHit",
   isRetrievalHit
+);
+export const retrievalEvidencePacketSchema = schema<RetrievalEvidencePacket>(
+  "RetrievalEvidencePacket",
+  isRetrievalEvidencePacket
+);
+export const retrievalEvidenceReceiptSchema = schema<RetrievalEvidenceReceipt>(
+  "RetrievalEvidenceReceipt",
+  isRetrievalEvidenceReceipt
+);
+export const retrievalEvidenceResultSchema = schema<RetrievalEvidenceResult>(
+  "RetrievalEvidenceResult",
+  isRetrievalEvidenceResult
 );
 export const retrievalSearchReceiptSchema = schema<RetrievalSearchReceipt>(
   "RetrievalSearchReceipt",
@@ -429,6 +450,75 @@ function isRetrievalHit(value: unknown): value is RetrievalHit {
   );
 }
 
+function isRetrievalEvidenceResult(
+  value: unknown
+): value is RetrievalEvidenceResult {
+  return (
+    isExactRecord(value, ["packets", "receipt"]) &&
+    Array.isArray(value.packets) &&
+    value.packets.every(isRetrievalEvidencePacket) &&
+    isRetrievalEvidenceReceipt(value.receipt)
+  );
+}
+
+function isRetrievalEvidencePacket(
+  value: unknown
+): value is RetrievalEvidencePacket {
+  return (
+    isExactRecord(value, [
+      "packetId",
+      "resourceKey",
+      "resource",
+      "audience",
+      "source",
+      "ranking",
+      "budget",
+    ]) &&
+    isNonEmptyString(value.packetId) &&
+    isNonEmptyString(value.resourceKey) &&
+    isRetrievalResourceRef(value.resource) &&
+    isAudience(value.audience) &&
+    isRetrievalEvidenceSourceRef(value.source) &&
+    isRetrievalEvidenceRanking(value.ranking) &&
+    isRetrievalEvidenceBudget(value.budget)
+  );
+}
+
+function isRetrievalEvidenceSourceRef(
+  value: unknown
+): value is RetrievalEvidenceSourceRef {
+  return (
+    isExactRecord(value, ["sourceId", "mode", "generationId"]) &&
+    isNonEmptyString(value.sourceId) &&
+    (value.mode === "native-index" || value.mode === "coordinated-index") &&
+    isOptionalNonEmptyString(value.generationId)
+  );
+}
+
+function isRetrievalEvidenceRanking(
+  value: unknown
+): value is RetrievalEvidenceRanking {
+  return (
+    isExactRecord(value, ["lexical", "sourcePriority", "final", "matchedTerms"]) &&
+    isLexicalScore(value.lexical) &&
+    isFiniteNumber(value.sourcePriority) &&
+    isFiniteNumber(value.final) &&
+    isUniqueStringArray(value.matchedTerms)
+  );
+}
+
+function isRetrievalEvidenceBudget(
+  value: unknown
+): value is RetrievalEvidenceBudget {
+  return (
+    isExactRecord(value, ["estimatedTokens", "estimateQuality"]) &&
+    isNonNegativeInteger(value.estimatedTokens) &&
+    (value.estimateQuality === "fallback" ||
+      value.estimateQuality === "model-aware" ||
+      value.estimateQuality === "exact")
+  );
+}
+
 function isScoreComponents(value: unknown): value is RetrievalScoreComponents {
   return (
     isExactRecord(value, ["lexical", "sourcePriority", "final"]) &&
@@ -475,6 +565,101 @@ function isRetrievalSearchReceipt(value: unknown): value is RetrievalSearchRecei
     value.visibleHits.every(isReceiptHit) &&
     Array.isArray(value.drops) &&
     value.drops.every(isReceiptDrop)
+  );
+}
+
+function isRetrievalEvidenceReceipt(
+  value: unknown
+): value is RetrievalEvidenceReceipt {
+  return (
+    isExactRecord(value, [
+      "kind",
+      "receiptVersion",
+      "requestId",
+      "timestamp",
+      "purpose",
+      "maxPackets",
+      "maxTokens",
+      "candidateCount",
+      "totalTokens",
+      "contributors",
+      "selected",
+      "dropped",
+      "search",
+    ]) &&
+    value.kind === "retrieval-evidence" &&
+    value.receiptVersion === 1 &&
+    isNonEmptyString(value.requestId) &&
+    isIsoInstant(value.timestamp) &&
+    isPurpose(value.purpose) &&
+    isPositiveInteger(value.maxPackets) &&
+    (value.maxTokens === undefined || isPositiveInteger(value.maxTokens)) &&
+    isNonNegativeInteger(value.candidateCount) &&
+    isNonNegativeInteger(value.totalTokens) &&
+    Array.isArray(value.contributors) &&
+    value.contributors.every(isRetrievalEvidenceContributorReceipt) &&
+    Array.isArray(value.selected) &&
+    value.selected.every(isRetrievalEvidenceSelectionReceipt) &&
+    Array.isArray(value.dropped) &&
+    value.dropped.every(isRetrievalEvidenceDropReceipt) &&
+    isRetrievalSearchReceipt(value.search)
+  );
+}
+
+function isRetrievalEvidenceContributorReceipt(
+  value: unknown
+): value is RetrievalEvidenceContributorReceipt {
+  return (
+    isExactRecord(value, [
+      "sourceId",
+      "mode",
+      "generationId",
+      "candidateCount",
+      "selectedCount",
+      "droppedCount",
+    ]) &&
+    isNonEmptyString(value.sourceId) &&
+    (value.mode === "native-index" || value.mode === "coordinated-index") &&
+    isOptionalNonEmptyString(value.generationId) &&
+    isNonNegativeInteger(value.candidateCount) &&
+    isNonNegativeInteger(value.selectedCount) &&
+    isNonNegativeInteger(value.droppedCount)
+  );
+}
+
+function isRetrievalEvidenceSelectionReceipt(
+  value: unknown
+): value is RetrievalEvidenceSelectionReceipt {
+  return (
+    isExactRecord(value, [
+      "packetId",
+      "resourceKey",
+      "sourceId",
+      "estimatedTokens",
+    ]) &&
+    isNonEmptyString(value.packetId) &&
+    isNonEmptyString(value.resourceKey) &&
+    isNonEmptyString(value.sourceId) &&
+    isNonNegativeInteger(value.estimatedTokens)
+  );
+}
+
+function isRetrievalEvidenceDropReceipt(
+  value: unknown
+): value is RetrievalEvidenceDropReceipt {
+  return (
+    isExactRecord(value, [
+      "reason",
+      "packetId",
+      "resourceKey",
+      "sourceId",
+      "estimatedTokens",
+    ]) &&
+    (value.reason === "duplicate" || value.reason === "budget") &&
+    isNonEmptyString(value.packetId) &&
+    isNonEmptyString(value.resourceKey) &&
+    isNonEmptyString(value.sourceId) &&
+    isNonNegativeInteger(value.estimatedTokens)
   );
 }
 

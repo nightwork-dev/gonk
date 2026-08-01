@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   canonicalResourceKey,
+  RetrievalEvidenceCoordinator,
   nativeRetrievalCandidateSchema,
   RetrievalEngine,
   RetrievalIndexCoordinator,
   RetrievalSourceRegistry,
+  retrievalEvidenceResultSchema,
   retrievalSearchRequestSchema,
   retrievalSearchResultSchema,
   retrievalSourceDescriptionSchema,
@@ -366,6 +368,132 @@ describe("closed filters and ranking", () => {
     );
     expect(
       valid(retrievalSearchResultSchema, {
+        ...result,
+        receipt: { ...result.receipt, timestamp: "2026-02-31T18:00:00Z" },
+      })
+    ).toBe(false);
+  });
+});
+
+describe("retrieval evidence coordinator", () => {
+  it("budgets evidence packets across registered sources by rank, not source order", async () => {
+    const fixture = makeFixture("knowledge");
+    fixture.source.replace([
+      document("knowledge", "low", "r1", "lantern"),
+    ]);
+    const statements = new TestCoordinatedSource("statements", 10);
+    statements.replace([
+      document("statements", "high", "r1", "lantern"),
+    ]);
+    fixture.registry.register(statements);
+    await fixture.coordinator.index(indexRequest("index-knowledge", fixture.auth, "knowledge"));
+    await fixture.coordinator.index(indexRequest("index-statements", fixture.auth, "statements"));
+
+    const evidence = new RetrievalEvidenceCoordinator({
+      engine: fixture.engine,
+      clock: { now: () => NOW },
+    });
+    const result = await evidence.collect({
+      requestId: "evidence",
+      auth: fixture.auth,
+      text: "lantern",
+      mode: "lexical",
+      purpose: "agent-recall",
+      maxPackets: 1,
+      maxTokens: 1,
+    });
+
+    expect(result.packets.map(({ resource }) => resource.sourceId)).toEqual([
+      "statements",
+    ]);
+    expect(result.receipt.contributors).toEqual([
+      expect.objectContaining({
+        sourceId: "knowledge",
+        candidateCount: 1,
+        selectedCount: 0,
+        droppedCount: 1,
+      }),
+      expect.objectContaining({
+        sourceId: "statements",
+        candidateCount: 1,
+        selectedCount: 1,
+        droppedCount: 0,
+      }),
+    ]);
+    expect(result.receipt.dropped).toEqual([
+      expect.objectContaining({
+        reason: "budget",
+        sourceId: "knowledge",
+      }),
+    ]);
+  });
+
+  it("inherits filter-before-rank authorization and only emits visible evidence", async () => {
+    const fixture = makeFixture("knowledge");
+    const visible = document("knowledge", "visible", "r1", "lantern", "keep");
+    const denied = document("knowledge", "denied", "r1", "lantern lantern lantern", "keep");
+    fixture.policy.deniedHits.add(canonicalResourceKey(denied.resource));
+    fixture.source.throwFilterIds.add("denied");
+    fixture.source.replace([visible, denied]);
+    await fixture.coordinator.index(indexRequest("index", fixture.auth, "knowledge"));
+
+    const evidence = new RetrievalEvidenceCoordinator({
+      engine: fixture.engine,
+      clock: { now: () => NOW },
+    });
+    const result = await evidence.collect({
+      requestId: "authorized-evidence",
+      auth: fixture.auth,
+      text: "lantern",
+      filters: [filter("knowledge", { tag: "keep" })],
+      mode: "lexical",
+      purpose: "context-preview",
+      maxPackets: 5,
+    });
+
+    expect(result.packets.map(({ resource }) => resource.id)).toEqual(["visible"]);
+    expect(JSON.stringify(result)).not.toContain("denied");
+    expect(result.receipt.search.drops).toEqual([]);
+  });
+
+  it("records budget drops when token estimates exceed the shared scheduler budget", async () => {
+    const fixture = makeFixture("knowledge");
+    fixture.source.replace([
+      document("knowledge", "large", "r1", "lantern"),
+      document("knowledge", "small", "r1", "lantern"),
+    ]);
+    await fixture.coordinator.index(indexRequest("index", fixture.auth, "knowledge"));
+
+    const evidence = new RetrievalEvidenceCoordinator({
+      engine: fixture.engine,
+      clock: { now: () => NOW },
+    });
+    const result = await evidence.collect({
+      requestId: "token-budget",
+      auth: fixture.auth,
+      text: "lantern",
+      mode: "lexical",
+      purpose: "agent-recall",
+      maxPackets: 10,
+      maxTokens: 2,
+      estimateTokens: (hit) => ({
+        estimatedTokens: hit.resource.id === "large" ? 3 : 1,
+        estimateQuality: "exact",
+      }),
+    });
+
+    expect(result.packets.map(({ resource }) => resource.id)).toEqual(["small"]);
+    expect(result.receipt.totalTokens).toBe(1);
+    expect(result.receipt.dropped).toEqual([
+      expect.objectContaining({
+        reason: "budget",
+        resourceKey: canonicalResourceKey(ref("knowledge", "large", "r1")),
+        estimatedTokens: 3,
+      }),
+    ]);
+    expect(valid(retrievalEvidenceResultSchema, result)).toBe(true);
+    expect(
+      valid(retrievalEvidenceResultSchema, {
         ...result,
         receipt: { ...result.receipt, timestamp: "2026-02-31T18:00:00Z" },
       })

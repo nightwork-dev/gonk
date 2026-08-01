@@ -12,6 +12,18 @@ export type {
   RetrievalCitationResolveRequest,
   RetrievalClock,
   RetrievalDocument,
+  RetrievalEvidenceBudget,
+  RetrievalEvidenceContributorReceipt,
+  RetrievalEvidenceDropReceipt,
+  RetrievalEvidenceDropReason,
+  RetrievalEvidenceEstimateQuality,
+  RetrievalEvidencePacket,
+  RetrievalEvidenceRanking,
+  RetrievalEvidenceReceipt,
+  RetrievalEvidenceRequest,
+  RetrievalEvidenceResult,
+  RetrievalEvidenceSelectionReceipt,
+  RetrievalEvidenceSourceRef,
   RetrievalFacet,
   RetrievalFacetValue,
   RetrievalFilterDefinition,
@@ -54,6 +66,9 @@ export {
   retrievalCitationResolutionSchema,
   retrievalCitationResolveRequestSchema,
   retrievalDocumentSchema,
+  retrievalEvidencePacketSchema,
+  retrievalEvidenceReceiptSchema,
+  retrievalEvidenceResultSchema,
   retrievalFragmentRefSchema,
   retrievalIndexRequestSchema,
   retrievalIndexReceiptSchema,
@@ -82,3 +97,4 @@ export {
 export { RetrievalSourceRegistry } from "./registry.ts";
 export { RetrievalIndexCoordinator } from "./coordinator.ts";
 export { RetrievalEngine } from "./engine.ts";
+export { RetrievalEvidenceCoordinator } from "./evidence.ts";
