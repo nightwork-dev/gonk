@@ -82,6 +82,35 @@ For coordinated indexes, Core authorizes documents before invoking the source
 filter callback, and filters before corpus statistics. There is no open filter
 bag or predicate callback at the public boundary.
 
+## Evidence coordinator
+
+`RetrievalEvidenceCoordinator` is the shared retrieval-contributor coordinator
+for hosts that need one prompt-facing selection pass across multiple sources.
+It calls `RetrievalEngine.search()`, so source discovery authorization, hit
+authorization, and source-owned filter validation happen before any cross-source
+ranking, fusion, token budgeting, or prompt assembly decision.
+
+```ts
+import { RetrievalEvidenceCoordinator } from "@gonk/retrieval";
+
+const evidence = new RetrievalEvidenceCoordinator({ engine: retrieval });
+const result = await evidence.collect({
+  requestId: "evidence-42",
+  auth,
+  text: "session binding",
+  mode: "lexical",
+  purpose: "agent-recall",
+  maxPackets: 6,
+  maxTokens: 1200,
+});
+```
+
+Evidence packets contain resource refs, audience, source mode/generation,
+matched terms, score components, and token estimates. They do not contain
+resolved labels, excerpts, or body content. The coordinator records selected
+packets, budget/duplicate drops, and per-source contributor receipts so
+consumers can prove why a packet did or did not enter the prompt.
+
 ## Authorization boundary
 
 Every operation captures the canonical `AuthContext` before asynchronous work.
