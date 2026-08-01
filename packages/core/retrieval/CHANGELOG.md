@@ -1,5 +1,11 @@
 # @gonk/retrieval
 
+## 0.6.0
+
+### Minor Changes
+
+- Add the shared retrieval evidence coordinator contract for cross-source evidence packets, global prompt-budget selection, and contributor receipts.
+
 ## 0.4.0
 
 ### Patch Changes
