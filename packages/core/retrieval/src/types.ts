@@ -240,6 +240,97 @@ export interface RetrievalSearchResult {
   receipt: RetrievalSearchReceipt;
 }
 
+export type RetrievalEvidenceEstimateQuality = "fallback" | "model-aware" | "exact";
+
+export interface RetrievalEvidenceBudget {
+  estimatedTokens: number;
+  estimateQuality: RetrievalEvidenceEstimateQuality;
+}
+
+export interface RetrievalEvidenceRanking {
+  lexical: RetrievalLexicalScore;
+  sourcePriority: number;
+  final: number;
+  matchedTerms: readonly string[];
+}
+
+export interface RetrievalEvidenceSourceRef {
+  sourceId: string;
+  mode: RetrievalSourceMode;
+  generationId?: string;
+}
+
+export interface RetrievalEvidencePacket {
+  packetId: string;
+  resourceKey: string;
+  resource: RetrievalResourceRef;
+  audience: RetrievalAudience;
+  source: RetrievalEvidenceSourceRef;
+  ranking: RetrievalEvidenceRanking;
+  budget: RetrievalEvidenceBudget;
+}
+
+export interface RetrievalEvidenceContributorReceipt {
+  sourceId: string;
+  mode: RetrievalSourceMode;
+  generationId?: string;
+  candidateCount: number;
+  selectedCount: number;
+  droppedCount: number;
+}
+
+export interface RetrievalEvidenceSelectionReceipt {
+  packetId: string;
+  resourceKey: string;
+  sourceId: string;
+  estimatedTokens: number;
+}
+
+export type RetrievalEvidenceDropReason = "duplicate" | "budget";
+
+export interface RetrievalEvidenceDropReceipt {
+  reason: RetrievalEvidenceDropReason;
+  packetId: string;
+  resourceKey: string;
+  sourceId: string;
+  estimatedTokens: number;
+}
+
+export interface RetrievalEvidenceReceipt {
+  kind: "retrieval-evidence";
+  receiptVersion: 1;
+  requestId: string;
+  timestamp: string;
+  purpose: RetrievalPurpose;
+  maxPackets: number;
+  maxTokens?: number;
+  candidateCount: number;
+  totalTokens: number;
+  contributors: readonly RetrievalEvidenceContributorReceipt[];
+  selected: readonly RetrievalEvidenceSelectionReceipt[];
+  dropped: readonly RetrievalEvidenceDropReceipt[];
+  search: RetrievalSearchReceipt;
+}
+
+export interface RetrievalEvidenceRequest {
+  requestId: string;
+  auth: AuthContext;
+  text: string;
+  sourceIds?: readonly string[];
+  filters?: readonly RetrievalSourceFilter[];
+  mode: RetrievalQueryMode;
+  purpose: RetrievalPurpose;
+  maxPackets: number;
+  maxTokens?: number;
+  candidateLimit?: number;
+  estimateTokens?: (hit: RetrievalHit) => RetrievalEvidenceBudget;
+}
+
+export interface RetrievalEvidenceResult {
+  packets: readonly RetrievalEvidencePacket[];
+  receipt: RetrievalEvidenceReceipt;
+}
+
 export interface RetrievalIndexReceipt {
   kind: "retrieval-index";
   receiptVersion: 1;
