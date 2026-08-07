@@ -972,12 +972,24 @@ describe("authorized filesystem mutations", () => {
 
     const registry = executableToolRegistry();
     registry.register([...definitions]);
+    // GR-83: ToolContext.auth is required — the registry itself now rejects
+    // a missing principal (AUTH_REQUIRED) before the handler's own
+    // `requireToolAuth` guard (AUTHORIZATION_DENIED, still exercised below
+    // via `authContext()` invocations) ever runs. The cast simulates an
+    // untyped caller reaching the registry with no auth at all — a
+    // well-typed caller can't omit it (`makeBaseContext` requires `auth`).
+    const untypedCallerCtx = {
+      signal: new AbortController().signal,
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      cwd: process.cwd(),
+      env: process.env,
+    } as unknown as Parameters<ToolRegistry["invoke"]>[2];
     const missingAuth = await collectToolOutcome(
-      registry.invoke("skill-read", { id: "tool-ready" }, makeBaseContext())
+      registry.invoke("skill-read", { id: "tool-ready" }, untypedCallerCtx)
     );
     expect(missingAuth).toMatchObject({
       ok: false,
-      code: "AUTHORIZATION_DENIED",
+      code: "AUTH_REQUIRED",
     });
 
     const context = makeBaseContext({ auth: authContext() });
