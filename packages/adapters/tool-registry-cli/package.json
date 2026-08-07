@@ -21,6 +21,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@gonk/auth": "workspace:*",
     "@gonk/scope": "workspace:*",
     "@gonk/tool-registry": "workspace:*",
     "@gonk/tool-orchestrator": "workspace:*"
