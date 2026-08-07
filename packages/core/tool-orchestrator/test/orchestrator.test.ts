@@ -1,14 +1,41 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
 
 import {
   ToolRegistry,
   makeBaseContext,
   type ToolDefinition,
   type ToolEvent,
+  type ToolRegistryOptions,
 } from "@gonk/tool-registry";
 
 import { createOrchestrator } from "../src/index.ts";
+
+// GR-83: ToolContext.auth is required. This suite is mostly about
+// orchestrator plumbing (pins, activeSet, search, meta-tool wiring), not
+// approval semantics (`load_tool`/`unload_tool` declare `approval: "write"`
+// — see `meta-tools.ts` — the rest of these test tools declare none, which
+// now that auth flows through would otherwise default to tier "exec" and
+// hit APPROVAL_DENIED with no approvalProvider configured). `ownerRegistry`
+// binds a fixed owner-like principal and bypasses approval so these tests
+// keep exercising the behavior they were written for; the tests in
+// `describe("principal-aware meta-tool discovery")` that ARE about
+// authorization keep their own `authenticatedContext`/registry setups.
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "test", HOSTNAME: "test-host" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
+
+function ownerCtx(
+  overrides: Partial<Omit<Parameters<typeof makeBaseContext>[0], "auth">> = {}
+) {
+  return makeBaseContext({ ...overrides, auth: OWNER_AUTH });
+}
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -245,7 +272,7 @@ describe("Orchestrator", () => {
     expect(r.has("get_tool")).toBe(true);
 
     const events = await collect(
-      orch.invoke("find_tools", { query: "thing" }, makeBaseContext())
+      orch.invoke("find_tools", { query: "thing" }, ownerCtx())
     );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
@@ -254,12 +281,12 @@ describe("Orchestrator", () => {
   });
 
   it("load_tool meta-tool queues a pin that activates after commit", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register(tool("payload", { visibility: "on-demand" }));
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     await collect(
-      orch.invoke("load_tool", { name: "payload" }, makeBaseContext())
+      orch.invoke("load_tool", { name: "payload" }, ownerCtx())
     );
     expect(orch.activeSet().map((t) => t.name)).not.toContain("payload");
 
@@ -315,9 +342,9 @@ describe("Orchestrator", () => {
   });
 
   it("orchestrator.invoke routes through the registry it found", async () => {
-    const r1 = new ToolRegistry();
+    const r1 = ownerRegistry();
     r1.register(tool("only-in-1"));
-    const r2 = new ToolRegistry();
+    const r2 = ownerRegistry();
     r2.register(tool("only-in-2"));
     const orch = createOrchestrator({
       registries: [r1, r2],
@@ -326,7 +353,7 @@ describe("Orchestrator", () => {
     });
 
     const events = await collect(
-      orch.invoke("only-in-2", {}, makeBaseContext())
+      orch.invoke("only-in-2", {}, ownerCtx())
     );
     expect(events[0]).toMatchObject({
       type: "result",
@@ -623,7 +650,7 @@ describe("tool_explain meta-tool", () => {
     expect(r.has("tool_explain")).toBe(true);
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "rich-tool" }, makeBaseContext())
+      orch.invoke("tool_explain", { name: "rich-tool" }, ownerCtx())
     );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
@@ -652,7 +679,7 @@ describe("tool_explain meta-tool", () => {
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "no-such-tool" }, makeBaseContext())
+      orch.invoke("tool_explain", { name: "no-such-tool" }, ownerCtx())
     );
     const result = events.find((e) => e.type === "result");
     expect(result).toBeDefined();
@@ -668,7 +695,7 @@ describe("tool_explain meta-tool", () => {
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "plain" }, makeBaseContext())
+      orch.invoke("tool_explain", { name: "plain" }, ownerCtx())
     );
     const result = events.find((e) => e.type === "result");
     const data = (result as { data: Record<string, unknown> }).data;
@@ -689,7 +716,7 @@ describe("tool_explain meta-tool", () => {
     const orch = createOrchestrator({ registries: [r], scope: "mcp" });
 
     const events = await collect(
-      orch.invoke("tool_explain", { name: "hybrid" }, makeBaseContext())
+      orch.invoke("tool_explain", { name: "hybrid" }, ownerCtx())
     );
     const result = events.find((e) => e.type === "result");
     const data = (result as { data: Record<string, unknown> }).data;
