@@ -1,10 +1,11 @@
-import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
+import { ownerPrincipal, type AuthContext, type AuthenticatedPrincipal } from "@gonk/auth";
 import type { Tool as McpTool } from "@modelcontextprotocol/client";
 import {
   ToolRegistry,
   collectToolOutcome,
   makeBaseContext,
   passthrough,
+  type ToolRegistryOptions,
 } from "@gonk/tool-registry";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -16,6 +17,28 @@ import {
 } from "../src/client.ts";
 import { createHttpMcpServer } from "../src/http/server.ts";
 import type { HttpMcpServer } from "../src/http/types.ts";
+
+// GR-83: ToolContext.auth is required, and imported MCP tools default to
+// `approval: "exec"` (see the "imports paginated selected tools" test
+// below). `ownerRegistry`/`ownerCtx` bind a fixed permit-all owner and
+// bypass approval so these plumbing tests (pagination, refresh, schema
+// validation, cancellation) keep exercising what they were written for;
+// the one test about authorization ("runs local authorization before
+// upstream tools/call") builds its own denying context explicitly.
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "mcp-client-test" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
+
+function ownerCtx(
+  overrides: Partial<Omit<Parameters<typeof makeBaseContext>[0], "auth">> = {}
+) {
+  return makeBaseContext({ ...overrides, auth: OWNER_AUTH });
+}
 
 const servers: HttpMcpServer[] = [];
 
@@ -120,13 +143,13 @@ function importer(
 
 async function invoke(registry: ToolRegistry, name: string, input: unknown) {
   return collectToolOutcome(
-    registry.invoke(name, input, makeBaseContext())
+    registry.invoke(name, input, ownerCtx())
   );
 }
 
 describe("inbound MCP importer", () => {
   it("imports paginated selected tools with stable restrictive local metadata and provenance", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     connection.pages.set("", {
       tools: [remoteTool("echo"), remoteTool("hidden")],
@@ -160,7 +183,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("compiles runtime input validation and fails a catalog with unsupported schema without replacing it", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -182,7 +205,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("atomically refreshes added, changed, and removed tools on list-change notification", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -217,7 +240,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("runs local authorization before upstream tools/call", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -234,7 +257,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("preserves sanitized success data and maps remote tool errors distinctly", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -264,7 +287,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("validates advertised structured output", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection([
       remoteTool("echo", {
         outputSchema: {
@@ -289,7 +312,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("propagates cancellation and timeout options and distinguishes transport failures", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     connection.callError = new Error("connection dropped");
     const inbound = importer(registry, connection, { requestTimeoutMs: 321 });
@@ -299,7 +322,7 @@ describe("inbound MCP importer", () => {
       registry.invoke(
         "docs-server.echo",
         { text: "x" },
-        makeBaseContext({ signal })
+        ownerCtx({ signal })
       )
     );
 
@@ -311,7 +334,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("maps upstream cancellation and timeout separately", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -332,7 +355,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("maps malformed upstream results as protocol failures", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     connection.result = { structuredContent: { ok: true } };
     const inbound = importer(registry, connection);
@@ -345,7 +368,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("closes and reconnects deterministically with host-resolved credentials", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connections: FakeConnection[] = [];
     const resolvedHeaders: Readonly<Record<string, string>>[] = [];
     let token = "first";
@@ -380,7 +403,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("cannot repopulate stale tools when close races an in-flight refresh", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     const connection = new FakeConnection();
     const inbound = importer(registry, connection);
     await inbound.connect();
@@ -406,7 +429,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("imports and invokes through a separately running authenticated Streamable HTTP server", async () => {
-    const upstreamRegistry = new ToolRegistry();
+    const upstreamRegistry = ownerRegistry();
     upstreamRegistry.register({
       name: "echo",
       description: "echo",
@@ -431,7 +454,7 @@ describe("inbound MCP importer", () => {
     await server.start();
     servers.push(server);
 
-    const localRegistry = new ToolRegistry();
+    const localRegistry = ownerRegistry();
     const inbound = createMcpToolImporter({
       registry: localRegistry,
       serverId: "live-upstream",
@@ -452,7 +475,7 @@ describe("inbound MCP importer", () => {
   });
 
   it("rejects unsafe endpoints before resolving credentials or connecting", async () => {
-    const registry = new ToolRegistry();
+    const registry = ownerRegistry();
     let resolved = false;
     expect(() =>
       createMcpToolImporter({

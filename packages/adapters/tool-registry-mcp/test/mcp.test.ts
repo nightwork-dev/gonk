@@ -2,14 +2,35 @@ import { describe, expect, it } from "vitest";
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
-import { ToolRegistry, shape, type ToolDefinition } from "@gonk/tool-registry";
+import { ownerPrincipal, type AuthContext, type AuthenticatedPrincipal } from "@gonk/auth";
+import {
+  ToolRegistry,
+  shape,
+  type ToolDefinition,
+  type ToolRegistryOptions,
+} from "@gonk/tool-registry";
 import { createOrchestrator } from "@gonk/tool-orchestrator";
 
 import {
   createMcpServer,
   type McpAdapterOptions,
 } from "../src/index.ts";
+
+// GR-83: `ToolContext.auth` and `McpAdapterOptions.makeAuthContext` are both
+// required now. Most of these tests are about the MCP wire projection
+// (schema advertisement, dispatch, display rendering, scope/host injection),
+// not authorization — those bind a fixed permit-all owner principal via
+// `MCP_OWNER_AUTH`/`mcpOwnerRegistry`. Tests that ARE about authorization
+// (discovery filtering, approval, the makeContext/makeAuthContext split)
+// keep their own `makeAuthContext`/registry configuration.
+const MCP_OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "mcp-test" });
+
+function mcpOwnerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -57,7 +78,7 @@ function auth(authorize: AuthContext["authorize"]): AuthContext {
 
 describe("createMcpServer", () => {
   it("advertises registered tools via listTools", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "echo",
       description: "echo input",
@@ -75,6 +96,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
 
@@ -85,7 +107,7 @@ describe("createMcpServer", () => {
   });
 
   it("advertises JSON Schema attached to the Standard Schema input", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "notes.search",
       description: "search notes",
@@ -108,6 +130,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
 
@@ -121,7 +144,7 @@ describe("createMcpServer", () => {
   });
 
   it("dispatches callTool through the registry", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "echo",
       description: "echo",
@@ -135,6 +158,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
 
@@ -148,11 +172,12 @@ describe("createMcpServer", () => {
   });
 
   it("returns isError for unknown tool", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     const adapter = createMcpServer({
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "ghost", arguments: {} });
@@ -160,7 +185,7 @@ describe("createMcpServer", () => {
   });
 
   it("converts tool errors into isError content", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "boom",
       description: "boom",
@@ -173,6 +198,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "boom", arguments: {} });
@@ -182,7 +208,7 @@ describe("createMcpServer", () => {
   });
 
   it("respects activeSet when given an Orchestrator (only always tools advertised)", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register([
       {
         name: "a",
@@ -208,6 +234,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: orch,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
 
@@ -221,7 +248,7 @@ describe("createMcpServer", () => {
   });
 
   it("require-allowlist hides write tools not in allowlist", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register([
       {
         name: "writer-a",
@@ -250,6 +277,7 @@ describe("createMcpServer", () => {
       source: r,
       writeToolPolicy: "require-allowlist",
       allowlist: ["writer-a"],
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
 
@@ -264,7 +292,7 @@ describe("createMcpServer", () => {
   });
 
   it("renders rich display blocks as MCP content", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "rich",
       description: "rich",
@@ -282,6 +310,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const result = await client.callTool({ name: "rich", arguments: {} });
@@ -302,7 +331,7 @@ describe("createMcpServer", () => {
   });
 
   it("filters duplex tools from listTools and rejects calls", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register([
       {
         name: "echo",
@@ -322,6 +351,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const list = await client.listTools();
@@ -331,7 +361,7 @@ describe("createMcpServer", () => {
   });
 
   it("maps annotation hints to MCP *Hint fields", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "annotated",
       description: "annotated",
@@ -347,6 +377,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const list = await client.listTools();
@@ -359,7 +390,7 @@ describe("createMcpServer", () => {
 
   it("injects options.scope into ctx.scope for tool handlers", async () => {
     const seen: { scope?: unknown; read?: unknown } = {};
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "needs_scope",
       description: "reads ctx.scope",
@@ -378,6 +409,7 @@ describe("createMcpServer", () => {
       serverVersion: "0",
       source: r,
       scope: fakeScope,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     const result = await client.callTool({
@@ -391,7 +423,7 @@ describe("createMcpServer", () => {
 
   it("injects trusted request context into ctx.host", async () => {
     let host: unknown;
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "whoami",
       description: "returns the authenticated host context",
@@ -407,6 +439,7 @@ describe("createMcpServer", () => {
       serverVersion: "0",
       source: r,
       makeContext: () => ({ host: principal }),
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     await client.callTool({ name: "whoami", arguments: {} });
@@ -415,7 +448,7 @@ describe("createMcpServer", () => {
 
   it("leaves ctx.scope undefined when no scope option is given", async () => {
     const seen: { had: boolean } = { had: true };
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "probe_scope",
       description: "probes ctx.scope presence",
@@ -429,6 +462,7 @@ describe("createMcpServer", () => {
       serverName: "test",
       serverVersion: "0",
       source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
     });
     const client = await pair(adapter);
     await client.callTool({ name: "probe_scope", arguments: {} });
@@ -436,7 +470,7 @@ describe("createMcpServer", () => {
   });
 
   it("filters discovery per principal and makes hidden calls indistinguishable from missing tools", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register([
       {
         name: "visible",
@@ -466,7 +500,8 @@ describe("createMcpServer", () => {
       createMcpServer({
         serverName: "test-empty",
         serverVersion: "0",
-        source: new ToolRegistry(),
+        source: mcpOwnerRegistry(),
+        makeAuthContext: () => MCP_OWNER_AUTH,
       })
     );
 
@@ -485,7 +520,7 @@ describe("createMcpServer", () => {
   });
 
   it("fails discovery closed when policy returns a malformed decision", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "hidden",
       description: "hidden",
@@ -574,7 +609,7 @@ describe("createMcpServer", () => {
   });
 
   it("uses makeAuthContext as the sole policy while preserving host context", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "canonical-auth",
       description: "canonical auth",
@@ -612,7 +647,7 @@ describe("createMcpServer", () => {
   });
 
   it("rejects invocation-only auth before advertising the catalog", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     r.register({
       name: "hidden",
       description: "must not be advertised",
@@ -628,6 +663,11 @@ describe("createMcpServer", () => {
         serverVersion: "0",
         source: r,
         makeContext,
+        // Never actually invoked — `makeContext`'s guard throws before
+        // `makeAuthContext` would run (see `requestContext` in src/index.ts).
+        // Required only to satisfy the type now that GR-83 makes the field
+        // mandatory.
+        makeAuthContext: () => MCP_OWNER_AUTH,
       })
     );
 
@@ -635,7 +675,7 @@ describe("createMcpServer", () => {
   });
 
   it("treats write-tier meta-tools as writes for MCP allowlisting", async () => {
-    const r = new ToolRegistry();
+    const r = mcpOwnerRegistry();
     const orchestrator = createOrchestrator({
       registries: [r],
       scope: "mcp",
@@ -646,6 +686,7 @@ describe("createMcpServer", () => {
         serverVersion: "0",
         source: orchestrator,
         writeToolPolicy: "require-allowlist",
+        makeAuthContext: () => MCP_OWNER_AUTH,
       })
     );
 

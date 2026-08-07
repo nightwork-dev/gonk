@@ -8,7 +8,15 @@ import type { McpAdapterOptions } from "../index.ts";
  *  serverVersion, writeToolPolicy, allowlist, log, scope) with the HTTP binding
  *  fields. The mapping is reused wholesale via `createMcpServer`; only the
  *  transport differs. */
-export interface HttpMcpServerOptions extends McpAdapterOptions {
+export interface HttpMcpServerOptions
+  extends Omit<McpAdapterOptions, "makeAuthContext"> {
+  /** Host-owned per-request authorization policy. Optional HERE (unlike the
+   *  stdio `McpAdapterOptions.makeAuthContext`, which GR-83 makes required)
+   *  because this HTTP boundary has its own explicit, guarded escape hatch:
+   *  construction throws unless either this is set or `allowUnrestrictedTools`
+   *  is `true`. `createWebMcpHandler` always resolves a concrete `AuthContext`
+   *  before it ever reaches the registry — see `http/web.ts`. */
+  makeAuthContext?: McpAdapterOptions["makeAuthContext"];
   /** Bind address. Default "127.0.0.1"; "0.0.0.0" for tailnet-wide. */
   host?: string;
   /** TCP port. Default 0 (ephemeral — pick a real port for a long-running server). */

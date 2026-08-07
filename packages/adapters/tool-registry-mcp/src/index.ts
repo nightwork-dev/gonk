@@ -38,10 +38,17 @@ export interface McpAdapterOptions {
   serverVersion: string;
   source: ToolRegistry | Orchestrator;
   /** Build the canonical request authorization context. Called for tools/list
-   *  and tools/call. Raw credentials remain in MCP request extras. */
-  makeAuthContext?(
-    extra: ServerContext
-  ): AuthContext | Promise<AuthContext>;
+   *  and tools/call. Raw credentials remain in MCP request extras.
+   *
+   *  REQUIRED (GR-83): `ToolContext.auth` has no ambient fallback, and MCP
+   *  is exactly the "per-turn principal" host the story names — a real
+   *  transport-authenticated caller arrives per request, so this binds a
+   *  fresh `AuthContext` from `extra` on every call rather than a single
+   *  bound-at-startup owner. A single-caller MCP server (a local plugin
+   *  server with no external callers) still implements this — typically
+   *  `() => ownerPrincipal(process.env)` (`@gonk/auth`) — since there is no
+   *  default. */
+  makeAuthContext(extra: ServerContext): AuthContext | Promise<AuthContext>;
   writeToolPolicy?: WriteToolPolicy;
   allowlist?: string[];
   log?: Logger;
@@ -99,10 +106,8 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
     return allowed;
   }
 
-  async function requestAuth(
-    extra: ServerContext
-  ): Promise<AuthContext | undefined> {
-    return options.makeAuthContext?.(extra);
+  async function requestAuth(extra: ServerContext): Promise<AuthContext> {
+    return options.makeAuthContext(extra);
   }
 
   async function requestContext(
@@ -135,9 +140,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
       await requestContext(ctx);
       const auth = await requestAuth(ctx);
       const candidates = applyWritePolicy(activeTools());
-      const tools = auth
-        ? await filterDiscoverable(candidates, auth)
-        : candidates;
+      const tools = await filterDiscoverable(candidates, auth);
       return {
         tools: tools.map((tool) => {
           const annotations = mapAnnotations(tool.hints?.mcp?.annotations);
@@ -179,10 +182,10 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         ...makeBaseContext({
           signal: ctx.mcpReq.signal,
           log: makeMcpLogger(server),
+          auth,
         }),
         ...(options.scope ? { scope: options.scope } : {}),
         ...invocationContext,
-        ...(auth ? { auth } : {}),
       };
       const outcome = await collectToolOutcome(
         options.source.invoke(tool.name, toolInput, baseCtx)
