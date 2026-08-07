@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import type { Logger, ToolDefinition } from "@gonk/tool-registry";
+import type { Logger, ToolDefinition, ToolRegistryOptions } from "@gonk/tool-registry";
 
 import { ToolRegistry } from "@gonk/tool-registry";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
 
 import { toAgentTool, resolveAdvertisedDescription } from "../src/to-agent-tool.ts";
 import {
@@ -11,6 +12,17 @@ import {
   type PiExtensionAPI,
   type PiToolSpec,
 } from "../src/index.ts";
+
+// GR-83: RegisterGonkToolsOptions.auth is required — see pi.test.ts's
+// identical helper comment.
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "pi-test" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
 
 class FakePi implements PiExtensionAPI {
   registered: PiToolSpec[] = [];
@@ -140,7 +152,7 @@ describe("toAgentTool — degraded description integration", () => {
 
 describe("registerGonkTools — degraded description integration", () => {
   it("advertises the degraded description through the Pi tool spec when capabilityFor returns 'degraded'", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       makeTool({
         name: "degradable",
@@ -150,13 +162,13 @@ describe("registerGonkTools — degraded description integration", () => {
       }),
     ]);
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     expect(pi.registered).toHaveLength(1);
     expect(pi.registered[0]?.description).toBe("Degraded description. Cost: low.");
   });
 
   it("advertises the full description through the Pi tool spec when capabilityFor returns 'full'", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       makeTool({
         name: "degradable",
@@ -166,7 +178,7 @@ describe("registerGonkTools — degraded description integration", () => {
       }),
     ]);
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     expect(pi.registered[0]?.description).toBe("Full-capability description. Cost: low.");
   });
 });

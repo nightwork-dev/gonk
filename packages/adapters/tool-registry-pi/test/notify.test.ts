@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import { ToolRegistry, type ToolDefinition, type ToolEvent } from "@gonk/tool-registry";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
+import {
+  ToolRegistry,
+  type ToolDefinition,
+  type ToolEvent,
+  type ToolRegistryOptions,
+} from "@gonk/tool-registry";
 
 import {
   registerGonkTools,
@@ -9,6 +15,17 @@ import {
   type PiToolSpec,
   type PiToolUpdate,
 } from "../src/index.ts";
+
+// GR-83: RegisterGonkToolsOptions.auth is required — see pi.test.ts's
+// identical helper comment.
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "pi-test" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -29,7 +46,7 @@ class FakePi implements PiExtensionAPI {
 
 describe("toPiToolSpec — ctx.notify", () => {
   it("forwards progress events from a Promise-form handler via ctx.notify to onUpdate", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "stepper",
       description: "emits progress",
@@ -43,7 +60,7 @@ describe("toPiToolSpec — ctx.notify", () => {
     } as ToolDefinition);
 
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const spec = pi.registered[0]!;
 
     const updates: PiToolUpdate[] = [];
@@ -67,7 +84,7 @@ describe("toPiToolSpec — ctx.notify", () => {
   });
 
   it("forwards progress events yielded by an async-iterable handler", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "iter-stepper",
       description: "yields progress",
@@ -80,7 +97,7 @@ describe("toPiToolSpec — ctx.notify", () => {
     } as ToolDefinition);
 
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const spec = pi.registered[0]!;
 
     const updates: PiToolUpdate[] = [];
@@ -100,7 +117,7 @@ describe("toPiToolSpec — ctx.notify", () => {
   });
 
   it("does not throw when no onUpdate is provided and handler calls ctx.notify", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "no-update-stepper",
       description: "emits progress with no listener",
@@ -112,7 +129,7 @@ describe("toPiToolSpec — ctx.notify", () => {
     } as ToolDefinition);
 
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const spec = pi.registered[0]!;
 
     const signal = new AbortController().signal;
