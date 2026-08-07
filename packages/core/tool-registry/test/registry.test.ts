@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { ownerPrincipal, type AuthContext } from "@gonk/auth";
+import {
+  ownerPrincipal,
+  type AuthContext,
+  type AuthSecurityReceipt,
+  type AuthenticatedPrincipal,
+} from "@gonk/auth";
 
 import { MemoryScopeStore } from "@gonk/scope";
 
@@ -538,5 +543,206 @@ describe("ToolRegistry", () => {
     expect(r.list().map((t) => t.name).sort()).toEqual(["always", "configured"]);
     expect(r.has("unconfigured")).toBe(false);
     expect(r.get("unconfigured")).toBeUndefined();
+  });
+});
+
+// =============================================================================
+// withPrincipal — the "explicit once, ambient never" bound invoker (GR-83).
+// =============================================================================
+
+function namedAuth(
+  id: string,
+  authorize: AuthContext["authorize"] = () => ({
+    outcome: "allow",
+    reason: `${id} allowed`,
+  })
+): AuthContext {
+  const principal: AuthenticatedPrincipal = {
+    id: `principal:${id}`,
+    kind: "human",
+    identity: { issuer: "test", subject: id, method: "session" },
+    roles: [],
+    scopes: [],
+  };
+  return { principal, authorize };
+}
+
+/** A base context with no `auth` field at all — proves the bound-invoker
+ *  path never needs one threaded per call (unlike `ownerCtx()`, which
+ *  always bakes one in for the direct-`invoke` comparison path). */
+function bareCtx() {
+  return {
+    signal: new AbortController().signal,
+    log: { debug() {}, info() {}, warn() {}, error() {} },
+    cwd: process.cwd(),
+    env: process.env,
+  };
+}
+
+describe("ToolRegistry.withPrincipal", () => {
+  function receiptRegistry(receipts: AuthSecurityReceipt[]): ToolRegistry {
+    let counter = 0;
+    return new ToolRegistry({
+      security: {
+        approvalMode: "bypass",
+        requestId: () => `req-${counter++}`,
+        now: () => "2026-08-07T00:00:00.000Z",
+        auditSink: {
+          write: (receipt) => {
+            receipts.push(receipt);
+          },
+        },
+      },
+    });
+  }
+
+  function registerFixtures(registry: ToolRegistry): void {
+    registry.register([
+      {
+        name: "greet",
+        description: "greet",
+        input: passthrough(),
+        handler: async () => ({ data: { greeted: true } }),
+      },
+      {
+        name: "blocked",
+        description: "blocked",
+        input: passthrough(),
+        handler: async () => ({ data: { leaked: true } }),
+      },
+    ]);
+  }
+
+  it("produces identical result payloads to explicit per-call auth", async () => {
+    const auth = namedAuth("alice", ({ action, resource }) => ({
+      outcome: action === "tool.invoke" && resource.target === "blocked" ? "deny" : "allow",
+      reason: resource.target === "blocked" ? "blocked by policy" : "ok",
+    }));
+
+    const direct = receiptRegistry([]);
+    registerFixtures(direct);
+    const directResult = await collect(direct.invoke("greet", {}, { ...bareCtx(), auth }));
+
+    const bound = receiptRegistry([]);
+    registerFixtures(bound);
+    const boundInvoker = bound.withPrincipal(auth);
+    const boundResult = await collect(boundInvoker.invoke("greet", {}, bareCtx()));
+
+    expect(boundResult).toEqual(directResult);
+    expect(directResult).toEqual([
+      { type: "result", data: { greeted: true }, display: undefined },
+    ]);
+  });
+
+  it("produces identical rejection behavior for a denied tool", async () => {
+    const auth = namedAuth("alice", ({ action, resource }) => ({
+      outcome: action === "tool.invoke" && resource.target === "blocked" ? "deny" : "allow",
+      reason: resource.target === "blocked" ? "blocked by policy" : "ok",
+    }));
+
+    const direct = receiptRegistry([]);
+    registerFixtures(direct);
+    const directResult = await collect(direct.invoke("blocked", {}, { ...bareCtx(), auth }));
+
+    const bound = receiptRegistry([]);
+    registerFixtures(bound);
+    const boundResult = await collect(bound.withPrincipal(auth).invoke("blocked", {}, bareCtx()));
+
+    expect(boundResult).toEqual(directResult);
+    expect(directResult).toMatchObject([
+      { type: "error", code: "AUTHORIZATION_DENIED", message: "blocked by policy" },
+    ]);
+  });
+
+  it("produces identical authorization receipts (principal id, action, outcome) to explicit per-call auth", async () => {
+    const auth = namedAuth("alice");
+
+    const directReceipts: AuthSecurityReceipt[] = [];
+    const direct = receiptRegistry(directReceipts);
+    registerFixtures(direct);
+    await collect(direct.invoke("greet", {}, { ...bareCtx(), auth }));
+
+    const boundReceipts: AuthSecurityReceipt[] = [];
+    const bound = receiptRegistry(boundReceipts);
+    registerFixtures(bound);
+    await collect(bound.withPrincipal(auth).invoke("greet", {}, bareCtx()));
+
+    // Both paths produce a tool.discover + tool.invoke authorization receipt,
+    // both attributing "principal:alice", both "allow". requestId is the only
+    // field that legitimately differs (each registry has its own counter).
+    const strip = (rs: AuthSecurityReceipt[]) =>
+      rs.map((r) => {
+        const { requestId: _requestId, ...rest } = r;
+        return rest;
+      });
+    expect(strip(boundReceipts)).toEqual(strip(directReceipts));
+    expect(directReceipts).toHaveLength(2);
+    for (const receipt of directReceipts) {
+      expect(receipt.principalId).toBe("principal:alice");
+      expect(receipt.kind).toBe("authorization");
+      expect((receipt as { outcome: string }).outcome).toBe("allow");
+    }
+  });
+
+  it("does not bleed auth state between two bound registries invoked interleaved", async () => {
+    const receipts: AuthSecurityReceipt[] = [];
+    const registry = receiptRegistry(receipts);
+    registry.register({
+      name: "slow-echo",
+      description: "slow echo",
+      input: passthrough(),
+      handler: async (input, ctx) => {
+        // Yield control mid-handler so the two concurrent invocations below
+        // genuinely interleave rather than running back-to-back.
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        return { data: { who: ctx.auth.principal.id, input } };
+      },
+    });
+
+    const alice = registry.withPrincipal(namedAuth("alice"));
+    const bob = registry.withPrincipal(namedAuth("bob"));
+
+    const [aliceResult, bobResult] = await Promise.all([
+      collect(alice.invoke("slow-echo", { tag: "a" }, bareCtx())),
+      collect(bob.invoke("slow-echo", { tag: "b" }, bareCtx())),
+    ]);
+
+    expect(aliceResult).toEqual([
+      { type: "result", data: { who: "principal:alice", input: { tag: "a" } }, display: undefined },
+    ]);
+    expect(bobResult).toEqual([
+      { type: "result", data: { who: "principal:bob", input: { tag: "b" } }, display: undefined },
+    ]);
+
+    // Every recorded receipt attributes the invocation to the principal
+    // that actually made it — no cross-contamination under concurrency.
+    const invokeReceipts = receipts.filter(
+      (r) => r.kind === "authorization" && r.action === "tool.invoke"
+    );
+    expect(invokeReceipts).toHaveLength(2);
+    expect(invokeReceipts.map((r) => r.principalId).sort()).toEqual([
+      "principal:alice",
+      "principal:bob",
+    ]);
+  });
+
+  it("a bound invoker sees a tool registered AFTER binding (dynamic, not a snapshot)", async () => {
+    const registry = ownerRegistry();
+    const bound = registry.withPrincipal(OWNER_AUTH);
+
+    // Nothing registered yet — the tool doesn't exist from either view.
+    const before = await collect(bound.invoke("late-tool", {}, bareCtx()));
+    expect(before).toMatchObject([{ type: "error", code: "TOOL_NOT_FOUND" }]);
+
+    // Register AFTER the bound invoker was created.
+    registry.register({
+      name: "late-tool",
+      description: "registered after binding",
+      input: passthrough(),
+      handler: async () => ({ data: { ok: true } }),
+    });
+
+    const after = await collect(bound.invoke("late-tool", {}, bareCtx()));
+    expect(after).toMatchObject([{ type: "result", data: { ok: true } }]);
   });
 });
