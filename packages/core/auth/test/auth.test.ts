@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   captureAuthContext,
   isAuthenticatedPrincipal,
+  ownerPrincipal,
   persistentGrantKey,
   redactAuthzResource,
   securityContextKey,
@@ -225,5 +226,46 @@ describe("redactAuthzResource", () => {
       tenantId: "tenant-1",
       workspaceId: "workspace-1",
     });
+  });
+});
+
+describe("ownerPrincipal", () => {
+  it("derives a deterministic local principal from the environment", () => {
+    const env = { USER: "david", HOSTNAME: "mac-studio" };
+    const a = ownerPrincipal(env);
+    const b = ownerPrincipal(env);
+    expect(a.principal).toEqual(b.principal);
+    expect(a.principal.kind).toBe("local");
+    expect(a.principal.identity).toEqual({
+      issuer: "gonk:local:mac-studio",
+      subject: "david",
+      method: "local",
+    });
+    expect(a.principal.roles).toEqual(["owner"]);
+  });
+
+  it("falls back to a stable default when the environment carries no user/host", () => {
+    const auth = ownerPrincipal({});
+    expect(auth.principal.identity.subject.length).toBeGreaterThan(0);
+    expect(auth.principal.identity.issuer.startsWith("gonk:local:")).toBe(true);
+  });
+
+  it("allows every action — it is the single-owner boundary, not a policy engine", async () => {
+    const auth = ownerPrincipal({ USER: "david", HOSTNAME: "mac-studio" });
+    const decision = await auth.authorize({
+      action: "tool.invoke",
+      resource: { kind: "tool", target: "anything" },
+    });
+    expect(decision.outcome).toBe("allow");
+  });
+
+  it("honors explicit overrides over environment-derived values", () => {
+    const auth = ownerPrincipal(
+      { USER: "david" },
+      { subject: "override-subject", issuer: "override-issuer", roles: ["admin"] }
+    );
+    expect(auth.principal.identity.subject).toBe("override-subject");
+    expect(auth.principal.identity.issuer).toBe("override-issuer");
+    expect(auth.principal.roles).toEqual(["owner", "admin"]);
   });
 });

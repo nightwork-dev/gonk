@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { hostname as osHostname, userInfo } from "node:os";
 
 export type AuthenticationMethod =
   | "session"
@@ -199,6 +200,80 @@ export function captureAuthContext(auth: AuthContext): Readonly<AuthContext> {
       return authorize(request);
     },
   });
+}
+
+export interface OwnerPrincipalOptions {
+  /** Stable subject override. Defaults to `env.USER`/`env.USERNAME`, then the
+   *  OS user, then `"owner"`. */
+  subject?: string;
+  /** Stable issuer override. Defaults to `gonk:local:<host>`, where `<host>`
+   *  is `env.HOSTNAME`/`env.COMPUTERNAME`, then the OS hostname, then
+   *  `"local"`. */
+  issuer?: string;
+  /** Additional roles beyond the default `"owner"`. */
+  roles?: readonly string[];
+}
+
+/**
+ * The single-owner boundary constructor: a local `AuthenticatedPrincipal`
+ * plus a permit-all-for-owner authorization policy. Bind it ONCE at host
+ * startup (`registry.withPrincipal(ownerPrincipal(env))`, `@gonk/tool-registry`)
+ * — never per call. It is for single-human hosts only: pi, a CLI invocation,
+ * a plugin MCP server with no external callers.
+ *
+ * NOT for a host with more than one caller (reach ingress, a multi-tenant MCP
+ * server). Those verify a real sender per turn and construct a distinct
+ * `AuthContext` for it instead of reaching for this.
+ *
+ * Deterministic: the same `env` always derives the same principal id, so
+ * security-context keys and receipts stay stable across restarts.
+ */
+export function ownerPrincipal(
+  env: Readonly<Record<string, string | undefined>>,
+  opts: OwnerPrincipalOptions = {}
+): AuthContext {
+  const subject =
+    opts.subject ?? env.USER ?? env.USERNAME ?? safeOsUser() ?? "owner";
+  const host =
+    env.HOSTNAME ?? env.COMPUTERNAME ?? safeOsHostname() ?? "local";
+  const issuer = opts.issuer ?? `gonk:local:${host}`;
+  const roles = opts.roles
+    ? [...new Set(["owner", ...opts.roles])]
+    : ["owner"];
+
+  const principal: AuthenticatedPrincipal = {
+    id: `local:${issuer}:${subject}`,
+    kind: "local",
+    identity: { issuer, subject, method: "local" },
+    roles,
+    scopes: [],
+  };
+
+  return {
+    principal,
+    authorize(): AuthorizationDecision {
+      return {
+        outcome: "allow",
+        reason: "owner principal — single-owner host",
+      };
+    },
+  };
+}
+
+function safeOsUser(): string | undefined {
+  try {
+    return userInfo().username;
+  } catch {
+    return undefined;
+  }
+}
+
+function safeOsHostname(): string | undefined {
+  try {
+    return osHostname();
+  } catch {
+    return undefined;
+  }
 }
 
 export interface Authenticator<RequestLike> {
