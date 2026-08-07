@@ -8,6 +8,7 @@
 import { describe, expect, it } from "vitest";
 import type {
   ExtensionSpec,
+  HostCapabilityProfile,
   ParsedSubcommandArgs,
   PresetsSpec,
   SettingsSpec,
@@ -131,5 +132,28 @@ describe("ExtensionSpec shape", () => {
       },
     };
     expect(item.type.kind).toBe("custom");
+  });
+});
+
+describe("HostCapabilityProfile shape", () => {
+  it("covers all five declared axes", () => {
+    const profile: HostCapabilityProfile = {
+      host: "demo",
+      enforcement: "enforcing",
+      injectionModel: "event-driven",
+      commandSurface: "native",
+      scheduling: "none",
+      executionLocality: "in-process",
+    };
+    expect(Object.keys(profile).sort()).toEqual(
+      [
+        "commandSurface",
+        "enforcement",
+        "executionLocality",
+        "host",
+        "injectionModel",
+        "scheduling",
+      ].sort(),
+    );
   });
 });

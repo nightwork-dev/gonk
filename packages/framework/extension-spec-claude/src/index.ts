@@ -27,3 +27,5 @@ export type {
   McpServerEntry,
   SpecHookEvent,
 } from "./types.ts";
+
+export { CLAUDE_HOST_PROFILE } from "./host-profile.ts";

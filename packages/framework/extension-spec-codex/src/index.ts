@@ -35,3 +35,5 @@ export type {
   CodexHookOutput,
   CodexSideEffectHookContext,
 } from "./run-hook.ts";
+
+export { CODEX_HOST_PROFILE } from "./host-profile.ts";
