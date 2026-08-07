@@ -39,7 +39,11 @@ export {
 } from "./metrics.ts";
 
 export { ToolRegistry, makeBaseContext } from "./registry.ts";
-export type { ToolRegistryOptions, InvokeOptions } from "./registry.ts";
+export type {
+  ToolRegistryOptions,
+  InvokeOptions,
+  BoundToolRegistry,
+} from "./registry.ts";
 
 export { shape, passthrough } from "./shape.ts";
 export { resolveInputJsonSchema, withJsonSchema } from "./json-schema.ts";

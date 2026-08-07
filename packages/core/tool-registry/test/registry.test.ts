@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
 
 import { MemoryScopeStore } from "@gonk/scope";
 
@@ -13,7 +14,30 @@ import {
   withJsonSchema,
   type ToolDefinition,
   type ToolEvent,
+  type ToolRegistryOptions,
 } from "../src/index.ts";
+
+// This suite exercises registry PLUMBING (validation, streaming, cycles,
+// abort, composition) — not authorization/approval semantics, which
+// `security.test.ts` owns. GR-83 made `ToolContext.auth` required, so every
+// invocation here binds a fixed owner principal; `approvalMode: "bypass"`
+// keeps these tests' tools (none declare an approval tier, so they'd
+// otherwise default to "exec" and hit `APPROVAL_DENIED` the moment auth
+// flows through) behaving exactly as they did before auth was mandatory.
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "test", HOSTNAME: "test-host" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
+
+function ownerCtx(
+  overrides: Partial<Omit<Parameters<typeof makeBaseContext>[0], "auth">> = {}
+) {
+  return makeBaseContext({ ...overrides, auth: OWNER_AUTH });
+}
 
 // Minimal Standard Schema impl for tests — passes anything matching shape, fails otherwise.
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
@@ -54,7 +78,7 @@ async function collect(stream: AsyncIterable<ToolEvent>): Promise<ToolEvent[]> {
 
 describe("ToolRegistry", () => {
   it("atomically replaces one source-owned catalog", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const tool = (name: string, value: string): ToolDefinition => ({
       name,
       description: name,
@@ -82,15 +106,15 @@ describe("ToolRegistry", () => {
       "remote-a.new",
     ]);
     await expect(
-      collect(r.invoke("remote-a.old", {}, makeBaseContext()))
+      collect(r.invoke("remote-a.old", {}, ownerCtx()))
     ).resolves.toMatchObject([{ type: "error", code: "TOOL_NOT_FOUND" }]);
     await expect(
-      collect(r.invoke("remote-a.kept", {}, makeBaseContext()))
+      collect(r.invoke("remote-a.kept", {}, ownerCtx()))
     ).resolves.toMatchObject([{ type: "result", data: { value: "v2" } }]);
   });
 
   it("retains the last complete source catalog when replacement fails", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const original: ToolDefinition = {
       name: "remote-a.original",
       description: "original",
@@ -111,7 +135,7 @@ describe("ToolRegistry", () => {
   });
 
   it("never exposes a partially built source catalog to concurrent readers", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const observed: string[][] = [];
     const tool = (name: string): ToolDefinition => ({
       name,
@@ -142,7 +166,7 @@ describe("ToolRegistry", () => {
   });
 
   it("rejects collisions across local registrations and source catalogs", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const tool: ToolDefinition = {
       name: "shared-name",
       description: "shared",
@@ -154,7 +178,7 @@ describe("ToolRegistry", () => {
       "conflicts with registered tool"
     );
 
-    const sourced = new ToolRegistry();
+    const sourced = ownerRegistry();
     sourced.replaceSource("remote-a", tool);
     expect(() => sourced.register(tool, { overwrite: true })).toThrow(
       "owned by a source catalog"
@@ -178,7 +202,7 @@ describe("ToolRegistry", () => {
         additionalProperties: false,
       }
     );
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const tool: ToolDefinition<{ text: string }, { echoed: string }> = {
       name: "echo",
       description: "echo",
@@ -194,7 +218,7 @@ describe("ToolRegistry", () => {
       additionalProperties: false,
     });
     await expect(
-      collect(r.invoke("echo", { wrong: true }, makeBaseContext()))
+      collect(r.invoke("echo", { wrong: true }, ownerCtx()))
     ).resolves.toMatchObject([{ type: "error", code: "INVALID_INPUT" }]);
   });
 
@@ -213,7 +237,7 @@ describe("ToolRegistry", () => {
   });
 
   it("invokes a sync tool and emits result", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const tool: ToolDefinition<{ text: string }, { echoed: string }> = {
       name: "echo",
       description: "echo",
@@ -221,31 +245,31 @@ describe("ToolRegistry", () => {
       handler: async (input) => ({ data: { echoed: input.text } }),
     };
     r.register(tool);
-    const events = await collect(r.invoke("echo", { text: "hi" }, makeBaseContext()));
+    const events = await collect(r.invoke("echo", { text: "hi" }, ownerCtx()));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: "result", data: { echoed: "hi" } });
   });
 
   it("validates input and emits INVALID_INPUT on failure", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "echo",
       description: "echo",
       input: requireString(),
       handler: async () => ({ data: null }),
     });
-    const events = await collect(r.invoke("echo", { wrong: 1 }, makeBaseContext()));
+    const events = await collect(r.invoke("echo", { wrong: 1 }, ownerCtx()));
     expect(events[0]).toMatchObject({ type: "error", code: "INVALID_INPUT" });
   });
 
   it("emits TOOL_NOT_FOUND for missing tools", async () => {
-    const r = new ToolRegistry();
-    const events = await collect(r.invoke("ghost", {}, makeBaseContext()));
+    const r = ownerRegistry();
+    const events = await collect(r.invoke("ghost", {}, ownerCtx()));
     expect(events[0]).toMatchObject({ type: "error", code: "TOOL_NOT_FOUND" });
   });
 
   it("converts ToolError throws into error events", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "boom",
       description: "boom",
@@ -254,12 +278,12 @@ describe("ToolRegistry", () => {
         throw new ToolError("BOOM", "kaboom");
       },
     });
-    const events = await collect(r.invoke("boom", {}, makeBaseContext()));
+    const events = await collect(r.invoke("boom", {}, ownerCtx()));
     expect(events[0]).toMatchObject({ type: "error", code: "BOOM", message: "kaboom" });
   });
 
   it("propagates streaming events from async iterable handlers", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "stream",
       description: "stream",
@@ -270,14 +294,14 @@ describe("ToolRegistry", () => {
         yield { type: "result", data: { ok: true } } as ToolEvent;
       },
     });
-    const events = await collect(r.invoke("stream", {}, makeBaseContext()));
+    const events = await collect(r.invoke("stream", {}, ownerCtx()));
     expect(events).toHaveLength(3);
     expect(events[0]?.type).toBe("progress");
     expect(events[2]).toMatchObject({ type: "result", data: { ok: true } });
   });
 
   it("aborts a streaming handler when signal fires", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const ac = new AbortController();
     r.register({
       name: "loop",
@@ -292,7 +316,7 @@ describe("ToolRegistry", () => {
         yield { type: "result", data: { i } } as ToolEvent;
       },
     });
-    const ctx = { ...makeBaseContext({ signal: ac.signal }) };
+    const ctx = { ...ownerCtx({ signal: ac.signal }) };
     const stream = r.invoke("loop", {}, ctx);
     const events: ToolEvent[] = [];
     setTimeout(() => ac.abort(), 30);
@@ -307,14 +331,14 @@ describe("ToolRegistry", () => {
 
   it("records metrics", async () => {
     const sink = inMemorySink();
-    const r = new ToolRegistry({ metrics: sink });
+    const r = ownerRegistry({ metrics: sink });
     r.register({
       name: "ok",
       description: "ok",
       input: passthrough(),
       handler: async () => ({ data: 1 }),
     });
-    await collect(r.invoke("ok", {}, makeBaseContext()));
+    await collect(r.invoke("ok", {}, ownerCtx()));
     const snap = sink.snapshot();
     expect(snap).toHaveLength(1);
     expect(snap[0]?.outcome).toBe("ok");
@@ -322,7 +346,7 @@ describe("ToolRegistry", () => {
   });
 
   it("validates output strictly", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const failingOutput: StandardSchemaV1<unknown, unknown> = {
       "~standard": {
         version: 1,
@@ -338,12 +362,12 @@ describe("ToolRegistry", () => {
       validateOutput: "strict",
       handler: async () => ({ data: { anything: true } }),
     });
-    const events = await collect(r.invoke("bad-out", {}, makeBaseContext()));
+    const events = await collect(r.invoke("bad-out", {}, ownerCtx()));
     expect(events[0]).toMatchObject({ type: "error", code: "OUTPUT_INVALID" });
   });
 
   it("supports cross-tool composition via ctx.invoke", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "inner",
       description: "inner",
@@ -362,7 +386,7 @@ describe("ToolRegistry", () => {
         return { data: { outer: true, inner } };
       },
     });
-    const events = await collect(r.invoke("outer", {}, makeBaseContext()));
+    const events = await collect(r.invoke("outer", {}, ownerCtx()));
     expect(events[0]).toMatchObject({
       type: "result",
       data: { outer: true, inner: { inner: 42 } },
@@ -370,7 +394,7 @@ describe("ToolRegistry", () => {
   });
 
   it("detects cycles in cross-tool composition", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "a",
       description: "a",
@@ -382,12 +406,12 @@ describe("ToolRegistry", () => {
         return { data: { error: null } };
       },
     });
-    const events = await collect(r.invoke("a", {}, makeBaseContext()));
+    const events = await collect(r.invoke("a", {}, ownerCtx()));
     expect(events[0]).toMatchObject({ type: "result", data: { error: "CYCLE" } });
   });
 
   it("exposes ctx.input to duplex tools and is undefined when no input given", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const seen: unknown[] = [];
     r.register({
       name: "duplex",
@@ -409,7 +433,7 @@ describe("ToolRegistry", () => {
       yield { type: "control" as const, op: "end-turn" as const };
     })();
 
-    const ctx = { ...makeBaseContext(), input: inputStream };
+    const ctx = { ...ownerCtx(), input: inputStream };
     const events = await collect(r.invoke("duplex", {}, ctx));
     expect(events[0]).toMatchObject({ type: "result", data: { hadInput: true, count: 2 } });
     expect(seen).toHaveLength(2);
@@ -418,7 +442,7 @@ describe("ToolRegistry", () => {
   });
 
   it("does not forward parent's ctx.input to child tools via ctx.invoke", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     let childSawInput = false;
     r.register({
       name: "child",
@@ -440,13 +464,13 @@ describe("ToolRegistry", () => {
     const inputStream = (async function* () {
       yield { type: "text" as const, text: "hi" };
     })();
-    const ctx = { ...makeBaseContext(), input: inputStream };
+    const ctx = { ...ownerCtx(), input: inputStream };
     const events = await collect(r.invoke("parent", {}, ctx));
     expect(events[0]).toMatchObject({ type: "result", data: { childSawInput: false } });
   });
 
   it("threads ctx.scope to handlers and forwards to children via ctx.invoke", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     const seen = { parent: undefined as string | undefined, child: undefined as string | undefined };
 
     r.register({
@@ -471,16 +495,16 @@ describe("ToolRegistry", () => {
 
     const scope = new MemoryScopeStore();
     scope.set("k", "v-from-persona", "persona");
-    const ctx = { ...makeBaseContext(), scope };
+    const ctx = { ...ownerCtx(), scope };
     await collect(r.invoke("parent", {}, ctx));
     expect(seen.parent).toBe("v-from-persona");
     expect(seen.child).toBe("v-from-persona");
   });
 
   it("merges and extracts registries", async () => {
-    const a = new ToolRegistry();
+    const a = ownerRegistry();
     a.register({ name: "x", description: "x", input: passthrough(), handler: async () => ({ data: 1 }) });
-    const b = new ToolRegistry();
+    const b = ownerRegistry();
     b.register({ name: "y", description: "y", input: passthrough(), handler: async () => ({ data: 2 }) });
     const merged = a.merge(b);
     expect(merged.list().map((t) => t.name).sort()).toEqual(["x", "y"]);
@@ -490,7 +514,7 @@ describe("ToolRegistry", () => {
   });
 
   it("skips tools whose `requires` predicate returns false", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "always",
       description: "always-on",

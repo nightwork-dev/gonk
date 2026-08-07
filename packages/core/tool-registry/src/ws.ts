@@ -1,5 +1,5 @@
 import type { ToolContext, ToolDefinition, ToolEvent } from "./types.ts";
-import { ToolRegistry, makeBaseContext } from "./registry.ts";
+import { ToolRegistry } from "./registry.ts";
 
 // =============================================================================
 // registry → WebSocket projection (transport-agnostic).
@@ -87,9 +87,14 @@ export interface WsProjectionConfig<Caller> {
    *  restriction). Override to match the host's mutation model — but a restricted
    *  op broadcast reaches clients that could not invoke it (see header). */
   shouldBroadcast?(tool: ToolDefinition, caller: Caller): boolean;
-  /** Build the per-invocation ToolContext (signal, cwd, scope, …). Defaults to
-   *  `makeBaseContext()`. */
-  makeContext?(caller: Caller): Omit<ToolContext, "invoke" | "callStack">;
+  /** Build the per-invocation ToolContext (signal, cwd, scope, auth, …).
+   *  REQUIRED (GR-83): `ToolContext.auth` is a required field with no
+   *  ambient fallback, and a WS `Caller` is host-defined — core cannot
+   *  derive a principal from it. Construct the `AuthContext` here from the
+   *  same verified `caller` `authorize` above trusts (a per-request bind,
+   *  the "per-turn principal" shape GR-83 names for reach-ingress-style
+   *  hosts — do not collapse every caller onto one bound owner). */
+  makeContext(caller: Caller): Omit<ToolContext, "invoke" | "callStack">;
   /** Broadcast sink. Omit to disable broadcasts (request/reply only). */
   emitter?: WsEmitter;
 }
@@ -161,7 +166,7 @@ export function makeWsHandler<Caller = unknown>(
         return errorMsg(req.reqId, `Not authorized to invoke ${req.op}`);
       }
 
-      const ctx = config.makeContext ? config.makeContext(req.caller) : makeBaseContext();
+      const ctx = config.makeContext(req.caller);
       const outcome = await collectOutcome(registry.invoke(req.op, req.input, ctx));
       if (!outcome.ok) return errorMsg(req.reqId, outcome.message);
 
