@@ -82,3 +82,5 @@ export { isInteractiveMode } from "./pi-types.ts";
 
 export { probePiModel } from "./probe-model.ts";
 export type { PiModelProbe } from "./probe-model.ts";
+
+export { PI_HOST_PROFILE } from "./host-profile.ts";
