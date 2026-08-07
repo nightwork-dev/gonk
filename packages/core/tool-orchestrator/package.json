@@ -37,6 +37,7 @@
     "@standard-schema/spec": "catalog:"
   },
   "devDependencies": {
+    "@gonk/auth": "workspace:*",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",

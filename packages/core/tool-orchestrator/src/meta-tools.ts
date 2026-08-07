@@ -201,25 +201,17 @@ export function metaTools(orch: Orchestrator): ToolDefinition[] {
       mcp: { annotations: { readOnly: false, idempotent: true } },
     },
     handler: async (input, ctx) => {
-      if (ctx.auth) {
-        const tool = orch.allTools().find((t) => t.name === input.name);
-        if (!tool || !(await canDiscover(tool, ctx))) {
-          return {
-            data: { queued: "" },
-            display: `No such tool: ${input.name}`,
-          };
-        }
-        orch.unpin(tool.name);
+      const tool = orch.allTools().find((t) => t.name === input.name);
+      if (!tool || !(await canDiscover(tool, ctx))) {
         return {
-          data: { queued: tool.name },
-          display: `Queued unpin of ${tool.name}.`,
-        } satisfies ToolResult;
+          data: { queued: "" },
+          display: `No such tool: ${input.name}`,
+        };
       }
-
-      orch.unpin(input.name);
+      orch.unpin(tool.name);
       return {
-        data: { queued: input.name },
-        display: `Queued unpin of ${input.name}.`,
+        data: { queued: tool.name },
+        display: `Queued unpin of ${tool.name}.`,
       } satisfies ToolResult;
     },
   };
@@ -282,8 +274,6 @@ async function filterDiscoverable(
   tools: ToolDefinition[],
   ctx: ToolContext
 ): Promise<ToolDefinition[]> {
-  if (!ctx.auth) return tools;
-
   const visible: ToolDefinition[] = [];
   for (const tool of tools) {
     if (await canDiscover(tool, ctx)) visible.push(tool);
@@ -295,8 +285,6 @@ async function canDiscover(
   tool: ToolDefinition,
   ctx: ToolContext
 ): Promise<boolean> {
-  if (!ctx.auth) return true;
-
   try {
     const decision = await ctx.auth.authorize({
       action: "tool.discover",

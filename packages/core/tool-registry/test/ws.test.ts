@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { ToolRegistry } from "../src/registry.ts";
+import { ownerPrincipal } from "@gonk/auth";
+import { makeBaseContext, ToolRegistry } from "../src/registry.ts";
 import { shape } from "../src/shape.ts";
 import type { ToolContext, ToolDefinition, ToolEvent } from "../src/types.ts";
 import { InMemoryWsEmitter, makeWsHandler, type WsProjectionConfig } from "../src/ws.ts";
 
 type Caller = "agent" | "human";
+
+// GR-83: ToolContext.auth is required, and WsProjectionConfig.makeContext is
+// now required too (a WS `Caller` is host-defined; core cannot derive a
+// principal from it — see ws.ts's doc comment on `makeContext`). These tests
+// exercise the WS projection's own authorize/broadcast semantics via
+// `config.authorize`, not gonk's registry-level authorization, so every
+// caller binds the same owner principal here.
+const WS_OWNER_AUTH = ownerPrincipal({ USER: "ws-test" });
 
 const anyInput = shape<Record<string, unknown>>(
   (v): v is Record<string, unknown> => !!v && typeof v === "object",
@@ -34,11 +43,17 @@ function tool(
 // Host policy: interpret gonk's real `authorization.requiredRole` against the caller.
 const config: WsProjectionConfig<Caller> = {
   authorize: (t, caller) => !t.authorization?.requiredRole || t.authorization.requiredRole === caller,
+  makeContext: () => makeBaseContext({ auth: WS_OWNER_AUTH }),
 };
 
 function setup(overrides: Partial<WsProjectionConfig<Caller>> = {}) {
   handlerCalls = [];
-  const registry = new ToolRegistry();
+  // approvalMode: "bypass" — these tests exercise ws.ts's own authorize/
+  // broadcast gate (config.authorize), not gonk's registry-level approval
+  // tiers; the registered tools declare no `approval`, which now that auth
+  // flows through would otherwise default to "exec" and hit
+  // APPROVAL_DENIED with no approvalProvider configured.
+  const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
   registry.register([
     tool("piece.get", { readOnly: true }),                          // read: no broadcast
     tool("draft.propose", { readOnly: false }),                     // unrestricted write: broadcast
@@ -110,7 +125,7 @@ describe("registry → WS projection", () => {
   // ── regressions from the GLM-REVIEW-WS PoCs (flipped to the corrected behavior) ──
 
   it("result-then-error stream → FAILURE reply, no broadcast (any error is terminal)", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([{
       name: "flaky.op", description: "f", input: anyInput,
       hints: { mcp: { annotations: { readOnly: false } } },
@@ -127,7 +142,7 @@ describe("registry → WS projection", () => {
   });
 
   it("multiple result events → LAST result wins (tail not silently dropped)", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([{
       name: "multi.op", description: "m", input: anyInput,
       handler: async function* (): AsyncIterable<ToolEvent> {
@@ -141,17 +156,18 @@ describe("registry → WS projection", () => {
   });
 
   it("authorize/makeContext throwing → error reply, not an unhandled rejection", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([tool("piece.get", { readOnly: true })]);
     const handle = makeWsHandler(registry, {
       authorize: () => { throw new Error("policy exploded"); },
+      makeContext: config.makeContext,
     });
     await expect(handle({ op: "piece.get", reqId: "e", caller: "agent", input: {} }))
       .resolves.toEqual({ type: "error", reqId: "e", message: "policy exploded" });
   });
 
   it("makeContext throwing → error reply", async () => {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([tool("piece.get", { readOnly: true })]);
     const handle = makeWsHandler(registry, {
       authorize: () => true,
@@ -166,12 +182,13 @@ describe("registry → WS projection", () => {
     // success as a client-facing error — the caller gets its result, nothing fans
     // out. (Regression: previously the outer catch turned this into an error reply.)
     const emitter = new InMemoryWsEmitter();
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([tool("draft.propose", { readOnly: false })]);
     const handle = makeWsHandler(registry, {
       authorize: () => true,
       shouldBroadcast: () => { throw new Error("policy boom"); },
       emitter,
+      makeContext: config.makeContext,
     });
     await expect(handle({ op: "draft.propose", reqId: "sb", caller: "agent", input: {} }))
       .resolves.toMatchObject({ type: "result", reqId: "sb", result: { ok: "draft.propose" } });
@@ -181,11 +198,12 @@ describe("registry → WS projection", () => {
   it("emitter.broadcast throwing (post-commit) → result still returned", async () => {
     // Same guarantee for the emitter itself failing after a committed mutation.
     const throwingEmitter = { broadcast: () => { throw new Error("socket gone"); } };
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([tool("draft.propose", { readOnly: false })]);
     const handle = makeWsHandler(registry, {
       authorize: () => true,
       emitter: throwingEmitter,
+      makeContext: config.makeContext,
     });
     await expect(handle({ op: "draft.propose", reqId: "eb", caller: "agent", input: {} }))
       .resolves.toMatchObject({ type: "result", reqId: "eb", result: { ok: "draft.propose" } });
@@ -193,10 +211,11 @@ describe("registry → WS projection", () => {
 
   it("authorize receives the request input (input-aware policy)", async () => {
     const seen: unknown[] = [];
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([tool("piece.get", { readOnly: true })]);
     const handle = makeWsHandler(registry, {
       authorize: (_t, _c, input) => { seen.push(input); return true; },
+      makeContext: config.makeContext,
     });
     await handle({ op: "piece.get", caller: "agent", input: { scoped: 42 } });
     expect(seen).toEqual([{ scoped: 42 }]);
@@ -204,7 +223,7 @@ describe("registry → WS projection", () => {
 
   it("fail-closed default: blank/empty authorization fields still suppress broadcast (NEW-2)", async () => {
     const emitter = new InMemoryWsEmitter();
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([
       { name: "empty.callers", description: "e", input: anyInput,
         hints: { mcp: { annotations: { readOnly: false } } },
@@ -215,7 +234,7 @@ describe("registry → WS projection", () => {
         authorization: { requiredRole: "" },
         handler: async () => ({ data: { s: 2 } }) },
     ]);
-    const handle = makeWsHandler(registry, { authorize: () => true, emitter });
+    const handle = makeWsHandler(registry, { authorize: () => true, emitter, makeContext: config.makeContext });
     await handle({ op: "empty.callers", caller: "agent", input: {} });
     await handle({ op: "blank.role", caller: "agent", input: {} });
     expect(emitter.sent).toHaveLength(0); // both restricted-by-declaration → no default broadcast
@@ -235,7 +254,7 @@ describe("registry → WS projection", () => {
       authorization: { requiredRole: "human" },
       handler: async () => { seen.push("draft.lock-ran"); return { data: { locked: true } }; },
     };
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security: { approvalMode: "bypass" } });
     registry.register([composer, draftLock]);
     const handle = makeWsHandler(registry, { ...config, emitter: new InMemoryWsEmitter() });
 

@@ -11,6 +11,10 @@
       "types": "./dist/types.d.ts",
       "import": "./dist/types.js"
     },
+    "./contracts": {
+      "types": "./dist/contracts.d.ts",
+      "import": "./dist/contracts.js"
+    },
     "./registry": {
       "types": "./dist/registry.d.ts",
       "import": "./dist/registry.js"

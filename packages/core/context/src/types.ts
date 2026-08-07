@@ -1,8 +1,11 @@
+// Sourced from @gonk/auth's client-safe subpath (not the bare package
+// entry): this file backs @gonk/context/contracts (GR-84), which must never
+// transitively resolve @gonk/auth's Node-touching security.ts.
 import type {
   AuthContext,
   AuthenticatedPrincipal,
   AuthzResource,
-} from "@gonk/auth";
+} from "@gonk/auth/contracts";
 
 export type ContextAudience = "model" | "user";
 export type ContextNecessity = "optional" | "required";

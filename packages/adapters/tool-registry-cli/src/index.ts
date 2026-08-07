@@ -7,6 +7,7 @@ import type {
   ToolRegistry,
 } from "@gonk/tool-registry";
 import { makeBaseContext } from "@gonk/tool-registry";
+import type { AuthContext } from "@gonk/auth";
 import type { Orchestrator } from "@gonk/tool-orchestrator";
 import type { ScopeStore } from "@gonk/scope";
 
@@ -14,6 +15,13 @@ export interface CliAdapterOptions {
   binaryName: string;
   version?: string;
   source: ToolRegistry | Orchestrator;
+  /** Principal bound once for every invocation this CLI process makes
+   *  (GR-83: "explicit once, ambient never"). The CLI is a single-human
+   *  host — construct with `ownerPrincipal(process.env)` (`@gonk/auth`)
+   *  unless the caller has a real transport-authenticated principal. There
+   *  is no default: `ToolContext.auth` is required, so core refuses to
+   *  invoke without one. */
+  auth: AuthContext;
   /** When true, all output is JSON Lines on stdout. */
   jsonMode?: boolean;
   /** ScopeStore threaded into ctx.scope for every tool invocation. Optional —
@@ -111,7 +119,7 @@ export function createCli(options: CliAdapterOptions): Cli {
         const log = makeStderrLogger(io.stderr);
         const scope = io.scope ?? options.scope;
         const baseCtx = {
-          ...makeBaseContext({ signal: ac.signal, log }),
+          ...makeBaseContext({ signal: ac.signal, log, auth: options.auth }),
           ...(io.cwd !== undefined ? { cwd: io.cwd } : {}),
           ...(io.env !== undefined ? { env: io.env } : {}),
           ...(scope ? { scope } : {}),

@@ -1,9 +1,29 @@
 import { describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import { ToolRegistry, type ToolDefinition, type ToolEvent } from "@gonk/tool-registry";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
+import {
+  ToolRegistry,
+  type ToolDefinition,
+  type ToolEvent,
+  type ToolRegistryOptions,
+} from "@gonk/tool-registry";
 
 import { createCli } from "../src/index.ts";
+
+// GR-83: CliAdapterOptions.auth is required. These tests are about CLI
+// argv/output plumbing, not authorization; every run binds a fixed
+// permit-all owner and bypasses approval (most test tools declare no
+// `approval` tier, defaulting to "exec", which would otherwise deny once
+// auth flows in).
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "cli-test" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -41,12 +61,13 @@ function setup(tools: ToolDefinition<any, any>[], opts: { jsonMode?: boolean } =
   stdout: CapturingStream;
   stderr: CapturingStream;
 } {
-  const r = new ToolRegistry();
+  const r = ownerRegistry();
   r.register(tools);
   const cli = createCli({
     binaryName: "test-bin",
     version: "1.2.3",
     source: r,
+    auth: OWNER_AUTH,
     ...(opts.jsonMode !== undefined ? { jsonMode: opts.jsonMode } : {}),
   });
   return { cli, stdout: new CapturingStream(), stderr: new CapturingStream() };

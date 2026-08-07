@@ -1,3 +1,4 @@
+import type { AuthContext } from "@gonk/auth";
 import type { ScopeStore } from "@gonk/scope";
 import type { ExtensionSpec, SubcommandContext } from "@gonk/extension-spec";
 import { ToolRegistry } from "@gonk/tool-registry";
@@ -31,6 +32,12 @@ export interface RegisterSpecOptions {
   pi: PiExtensionAPI;
   /** Bound scope store. Tools, slash command, and TUI all read/write through this. */
   scope: ScopeStore;
+  /** Principal bound once for every tool call this extension makes (GR-83:
+   *  "explicit once, ambient never"). Pi is a single-human host — pass
+   *  `ownerPrincipal(process.env)` (`@gonk/auth`) unless the host has a real
+   *  transport-authenticated principal. There is no default:
+   *  `ToolContext.auth` is required, so core refuses to invoke without one. */
+  auth: AuthContext;
   /** Spec to materialize. */
   spec: ExtensionSpec;
   /** npm package name (e.g. "@gonk/pi-introspect"). When supplied, gets
@@ -88,7 +95,7 @@ export type EditFlowHandler = (
  *  currently expose unregister APIs, so the function is a no-op today —
  *  reserved for future symmetry.) */
 export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
-  const { pi, scope, spec, tui, editFlow, packageName } = opts;
+  const { pi, scope, spec, tui, editFlow, packageName, auth } = opts;
 
   // Record this extension's load in the process-wide gonk registry. This
   // is what `harness_status` reads to answer "which extensions are loaded
@@ -105,7 +112,7 @@ export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
   if (spec.tools && spec.tools.length > 0) {
     const registry = new ToolRegistry();
     registry.register(spec.tools);
-    registerGonkTools({ pi, source: registry, scope });
+    registerGonkTools({ pi, source: registry, scope, auth });
   }
 
   // 2. Slash command

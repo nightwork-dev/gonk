@@ -86,7 +86,7 @@ describe("secured ToolRegistry dispatch", () => {
     );
     const empty = new ToolRegistry();
     const missing = await collect(
-      empty.invoke("hidden", {}, makeBaseContext())
+      empty.invoke("hidden", {}, ctx)
     );
 
     expect(hidden).toEqual(missing);
@@ -283,7 +283,15 @@ describe("secured ToolRegistry dispatch", () => {
     expect(handled).toBe(false);
   });
 
-  it("keeps trusted no-auth invocation backward-compatible and skips resolution", async () => {
+  // GR-83: ToolContext.auth is required — there is no "trusted no-auth"
+  // dispatch path left in core. A well-typed caller gets this at compile
+  // time (constructing a ToolContext, or calling `makeBaseContext`, without
+  // `auth` is a TS error — see `test/registry.test.ts`'s `ownerCtx` helper,
+  // which would not compile without supplying one). This test proves the
+  // runtime half: a caller that reaches the registry with no auth anyway
+  // (plain JS, a stale object, anything TypeScript can't see) is rejected
+  // with a named error rather than silently dispatched as an implicit owner.
+  it("rejects invocation with no AuthContext at runtime — no ambient owner fallback", async () => {
     let resolves = 0;
     const registry = new ToolRegistry({
       security: {
@@ -295,6 +303,7 @@ describe("secured ToolRegistry dispatch", () => {
         },
       },
     });
+    let handled = false;
     registry.register({
       name: "local",
       description: "local",
@@ -303,17 +312,31 @@ describe("secured ToolRegistry dispatch", () => {
         required: true,
         kind: "application:review",
       },
-      handler: async () => ({ data: { ok: true } }),
+      handler: async () => {
+        handled = true;
+        return { data: { ok: true } };
+      },
     });
 
+    const untypedCallerCtx = {
+      signal: new AbortController().signal,
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      cwd: process.cwd(),
+      env: process.env,
+      // No `auth` — simulates a caller TypeScript cannot see through
+      // (plain JS, `any`), which is exactly what the runtime guard exists
+      // to catch since the compile-time guard can't reach it.
+    } as unknown as Parameters<ToolRegistry["invoke"]>[2];
+
     const events = await collect(
-      registry.invoke("local", {}, makeBaseContext())
+      registry.invoke("local", {}, untypedCallerCtx)
     );
     expect(events[0]).toMatchObject({
-      type: "result",
-      data: { ok: true },
+      type: "error",
+      code: "AUTH_REQUIRED",
     });
     expect(resolves).toBe(0);
+    expect(handled).toBe(false);
   });
 
   it("reauthorizes composed children with the original principal and call stack", async () => {
@@ -420,24 +443,25 @@ describe("secured ToolRegistry dispatch", () => {
         approval: "read",
         input: passthrough(),
         handler: async (_input, ctx) => {
-          const exposed = ctx.auth as
-            | {
-                authorize: AuthContext["authorize"];
-                principal: { roles: string[] };
-              }
-            | undefined;
+          // ctx.auth is required (GR-83) — always present here. The
+          // double-cast (via unknown) is deliberate: it re-types roles as
+          // mutable so `.push` below type-checks, proving at RUNTIME (via
+          // the catch) that the captured principal is frozen even though
+          // this handler's own type view claims otherwise.
+          const exposed = ctx.auth as unknown as {
+            authorize: AuthContext["authorize"];
+            principal: { roles: string[] };
+          };
           try {
-            if (exposed) {
-              exposed.authorize = () => ({
-                outcome: "allow",
-                reason: "handler replacement",
-              });
-            }
+            exposed.authorize = () => ({
+              outcome: "allow",
+              reason: "handler replacement",
+            });
           } catch {
             // The captured context is immutable.
           }
           try {
-            exposed?.principal.roles.push("admin");
+            exposed.principal.roles.push("admin");
           } catch {
             // The captured principal is immutable.
           }

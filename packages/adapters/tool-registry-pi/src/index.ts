@@ -7,6 +7,7 @@ import {
   type ToolEvent,
   type ToolRegistry,
 } from "@gonk/tool-registry";
+import type { AuthContext } from "@gonk/auth";
 import type { ScopeStore } from "@gonk/scope";
 import type { Orchestrator } from "@gonk/tool-orchestrator";
 
@@ -93,6 +94,13 @@ export interface RegisterGonkToolsOptions {
   /** Tools to register. With an Orchestrator, the active set is registered;
    *  with a raw Registry, the full list is. */
   source: ToolRegistry | Orchestrator;
+  /** Principal bound once for every tool call this extension registration
+   *  makes (GR-83: "explicit once, ambient never"). Pi is a single-human
+   *  host — construct with `ownerPrincipal(process.env)` (`@gonk/auth`)
+   *  unless the host has a real transport-authenticated principal. There is
+   *  no default: `ToolContext.auth` is required, so core refuses to invoke
+   *  without one. */
+  auth: AuthContext;
   /** Scope binding for `ctx.scope` when tools execute. Optional but strongly
    *  recommended — without it persona/scope-aware tools degrade. */
   scope?: ScopeStore;
@@ -181,7 +189,7 @@ function toPiToolSpec(
     description: appendCostLatencyHints(tool, resolvedDescription),
     parameters: tool.inputJsonSchema ?? { type: "object", properties: {}, additionalProperties: true },
     async execute(_toolCallId, params, signal, onUpdate, piCtx) {
-      const baseCtx = makeBaseContext({ signal, log });
+      const baseCtx = makeBaseContext({ signal, log, auth: options.auth });
       const ctx = {
         ...baseCtx,
         ...(options.scope ? { scope: options.scope } : {}),

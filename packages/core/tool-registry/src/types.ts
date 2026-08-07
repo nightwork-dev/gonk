@@ -80,8 +80,17 @@ export interface ToolContext {
 
   /** Transport-authenticated principal plus the host/Gonk authorization policy.
    *  Canonical registry dispatch rechecks this context for root and composed
-   *  invocations. Raw credentials never belong here. */
-  auth?: AuthContext;
+   *  invocations. Raw credentials never belong here.
+   *
+   *  REQUIRED (GR-83): core refuses to invoke without one — there is no
+   *  "assume owner" fallback inside gonk. A single-principal host binds once
+   *  at startup (`registry.withPrincipal(ownerPrincipal(env))`,
+   *  `@gonk/tool-registry` / `@gonk/auth`) and every downstream call flows
+   *  through the bound invoker with zero per-call configuration. A host that
+   *  wants per-turn principals (reach ingress, a multi-tenant transport)
+   *  rebinds per verified sender instead. A host that forgets to bind fails
+   *  loudly (`AUTH_REQUIRED`) — it never silently acts as owner. */
+  auth: AuthContext;
 }
 
 // =============================================================================
@@ -206,8 +215,7 @@ export type ToolVisibility =
  *  registry includes it in the canonical tool authorization resource; the
  *  injected `AuthContext` policy interprets the host-defined vocabulary.
  *  All fields remain optional and free-form so Gonk does not bake in a role
- *  hierarchy. A trusted invocation with no `ctx.auth` remains backward
- *  compatible and does not claim to be authenticated. */
+ *  hierarchy. */
 export interface ToolAuthorization {
   /** Minimum authorization level required to invoke (host-defined vocabulary). */
   authLevel?: string;
@@ -282,10 +290,9 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *  escalate a specific arg pattern — e.g. bash forcing `rm -rf /` to exec
    *  with `override: true`).
    *
-   *  Authenticated registry dispatch and approval gates such as
-   *  `@gonk/pi-guard` treat NO or malformed declaration as the most-restrictive
-   *  tier (`exec`) so unknown / MCP / custom tools fail safe. Trusted internal
-   *  dispatch without `ctx.auth` remains ungated. */
+   *  Registry dispatch and approval gates such as `@gonk/pi-guard` treat NO
+   *  or malformed declaration as the most-restrictive tier (`exec`) so
+   *  unknown / MCP / custom tools fail safe. */
   approval?: ToolApproval;
 
   /** Self-declared authorization — *who* may invoke this tool. Registry

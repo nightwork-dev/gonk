@@ -21,7 +21,16 @@ import {
 const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
 const LOCAL_DEVELOPMENT_CLIENT_ID = "gonk-web-keyless-development";
 
-export interface WebMcpHandlerOptions extends McpAdapterOptions {
+export interface WebMcpHandlerOptions
+  extends Omit<McpAdapterOptions, "makeAuthContext"> {
+  /** Host-owned per-request authorization policy. Optional HERE (unlike the
+   *  stdio `McpAdapterOptions.makeAuthContext`, which GR-83 makes required)
+   *  because this handler has its own explicit, guarded escape hatch:
+   *  construction throws below unless either this is set or
+   *  `allowUnrestrictedTools` is `true`. The internal `makeAuthContext`
+   *  passed to `createMcpServer` further down always resolves a concrete
+   *  `AuthContext` — core never receives an ambient one. */
+  makeAuthContext?: McpAdapterOptions["makeAuthContext"];
   /** Simple bearer credential for app-owned endpoints. For richer identity,
    *  provide authenticate and return SDK AuthInfo with host data in extra. */
   apiKey?: string;

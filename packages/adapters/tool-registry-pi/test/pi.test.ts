@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
-import { ToolRegistry, type ToolDefinition, type ToolEvent } from "@gonk/tool-registry";
+import { ownerPrincipal, type AuthContext } from "@gonk/auth";
+import {
+  ToolRegistry,
+  type ToolDefinition,
+  type ToolEvent,
+  type ToolRegistryOptions,
+} from "@gonk/tool-registry";
 import { createOrchestrator } from "@gonk/tool-orchestrator";
 import { MemoryScopeStore } from "@gonk/scope";
 
@@ -15,6 +21,20 @@ import {
   type PiToolSpec,
   type PiToolUpdate,
 } from "../src/index.ts";
+
+// GR-83: RegisterGonkToolsOptions.auth is required. These tests are about
+// Pi tool registration/dispatch plumbing, not authorization, so every call
+// binds a fixed permit-all owner principal; `ownerRegistry` also bypasses
+// approval since most registered test tools declare no `approval` tier
+// (defaults to "exec", which would otherwise deny once auth flows in).
+const OWNER_AUTH: AuthContext = ownerPrincipal({ USER: "pi-test" });
+
+function ownerRegistry(opts: ToolRegistryOptions = {}): ToolRegistry {
+  return new ToolRegistry({
+    ...opts,
+    security: { approvalMode: "bypass", ...opts.security },
+  });
+}
 
 function passthrough<T>(): StandardSchemaV1<unknown, T> {
   return {
@@ -35,7 +55,7 @@ class FakePi implements PiExtensionAPI {
 
 describe("registerGonkTools", () => {
   it("registers each tool from a registry as a Pi tool", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       {
         name: "echo",
@@ -53,7 +73,7 @@ describe("registerGonkTools", () => {
     ] as ToolDefinition[]);
 
     const pi = new FakePi();
-    const result = registerGonkTools({ pi, source: r });
+    const result = registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     expect(result.registered).toEqual(["echo", "compute"]);
     expect(pi.registered).toHaveLength(2);
     expect(pi.registered[0]?.name).toBe("echo");
@@ -64,25 +84,25 @@ describe("registerGonkTools", () => {
   });
 
   it("uses the orchestrator's activeSet when given an Orchestrator", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       { name: "always", description: "a", visibility: "always", input: passthrough(), handler: async () => ({ data: 1 }) },
       { name: "ondemand", description: "o", visibility: "on-demand", input: passthrough(), handler: async () => ({ data: 2 }) },
     ] as ToolDefinition[]);
     const orch = createOrchestrator({ registries: [r], scope: "pi", registerMetaTools: false });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: orch });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: orch });
     expect(pi.registered.map((s) => s.name)).toEqual(["always"]);
 
     orch.pin("ondemand");
     await orch.commitPins();
     const pi2 = new FakePi();
-    registerGonkTools({ pi: pi2, source: orch });
+    registerGonkTools({ auth: OWNER_AUTH, pi: pi2, source: orch });
     expect(pi2.registered.map((s) => s.name).sort()).toEqual(["always", "ondemand"]);
   });
 
   it("skips duplex tools and reports them in skipped[]", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       { name: "ok", description: "ok", input: passthrough(), handler: async () => ({ data: 1 }) },
       {
@@ -94,25 +114,25 @@ describe("registerGonkTools", () => {
       },
     ] as ToolDefinition[]);
     const pi = new FakePi();
-    const result = registerGonkTools({ pi, source: r });
+    const result = registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     expect(result.registered).toEqual(["ok"]);
     expect(result.skipped[0]?.name).toBe("voice");
     expect(result.skipped[0]?.reason).toContain("duplex");
   });
 
   it("filter callback can exclude tools", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       { name: "a", description: "a", input: passthrough(), handler: async () => ({ data: 1 }) },
       { name: "b", description: "b", input: passthrough(), handler: async () => ({ data: 2 }) },
     ] as ToolDefinition[]);
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r, filter: (t) => t.name !== "b" });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r, filter: (t) => t.name !== "b" });
     expect(pi.registered.map((s) => s.name)).toEqual(["a"]);
   });
 
   it("execute() dispatches through the registry and returns content + details", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "say",
       description: "say",
@@ -123,7 +143,7 @@ describe("registerGonkTools", () => {
       }),
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const spec = pi.registered[0]!;
     const result = await spec.execute(
       "call-1",
@@ -138,7 +158,7 @@ describe("registerGonkTools", () => {
   });
 
   it("execute() forwards progress and data to onUpdate", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "stream",
       description: "stream",
@@ -150,7 +170,7 @@ describe("registerGonkTools", () => {
       },
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const updates: PiToolUpdate[] = [];
     await pi.registered[0]!.execute(
       "call",
@@ -174,7 +194,7 @@ describe("registerGonkTools", () => {
   });
 
   it("execute() returns isError content when the tool errors", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "boom",
       description: "boom",
@@ -184,7 +204,7 @@ describe("registerGonkTools", () => {
       },
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const result: PiToolResult = await pi.registered[0]!.execute(
       "call",
       {},
@@ -197,7 +217,7 @@ describe("registerGonkTools", () => {
   });
 
   it("threads ctx.scope into handlers when scope is provided", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     let observed: unknown;
     r.register({
       name: "read-key",
@@ -211,7 +231,7 @@ describe("registerGonkTools", () => {
     const scope = new MemoryScopeStore();
     scope.set("k", "v-from-scope", "session");
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r, scope });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r, scope });
     await pi.registered[0]!.execute(
       "call",
       {},
@@ -223,7 +243,7 @@ describe("registerGonkTools", () => {
   });
 
   it("aborts the underlying tool when Pi's signal aborts", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "loop",
       description: "loop",
@@ -237,7 +257,7 @@ describe("registerGonkTools", () => {
       },
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const ac = new AbortController();
     setTimeout(() => ac.abort(), 25);
     const result = await pi.registered[0]!.execute(
@@ -251,7 +271,7 @@ describe("registerGonkTools", () => {
   });
 
   it("renders mixed display blocks into Pi content", async () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "rich",
       description: "rich",
@@ -266,7 +286,7 @@ describe("registerGonkTools", () => {
       }),
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     const result = await pi.registered[0]!.execute(
       "call",
       {},
@@ -282,7 +302,7 @@ describe("registerGonkTools", () => {
   });
 
   it("uses options.register when provided (pi-ext-kit ext.tool integration)", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "echo",
       description: "echo",
@@ -291,7 +311,7 @@ describe("registerGonkTools", () => {
     });
     const pi = new FakePi();
     const captured: PiToolSpec[] = [];
-    registerGonkTools({
+    registerGonkTools({ auth: OWNER_AUTH,
       pi,
       source: r,
       register: (spec) => captured.push(spec),
@@ -303,7 +323,7 @@ describe("registerGonkTools", () => {
   });
 
   it("respects pi alias hints (hints.pi.piName)", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "internal-name",
       description: "x",
@@ -312,7 +332,7 @@ describe("registerGonkTools", () => {
       handler: async () => ({ data: 1 }),
     });
     const pi = new FakePi();
-    registerGonkTools({ pi, source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
     expect(pi.registered[0]?.name).toBe("public-name");
     expect(pi.registered[0]?.label).toBe("internal-name");
   });
@@ -325,7 +345,7 @@ describe("process-wide gonk registry", () => {
   });
 
   it("registerGonkTools mirrors each registered tool into the process registry", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       {
         name: "alpha",
@@ -341,7 +361,7 @@ describe("process-wide gonk registry", () => {
       },
     ] as ToolDefinition[]);
 
-    registerGonkTools({ pi: new FakePi(), source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi: new FakePi(), source: r });
     const names = listGonkTools()
       .map((t) => t.name)
       .sort();
@@ -351,7 +371,7 @@ describe("process-wide gonk registry", () => {
   });
 
   it("does not record duplex/filtered tools (which were skipped)", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register([
       {
         name: "ok",
@@ -374,7 +394,7 @@ describe("process-wide gonk registry", () => {
       },
     ] as ToolDefinition[]);
 
-    registerGonkTools({
+    registerGonkTools({ auth: OWNER_AUTH,
       pi: new FakePi(),
       source: r,
       filter: (t) => t.name !== "filtered",
@@ -386,36 +406,36 @@ describe("process-wide gonk registry", () => {
   });
 
   it("re-registration overwrites the prior entry (last-write-wins)", () => {
-    const r1 = new ToolRegistry();
+    const r1 = ownerRegistry();
     r1.register({
       name: "shared",
       description: "v1",
       input: passthrough(),
       handler: async () => ({ data: 1 }),
     });
-    registerGonkTools({ pi: new FakePi(), source: r1 });
+    registerGonkTools({ auth: OWNER_AUTH, pi: new FakePi(), source: r1 });
     expect(findGonkTool("shared")?.description).toBe("v1");
 
-    const r2 = new ToolRegistry();
+    const r2 = ownerRegistry();
     r2.register({
       name: "shared",
       description: "v2",
       input: passthrough(),
       handler: async () => ({ data: 2 }),
     });
-    registerGonkTools({ pi: new FakePi(), source: r2 });
+    registerGonkTools({ auth: OWNER_AUTH, pi: new FakePi(), source: r2 });
     expect(findGonkTool("shared")?.description).toBe("v2");
   });
 
   it("clearGonkTools empties the registry", () => {
-    const r = new ToolRegistry();
+    const r = ownerRegistry();
     r.register({
       name: "ephemeral",
       description: "x",
       input: passthrough(),
       handler: async () => ({ data: 1 }),
     });
-    registerGonkTools({ pi: new FakePi(), source: r });
+    registerGonkTools({ auth: OWNER_AUTH, pi: new FakePi(), source: r });
     expect(findGonkTool("ephemeral")).toBeDefined();
     clearGonkTools();
     expect(findGonkTool("ephemeral")).toBeUndefined();

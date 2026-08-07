@@ -40,6 +40,17 @@ export interface InvokeOptions {
   callStack?: readonly string[];
 }
 
+/** A `ToolRegistry` with one principal bound. See `ToolRegistry.withPrincipal`.
+ *  `ctx` omits `auth` — it is always the bound principal, never per-call. */
+export interface BoundToolRegistry {
+  invoke(
+    name: string,
+    input: unknown,
+    ctx: Omit<ToolContext, "invoke" | "callStack" | "auth">,
+    opts?: InvokeOptions
+  ): AsyncIterable<ToolEvent>;
+}
+
 interface InvocationSecurityState {
   requestId: string;
   securityContextKey: string;
@@ -204,6 +215,21 @@ export class ToolRegistry {
     return this.runInvocation(name, input, ctx, callStack, undefined);
   }
 
+  /** Bind a principal once (GR-83 ergonomics: "explicit once, ambient
+   *  never"). Returns an invoker whose `ctx` no longer accepts `auth` —
+   *  every call through it carries the bound principal, so downstream call
+   *  sites never thread auth per call. A single-principal host binds at
+   *  startup: `registry.withPrincipal(ownerPrincipal(env))`. A host that
+   *  wants per-turn principals (reach ingress, a multi-tenant transport)
+   *  calls `withPrincipal` again per verified sender instead of reusing one
+   *  bound invoker across callers. */
+  withPrincipal(auth: AuthContext): BoundToolRegistry {
+    return {
+      invoke: (name, input, ctx, opts) =>
+        this.invoke(name, input, { ...ctx, auth }, opts),
+    };
+  }
+
   private async *runInvocation(
     name: string,
     input: unknown,
@@ -236,9 +262,34 @@ export class ToolRegistry {
     }
 
     const start = performance.now();
+
+    // GR-83: ToolContext.auth is a required field, so every well-typed
+    // caller already supplies one. This is the runtime backstop for an
+    // untyped (plain JS) caller that bypasses the type system — core still
+    // refuses to invoke without a principal rather than silently acting as
+    // owner. Child invocations always inherit `auth` through `childBase`
+    // below, so this only fires for a genuinely bare root call.
+    if (!baseCtx.auth) {
+      this.metrics.onInvocation({
+        tool: name,
+        durationMs: performance.now() - start,
+        outcome: "error",
+        errorCode: "AUTH_REQUIRED",
+      });
+      yield {
+        type: "error",
+        code: "AUTH_REQUIRED",
+        message:
+          "ToolContext.auth is required. Bind a principal once at startup " +
+          '(registry.withPrincipal(ownerPrincipal(env))) — there is no "assume owner" fallback.',
+      };
+      baseCtx.log.error("registry invocation rejected: no AuthContext", { tool: name });
+      return;
+    }
+
     const childStack = Object.freeze([...callStack, name]);
     let securityState = inheritedSecurityState;
-    if (baseCtx.auth && !securityState) {
+    if (!securityState) {
       try {
         const auth = captureAuthContext(baseCtx.auth);
         securityState = {
@@ -270,9 +321,9 @@ export class ToolRegistry {
         return;
       }
     }
-    const auth = securityState?.auth;
+    const auth = securityState.auth;
 
-    if (auth && securityState && callStack.length === 0) {
+    if (callStack.length === 0) {
       const resource = toolAuthorizationResource(tool);
       const decision = await authorizeSafely(auth, {
         action: "tool.discover",
@@ -372,7 +423,7 @@ export class ToolRegistry {
     const resource = toolAuthorizationResource(tool, approval);
     let relatedResources: readonly AuthzResource[] | undefined;
 
-    if (auth && securityState && tool.authorizationResource?.required) {
+    if (tool.authorizationResource?.required) {
       let resolved: AuthzResource | null = null;
       try {
         resolved = this.security.resourceResolver
@@ -424,7 +475,7 @@ export class ToolRegistry {
       relatedResources = [resolved];
     }
 
-    if (auth && securityState) {
+    {
       const decision = await authorizeSafely(auth, {
         action: "tool.invoke",
         resource,
@@ -635,7 +686,7 @@ export class ToolRegistry {
     const { input: _parentInput, ...childBase } = baseCtx;
     const fullCtx: ToolContext = {
       ...baseCtx,
-      ...(auth === undefined ? {} : { auth }),
+      auth,
       callStack: childStack,
       invoke: (childName, childInput) =>
         this.runInvocation(
@@ -957,9 +1008,14 @@ function isAsyncIterable(x: unknown): x is AsyncIterable<unknown> {
   );
 }
 
-// Convenience for adapters: build a base context.
+// Convenience for adapters: build a base context. `auth` is required (GR-83)
+// — there is no ambient owner fallback, so a caller that omits it gets a
+// compile-time error here, the same way it would constructing ToolContext
+// directly.
 export function makeBaseContext(
-  overrides: Partial<Omit<ToolContext, "invoke" | "callStack">> = {}
+  overrides: Partial<Omit<ToolContext, "invoke" | "callStack" | "auth">> & {
+    auth: AuthContext;
+  }
 ): Omit<ToolContext, "invoke" | "callStack"> {
   const noopLog: Logger = {
     debug: () => {},
@@ -972,10 +1028,10 @@ export function makeBaseContext(
     log: overrides.log ?? noopLog,
     cwd: overrides.cwd ?? process.cwd(),
     env: overrides.env ?? process.env,
+    auth: overrides.auth,
     ...(overrides.scope === undefined ? {} : { scope: overrides.scope }),
     ...(overrides.input === undefined ? {} : { input: overrides.input }),
     ...(overrides.notify === undefined ? {} : { notify: overrides.notify }),
     ...(overrides.host === undefined ? {} : { host: overrides.host }),
-    ...(overrides.auth === undefined ? {} : { auth: overrides.auth }),
   };
 }

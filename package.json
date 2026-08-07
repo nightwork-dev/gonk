@@ -12,6 +12,7 @@
     "test": "nx run-many -t test",
     "typecheck": "nx run-many -t typecheck",
     "check:docs": "node --test scripts/check-public-docs.test.mjs && node scripts/check-public-docs.mjs",
+    "check:client-safe": "node --test scripts/check-client-safe-contracts.test.mjs",
     "clean": "nx run-many -t clean",
     "graph": "nx graph",
     "changeset": "changeset",
