@@ -283,3 +283,45 @@ export interface PresetField {
   /** Field name in the preset object. Defaults to last segment of scopeKey. */
   field: string;
 }
+
+// =============================================================================
+// Host capability profile
+// =============================================================================
+
+/** Declares what a host binding actually provides along five fixed axes.
+ *  Pure data: each host materializer/runtime package (`extension-spec-pi`,
+ *  `extension-spec-claude`, `extension-spec-codex`, ...) exports one typed
+ *  constant describing itself, so consumers (e.g. GR-56's cross-harness
+ *  capability routing) can read a profile instead of relying on folklore.
+ *  See `docs.local/gonk-core-roadmap.md` GR-85 (Half A). Capability
+ *  requirements and refusal machinery built against these axes are GR-85
+ *  Half B — deliberately deferred. */
+export interface HostCapabilityProfile {
+  /** Host id this profile describes, e.g. `"pi"`, `"claude"`, `"codex"`. */
+  host: string;
+
+  /** Whether the host's lifecycle hooks can veto or alter a turn
+   *  (`"enforcing"`) or can only observe and perform side effects
+   *  (`"observe-only"`). */
+  enforcement: "enforcing" | "observe-only";
+
+  /** Whether context injection can happen at arbitrary lifecycle events
+   *  (`"event-driven"`) or is restricted to specific turn-boundary hooks
+   *  (`"scoped"`). */
+  injectionModel: "event-driven" | "scoped";
+
+  /** Whether the host exposes a native slash-command surface (`"native"`)
+   *  or none — extensions must use another entry point instead (e.g.
+   *  skills). */
+  commandSurface: "native" | "none";
+
+  /** Whether the host provides its own cron/schedule primitive
+   *  (`"native"`) or none — scheduling must come from an external
+   *  substrate (e.g. `@gonk/jobs`). */
+  scheduling: "native" | "none";
+
+  /** Whether extension code runs inside the host's own process
+   *  (`"in-process"`) or as a separately spawned process per invocation
+   *  (`"out-of-process"`). */
+  executionLocality: "in-process" | "out-of-process";
+}

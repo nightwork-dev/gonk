@@ -2,6 +2,7 @@ export type {
   CustomPickFn,
   ExtensionSpec,
   HookHandler,
+  HostCapabilityProfile,
   NoArgsHandler,
   KeyedByConfig,
   KeyedBySourceFn,
