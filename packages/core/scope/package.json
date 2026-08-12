@@ -1,6 +1,6 @@
 {
   "name": "@gonk/scope",
-  "version": "0.5.1",
+  "version": "0.7.0",
   "type": "module",
   "exports": {
     ".": {

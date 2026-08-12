@@ -1,5 +1,11 @@
 # @gonk/context
 
+## 0.7.0
+
+### Patch Changes
+
+- @gonk/auth@0.7.0
+
 ## 0.4.0
 
 ### Patch Changes

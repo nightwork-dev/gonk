@@ -36,6 +36,10 @@ import {
 } from "../src/legacy-import.ts";
 import { MirkStoreBackend } from "../src/mirk-backend.ts";
 
+const storePackageVersion = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { version: string };
+
 let root: string;
 let sourceDir: string;
 let destinationPath: string;
@@ -176,7 +180,7 @@ describe("explicit legacy FsStoreBackend importer", () => {
       expect(applied.invalid).toHaveLength(3);
       expect(applied.skipped).toHaveLength(1);
       expect(applied.packages.source.version).toBe("0.4.0");
-      expect(applied.packages.importer.version).toBe("0.5.1");
+      expect(applied.packages.importer.version).toBe(storePackageVersion.version);
       expect(applied.packages.destination.version).toBe("0.9.0");
       expect(JSON.stringify(applied)).not.toContain(sourceDir);
       expect(applied.destination).toMatchObject({

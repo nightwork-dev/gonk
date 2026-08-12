@@ -1,5 +1,15 @@
 # @gonk/extension-spec-claude
 
+## 0.7.0
+
+### Patch Changes
+
+- e4c9cd4: Invoke `turn_complete` and `session_end` handlers through Claude Code's `Stop`
+  and `SessionEnd` hooks instead of silently skipping them. Session-end handlers
+  remain side-effect-only because Claude does not accept context output there.
+  - @gonk/extension-spec@0.7.0
+  - @gonk/utils@0.7.0
+
 ## 0.5.1
 
 ### Patch Changes

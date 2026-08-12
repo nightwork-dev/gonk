@@ -1,5 +1,13 @@
 # @gonk/extension-spec
 
+## 0.7.0
+
+### Patch Changes
+
+- Updated dependencies [5c47c3e]
+  - @gonk/tool-registry@0.7.0
+  - @gonk/scope@0.7.0
+
 ## 0.4.0
 
 ### Patch Changes
