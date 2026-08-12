@@ -371,6 +371,51 @@ describe("explicit legacy FsStoreBackend importer", () => {
     }
   });
 
+  it("preserves legacy sidecar precedence for ambiguous .mime chains", () => {
+    const backend = new FsStoreBackend(sourceDir);
+    const blob = new BackedBlobStore(backend);
+    blob.put("foo.mime", new Uint8Array([1, 2, 3]), { mimeType: "data/type" });
+    blob.put("foo", new Uint8Array([4, 5, 6]), { mimeType: "text/plain" });
+    expect(blob.list()).toEqual(["foo"]);
+    const adapter = new SqliteAdapter({ path: destinationPath });
+
+    try {
+      const bound = destination(adapter);
+      const receipt = importLegacyFsStore({
+        sourceDir,
+        destination: bound.options,
+        mode: "write",
+        packageVersions: { source: "0.4.0" },
+      });
+      expect(receipt.counts.blob).toMatchObject({
+        discovered: 1,
+        eligible: 1,
+        written: 1,
+        invalid: 0,
+      });
+      expect(
+        bound.state
+          .kv("global", "legacy-fixture")
+          .getById<{ bytesBase64: string; mimeType: string }>(
+            LEGACY_BLOBS_COLLECTION,
+            "foo",
+          ),
+      ).toEqual({
+        id: "foo",
+        bytesBase64: Buffer.from([4, 5, 6]).toString("base64"),
+        mimeType: "text/plain",
+        sha256: expect.any(String),
+      });
+      expect(
+        bound.state
+          .kv("global", "legacy-fixture")
+          .getById(LEGACY_BLOBS_COLLECTION, "foo.mime"),
+      ).toBeNull();
+    } finally {
+      adapter.close();
+    }
+  });
+
   it("fails closed for an invalid runtime mode and refuses symlinked source entries", () => {
     seedLegacyFsNamespace();
     const adapter = new SqliteAdapter({
