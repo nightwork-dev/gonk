@@ -35,6 +35,10 @@ function lineOf(text, offset) {
 
 for (const file of files) {
   const absolute = resolve(root, file);
+  // `changeset version` stages consumed changeset files for deletion. Git still
+  // reports those index entries through `ls-files --cached`, but there is no
+  // working-tree document left to validate.
+  if (!existsSync(absolute)) continue;
   const text = readFileSync(absolute, "utf8");
 
   for (const { label, pattern } of forbidden) {
