@@ -24,7 +24,7 @@ minimumReleaseAge: 10080
 # 7-day cooldown; excluding the pi-provider surface lets the lockfile generate while
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
-# @mirk/store is pinned exactly; currently validated through local Verdaccio at 0.6.1.
+# @mirk/store is pinned exactly and validated through local Verdaccio.
 # The MCP v2.0.0 train was reviewed and verified ahead of the normal seven-day
 # cooldown. Keep these selectors version-specific so later MCP releases return
 # to the default quarantine.
@@ -49,7 +49,7 @@ catalog:
   "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/client": 2.0.0
   "@modelcontextprotocol/server": 2.0.0
-  "@mirk/store": 0.8.1
+  "@mirk/store": 0.9.0
   "@standard-schema/spec": 1.1.0
   "@types/better-sqlite3": 7.6.13
   "@types/node": 22.19.17

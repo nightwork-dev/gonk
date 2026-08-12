@@ -79,6 +79,30 @@ function importedNames(text) {
       if (name) names.add(name);
     }
   }
+
+  const destructuredRequires = [];
+  const destructuredRequirePattern =
+    /(?:const|let|var)\s*\{([\s\S]*?)\}\s*=\s*require\s*\(\s*["'](@gonk\/store(?:\/[^"']*)?)["']\s*\)/g;
+  for (const match of text.matchAll(destructuredRequirePattern)) {
+    destructuredRequires.push([match.index, match.index + match[0].length]);
+    for (const item of (match[1] ?? "").split(",")) {
+      const name = item.trim().split(/\s*:\s*/)[0]?.trim();
+      if (name) names.add(name);
+    }
+  }
+
+  const requirePattern = /require\s*\(\s*["'](@gonk\/store(?:\/[^"']*)?)["']\s*\)/g;
+  for (const match of text.matchAll(requirePattern)) {
+    if (destructuredRequires.some(([start, end]) => match.index >= start && match.index < end)) {
+      continue;
+    }
+    for (const legacy of LEGACY_EXPORTS) names.add(legacy);
+  }
+
+  const dynamicImportPattern = /import\s*\(\s*["'](@gonk\/store(?:\/[^"']*)?)["']\s*\)/g;
+  if (dynamicImportPattern.test(text)) {
+    for (const legacy of LEGACY_EXPORTS) names.add(legacy);
+  }
   return names;
 }
 

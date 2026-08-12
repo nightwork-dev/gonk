@@ -420,7 +420,7 @@ function parseLegacySource(sourceDir: string, nowMs: number): ParsedLegacySource
   };
 
   const kv = parseKv(absolute, nowMs, discovered, skipped, invalid);
-  const blobs = parseBlobs(absolute, discovered, invalid);
+  const blobs = parseBlobs(absolute, discovered);
   const logResult = parseLogs(absolute, discovered, invalid);
   const vectors = parseVectors(absolute, discovered, skipped, invalid);
 
@@ -505,30 +505,31 @@ function parseKv(
 function parseBlobs(
   sourceDir: string,
   discovered: Record<LegacyImportFamily, number>,
-  invalid: LegacyImportIssue[],
 ): LegacyBlobCandidate[] {
   const base = join(sourceDir, LEGACY_BLOBS_DIR);
   if (!existsSync(base)) return [];
   const candidates: LegacyBlobCandidate[] = [];
-  for (const relativePath of walkFiles(base)) {
-    if (relativePath.endsWith(".mime")) {
-      const dataPath = join(base, ...relativePath.slice(0, -".mime".length).split("/"));
-      if (!existsSync(dataPath)) {
-        discovered.blob++;
-        invalid.push({
-          family: "blob",
-          source: `${LEGACY_BLOBS_DIR}/${relativePath}`,
-          reason: "orphan MIME sidecar has no data file",
-          contentSha256: sha256(readFileSync(join(base, ...relativePath.split("/")))),
-        });
-      }
-      continue;
-    }
+  const files = walkFiles(base);
+  const fileSet = new Set(files);
+  // A `.mime` suffix is data unless a neighboring data file makes it an
+  // unambiguous sidecar. A sidecar for a `.mime` data key is therefore
+  // `<key>.mime` (for example, `foo.mime.mime`).
+  const isMimeSidecar = (relativePath: string): boolean =>
+    fileSet.has(relativePath) &&
+    relativePath.endsWith(".mime") &&
+    fileSet.has(relativePath.slice(0, -".mime".length)) &&
+    !fileSet.has(`${relativePath}.mime`);
+
+  for (const relativePath of files) {
+    if (isMimeSidecar(relativePath)) continue;
     discovered.blob++;
     const absolute = join(base, ...relativePath.split("/"));
     const bytes = readFileSync(absolute);
     const mimePath = `${absolute}.mime`;
-    const mimeType = existsSync(mimePath) ? readFileSync(mimePath, "utf8") : undefined;
+    const mimeRelativePath = `${relativePath}.mime`;
+    const mimeType = isMimeSidecar(mimeRelativePath)
+      ? readFileSync(mimePath, "utf8")
+      : undefined;
     candidates.push({
       key: relativePath,
       bytesBase64: bytes.toString("base64"),
@@ -909,19 +910,35 @@ function assertSourceBoundary(sourceDir: string): void {
   }
   for (const name of [LEGACY_KV_FILE, LEGACY_LOG_FILE, LEGACY_VECTORS_FILE]) {
     const path = join(sourceDir, name);
-    if (!existsSync(path)) continue;
-    const entry = lstatSync(path);
+    const entry = lstatIfPresent(path);
+    if (!entry) continue;
     if (entry.isSymbolicLink() || !entry.isFile()) {
       throw new Error(`Legacy store source entry '${name}' must be a regular file, not a symlink`);
     }
   }
   const blobDir = join(sourceDir, LEGACY_BLOBS_DIR);
-  if (existsSync(blobDir)) {
-    const entry = lstatSync(blobDir);
-    if (entry.isSymbolicLink() || !entry.isDirectory()) {
+  const blobEntry = lstatIfPresent(blobDir);
+  if (blobEntry) {
+    if (blobEntry.isSymbolicLink() || !blobEntry.isDirectory()) {
       throw new Error("Legacy store blobs entry must be a real directory, not a symlink");
     }
     walkFiles(blobDir);
+  }
+}
+
+function lstatIfPresent(path: string): ReturnType<typeof lstatSync> | undefined {
+  try {
+    return lstatSync(path);
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "ENOENT"
+    ) {
+      return undefined;
+    }
+    throw error;
   }
 }
 

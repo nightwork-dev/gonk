@@ -177,7 +177,7 @@ describe("explicit legacy FsStoreBackend importer", () => {
       expect(applied.skipped).toHaveLength(1);
       expect(applied.packages.source.version).toBe("0.4.0");
       expect(applied.packages.importer.version).toBe("0.5.1");
-      expect(applied.packages.destination.version).toMatch(/^0\.8\./);
+      expect(applied.packages.destination.version).toBe("0.9.0");
       expect(JSON.stringify(applied)).not.toContain(sourceDir);
       expect(applied.destination).toMatchObject({
         identity: "test-sqlite",
@@ -319,6 +319,54 @@ describe("explicit legacy FsStoreBackend importer", () => {
     }
   });
 
+  it("imports blob keys ending in .mime with their MIME sidecars", () => {
+    const backend = new FsStoreBackend(sourceDir);
+    const blob = new BackedBlobStore(backend);
+    blob.put("foo.mime", new Uint8Array([1, 2, 3]), { mimeType: "application/x-test" });
+    blob.put("bare.mime", new Uint8Array([4, 5, 6]));
+    const adapter = new SqliteAdapter({ path: destinationPath });
+
+    try {
+      const bound = destination(adapter);
+      const receipt = importLegacyFsStore({
+        sourceDir,
+        destination: bound.options,
+        mode: "write",
+        packageVersions: { source: "0.4.0" },
+      });
+      expect(receipt.counts.blob).toMatchObject({
+        discovered: 2,
+        eligible: 2,
+        written: 2,
+        invalid: 0,
+      });
+      expect(
+        bound.state
+          .kv("global", "legacy-fixture")
+          .getById<{ bytesBase64: string; mimeType: string }>(
+            LEGACY_BLOBS_COLLECTION,
+            "foo.mime",
+          ),
+      ).toEqual({
+        id: "foo.mime",
+        bytesBase64: Buffer.from([1, 2, 3]).toString("base64"),
+        mimeType: "application/x-test",
+        sha256: expect.any(String),
+      });
+      expect(
+        bound.state
+          .kv("global", "legacy-fixture")
+          .getById<{ bytesBase64: string }>(LEGACY_BLOBS_COLLECTION, "bare.mime"),
+      ).toEqual({
+        id: "bare.mime",
+        bytesBase64: Buffer.from([4, 5, 6]).toString("base64"),
+        sha256: expect.any(String),
+      });
+    } finally {
+      adapter.close();
+    }
+  });
+
   it("fails closed for an invalid runtime mode and refuses symlinked source entries", () => {
     seedLegacyFsNamespace();
     const adapter = new SqliteAdapter({
@@ -358,6 +406,20 @@ describe("explicit legacy FsStoreBackend importer", () => {
     writeFileSync(outside, JSON.stringify({ stolen: { value: "outside" } }));
     symlinkSync(outside, join(symlinkSource, "kv.json"));
     expect(() => inspectLegacyFsSource(symlinkSource)).toThrow(/must be a regular file, not a symlink/);
+
+    const danglingSource = join(root, "dangling-symlink-source");
+    mkdirSync(danglingSource);
+    symlinkSync(join(root, "missing-kv.json"), join(danglingSource, "kv.json"));
+    expect(() => inspectLegacyFsSource(danglingSource)).toThrow(
+      /must be a regular file, not a symlink/,
+    );
+
+    const danglingBlobsSource = join(root, "dangling-blobs-source");
+    mkdirSync(danglingBlobsSource);
+    symlinkSync(join(root, "missing-blobs"), join(danglingBlobsSource, "blobs"));
+    expect(() => inspectLegacyFsSource(danglingBlobsSource)).toThrow(
+      /blobs entry must be a real directory, not a symlink/,
+    );
   });
 
   it("rolls back a mid-import failure inside the host transaction and succeeds on retry", () => {
