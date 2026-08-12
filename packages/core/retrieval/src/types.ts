@@ -2,7 +2,7 @@ import type {
   AuthContext,
   AuthenticatedPrincipal,
 } from "@gonk/auth";
-import type { KvStore } from "@gonk/store";
+import type { SyncStore } from "@mirk/store";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 
 export type RetrievalSourceMode = "native-index" | "coordinated-index";
@@ -440,9 +440,10 @@ export type RetrievalCitationResolution =
   | { status: "not-found"; citationId: string };
 
 export interface RetrievalGenerationStorage {
-  generations: KvStore<unknown>;
-  pointers: KvStore<unknown>;
-  citations: KvStore<unknown>;
+  /** Capability-owned Mirk stores. Hosts choose and inject the source. */
+  generations: SyncStore;
+  pointers: SyncStore;
+  citations: SyncStore;
 }
 
 export interface RetrievalClock {

@@ -4,31 +4,15 @@ import {
   loadLastActivity,
   recordActivity,
   decidePersistentPresence,
-  type TemporalDurableState,
 } from "../src/index.ts";
-import type { KvStore } from "@gonk/store/types";
+import { InMemoryKv } from "@mirk/store";
 
 // ---------------------------------------------------------------------------
-// Minimal in-memory KvStore stub — no real filesystem, controlled time.
+// Mirk's normative in-memory port — no real filesystem, controlled time.
 // ---------------------------------------------------------------------------
 
-function makeKv(): KvStore<TemporalDurableState> {
-  const store = new Map<string, TemporalDurableState>();
-  return {
-    get: (key) => store.get(key),
-    set: (key, value) => { store.set(key, value); },
-    patch: (key, partial) => {
-      const existing = store.get(key) ?? ({} as TemporalDurableState);
-      store.set(key, { ...existing, ...partial });
-    },
-    delete: (key) => { store.delete(key); },
-    list: (prefix) => [...store.keys()].filter((k) => !prefix || k.startsWith(prefix)).sort(),
-    entries: (prefix) =>
-      [...store.entries()]
-        .filter(([k]) => !prefix || k.startsWith(prefix))
-        .map(([key, value]) => ({ key, value }))
-        .sort((a, b) => a.key.localeCompare(b.key)),
-  };
+function makeKv(): InMemoryKv {
+  return new InMemoryKv();
 }
 
 const MINUTE = 60_000;

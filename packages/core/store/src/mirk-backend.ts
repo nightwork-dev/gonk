@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, type Dirent } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join, normalize } from "node:path";
 
 import type { ScopeStore } from "@gonk/scope";
@@ -52,12 +52,6 @@ const META_COLLECTION = "meta";
 const VECTOR_COLLECTION = "vectors";
 const NEXT_LOG_OFFSET_ID = "nextLogOffset";
 
-const LEGACY_KV_FILE = "kv.json";
-const LEGACY_BLOBS_DIR = "blobs";
-const LEGACY_LOG_FILE = "log.jsonl";
-const LEGACY_VECTORS_FILE = "vectors.jsonl";
-export const MIRK_LEGACY_FS_MIGRATION_MARKER_ID = "fs-backend-migration-v1-complete";
-
 interface BlobRecord {
   id: string;
   bytesBase64: string;
@@ -75,6 +69,9 @@ interface MetaRecord {
   value: unknown;
 }
 
+/** @deprecated Host-owned Mirk adapters should be passed to
+ * `bindGonkSyncState`; Gonk no longer grows this compatibility adapter. Kept
+ * for the migration release; removed in the next breaking release. */
 export class MirkStoreBackend implements StoreBackend {
   readonly dbPath: string;
   private readonly adapter: SqliteAdapterInstance;
@@ -86,7 +83,6 @@ export class MirkStoreBackend implements StoreBackend {
     this.dbPath = join(dir, DB_FILE);
     this.adapter = new SqliteAdapter({ path: this.dbPath, forceJsCosine: true });
     this.kv = this.adapter.kv;
-    this.migrateLegacyFsData(dir);
     if (this.vectorFacet || this.adapter.vector.meta.dimensions > 0) {
       this.vectorFacet = this.currentVectorFacet();
     }
@@ -256,172 +252,6 @@ export class MirkStoreBackend implements StoreBackend {
       .sort((a, b) => a.offset - b.offset || a.id.localeCompare(b.id));
   }
 
-  /** Copy legacy FsStoreBackend artifacts into sqlite exactly once per namespace.
-   *  The marker is written only after every facet import completes; legacy files
-   *  are never removed or rewritten. */
-  private migrateLegacyFsData(dir: string): void {
-    if (this.legacyFsMigrationComplete()) return;
-    if (!legacyFsDataPresent(dir)) return;
-
-    this.importLegacyKv(dir);
-    this.importLegacyLog(dir);
-    this.importLegacyBlobs(dir);
-    this.importLegacyVectors(dir);
-
-    this.kv.put<MetaRecord>(META_COLLECTION, {
-      id: MIRK_LEGACY_FS_MIGRATION_MARKER_ID,
-      value: {
-        source: "FsStoreBackend",
-        version: 1,
-        completedAt: new Date().toISOString(),
-      },
-    });
-  }
-
-  private legacyFsMigrationComplete(): boolean {
-    return this.kv.getById<MetaRecord>(META_COLLECTION, MIRK_LEGACY_FS_MIGRATION_MARKER_ID) !== null;
-  }
-
-  private importLegacyKv(dir: string): void {
-    for (const [key, entry] of Object.entries(readLegacyKv(dir))) {
-      if (!isKvEntry(entry)) continue;
-      if (isExpired(entry.expiresAt)) continue;
-      this.kv.set(key, entry);
-    }
-  }
-
-  private importLegacyLog(dir: string): void {
-    const path = join(dir, LEGACY_LOG_FILE);
-    if (!existsSync(path)) return;
-
-    const records = readLegacyLogRecords(path);
-    for (const record of records) {
-      this.kv.put<LogRecord>(LOG_COLLECTION, {
-        id: String(record.offset),
-        offset: record.offset,
-        record: record.record,
-      });
-    }
-
-    const fsNextOffset = statSync(path).size;
-    const existingNextOffset = this.nextLogOffset();
-    this.kv.put<MetaRecord>(META_COLLECTION, {
-      id: NEXT_LOG_OFFSET_ID,
-      value: Math.max(fsNextOffset, existingNextOffset),
-    });
-  }
-
-  private importLegacyBlobs(dir: string): void {
-    const base = join(dir, LEGACY_BLOBS_DIR);
-    for (const key of legacyBlobKeys(base)) {
-      const path = join(base, ...key.split("/"));
-      const mimePath = `${path}.mime`;
-      const opts = existsSync(mimePath)
-        ? { mimeType: readFileSync(mimePath, "utf8") }
-        : undefined;
-      this.blobPut(key, new Uint8Array(readFileSync(path)), opts);
-    }
-  }
-
-  private importLegacyVectors(dir: string): void {
-    for (const entry of readLegacyVectors(dir).values()) {
-      this.vectorUpsert(entry);
-    }
-  }
-}
-
-function legacyFsDataPresent(dir: string): boolean {
-  return (
-    existsSync(join(dir, LEGACY_KV_FILE)) ||
-    existsSync(join(dir, LEGACY_LOG_FILE)) ||
-    existsSync(join(dir, LEGACY_VECTORS_FILE)) ||
-    legacyBlobKeys(join(dir, LEGACY_BLOBS_DIR)).length > 0
-  );
-}
-
-function readLegacyKv(dir: string): Record<string, unknown> {
-  const path = join(dir, LEGACY_KV_FILE);
-  if (!existsSync(path)) return {};
-  try {
-    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function isKvEntry(value: unknown): value is KvEntry {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const expiresAt = (value as { expiresAt?: unknown }).expiresAt;
-  return expiresAt === undefined || typeof expiresAt === "number";
-}
-
-function readLegacyLogRecords(path: string): Array<{ offset: number; record: unknown }> {
-  const bytes = readFileSync(path);
-  const out: Array<{ offset: number; record: unknown }> = [];
-  let offset = 0;
-  for (let i = 0; i <= bytes.length; i++) {
-    if (i < bytes.length && bytes[i] !== 0x0a) continue;
-    const line = bytes.subarray(offset, i);
-    if (line.length > 0) {
-      try {
-        out.push({ offset, record: JSON.parse(line.toString("utf8")) as unknown });
-      } catch {
-        // Match FsStoreBackend.logScan/logReadAt: malformed lines are ignored.
-      }
-    }
-    offset = i + 1;
-  }
-  return out;
-}
-
-function legacyBlobKeys(base: string): string[] {
-  if (!existsSync(base)) return [];
-  const out: string[] = [];
-  const walk = (rel: string): void => {
-    const abs = rel ? join(base, ...rel.split("/")) : base;
-    let entries: Dirent[];
-    try {
-      entries = readdirSync(abs, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      const childRel = rel ? `${rel}/${entry.name}` : entry.name;
-      const childAbs = join(base, ...childRel.split("/"));
-      if (entry.isDirectory()) {
-        walk(childRel);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (entry.name.endsWith(".mime") && existsSync(childAbs.slice(0, -".mime".length))) {
-        continue;
-      }
-      out.push(childRel);
-    }
-  };
-  walk("");
-  return out;
-}
-
-function readLegacyVectors(dir: string): Map<string, VectorEntry> {
-  const path = join(dir, LEGACY_VECTORS_FILE);
-  const out = new Map<string, VectorEntry>();
-  if (!existsSync(path)) return out;
-  for (const line of readFileSync(path, "utf8").split("\n")) {
-    if (!line) continue;
-    try {
-      const entry = JSON.parse(line) as VectorEntry;
-      if (entry && typeof entry.id === "string" && Array.isArray(entry.vector)) {
-        out.set(entry.id, { id: entry.id, vector: entry.vector, meta: entry.meta ?? {} });
-      }
-    } catch {
-      // Match FsStoreBackend.readVectors: malformed lines are ignored.
-    }
-  }
-  return out;
 }
 
 function isExpired(expiresAt: number | undefined): boolean {
@@ -469,6 +299,8 @@ export function mirkStoreDbExists(dir: string): boolean {
 /** Convenience factory for hosts that want the Mirk SQLite backend without
  *  assembling store paths themselves. This native adapter is intentionally
  *  reachable only from `@gonk/store/sqlite`, never from the package root. */
+/** @deprecated Pass host-owned Mirk ports to `bindGonkSyncState` instead of
+ * adapting them back into Gonk's legacy backend SPI. */
 export function mirkBackendFactory(scope: ScopeStore): BackendFactory {
   return (tier, namespace) => new MirkStoreBackend(resolveStoreDir(scope, tier, namespace));
 }

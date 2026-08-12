@@ -55,6 +55,9 @@ const BLOBS_DIR = "blobs";
 const LOG_FILE = "log.jsonl";
 const VECTORS_FILE = "vectors.jsonl";
 
+/** @deprecated Hosts must provide Mirk ports through `bindGonkSyncState`.
+ * Kept unchanged for the migration release; removed in the next breaking
+ * release. */
 export class FsStoreBackend implements StoreBackend {
   constructor(private readonly dir: string) {}
 

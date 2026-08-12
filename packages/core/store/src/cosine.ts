@@ -1,6 +1,8 @@
 /** Cosine similarity in [-1, 1]. Mirrors the harness memory layer's JS
  *  fallback so vector search ranks identically to a brute-force baseline.
  *  Returns 0 for a length mismatch or a zero-magnitude vector. */
+/** @deprecated Use Mirk's vector similarity helpers. Kept for the migration
+ * release; removed in the next breaking release. */
 export function cosineSimilarity(a: readonly number[], b: readonly number[]): number {
   if (a.length !== b.length) return 0;
   let dot = 0;

@@ -12,6 +12,8 @@ export default defineConfig({
     "json-schema": "src/json-schema.ts",
     approval: "src/approval.ts",
     outcome: "src/outcome.ts",
+    receipt: "src/receipt.ts",
+    lifecycle: "src/lifecycle.ts",
     security: "src/security.ts",
     "async-dispatch": "src/async-dispatch.ts",
   },

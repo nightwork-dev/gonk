@@ -158,6 +158,46 @@ describe("createCli", () => {
     expect(events[0]).toMatchObject({ type: "result", data: { echoed: "hi" } });
   });
 
+  it("projects registered result metadata in JSONL and lifecycle in discovery", async () => {
+    const tool: ToolDefinition = {
+      name: "legacy",
+      description: "old endpoint",
+      lifecycle: {
+        status: "superseded",
+        reason: "the new endpoint validates responses",
+        replacement: "current",
+      },
+      input: passthrough(),
+      handler: async () => ({
+        data: { ok: true },
+        metadata: {
+          size: { original: 100, returned: 20, unit: "bytes" },
+          truncation: {
+            truncated: true,
+            limit: 20,
+            reason: "display limit",
+            artifact: { id: "legacy-output" },
+          },
+        },
+      }),
+    };
+    const { cli, stdout, stderr } = setup([tool], { jsonMode: true });
+    const listCode = await cli.run(["list"], { stdout });
+    expect(listCode).toBe(0);
+    expect(stdout.text()).toContain("Superseded");
+
+    const resultCode = await cli.run(["legacy"], { stdout, stderr });
+    expect(resultCode).toBe(0);
+    const event = JSON.parse(stdout.text().trim().split("\n").at(-1)!) as ToolEvent;
+    expect(event).toMatchObject({
+      type: "result",
+      metadata: {
+        size: { original: 100, returned: 20 },
+        truncation: { truncated: true, artifact: { id: "legacy-output" } },
+      },
+    });
+  });
+
   it("renders streaming progress to stderr and data to stdout", async () => {
     const tool: ToolDefinition = {
       name: "stream",

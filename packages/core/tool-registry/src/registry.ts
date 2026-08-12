@@ -24,10 +24,12 @@ import {
   type ToolRegistrySecurityOptions,
 } from "./security.ts";
 import type {
+  Display,
   Logger,
   ToolContext,
   ToolDefinition,
   ToolEvent,
+  ToolResultMetadata,
 } from "./types.ts";
 
 export interface ToolRegistryOptions {
@@ -769,7 +771,11 @@ export class ToolRegistry {
           };
           return;
         }
-        const r = result as { data: unknown; display?: unknown };
+        const r = result as {
+          data: unknown;
+          display?: unknown;
+          metadata?: ToolResultMetadata;
+        };
         if (
           tool.output &&
           tool.validateOutput &&
@@ -796,9 +802,8 @@ export class ToolRegistry {
         yield {
           type: "result",
           data: r.data,
-          display: r.display as ToolEvent extends { display?: infer D }
-            ? D
-            : never,
+          ...(r.display === undefined ? {} : { display: r.display as Display }),
+          ...(r.metadata === undefined ? {} : { metadata: r.metadata }),
         };
       }
     } catch (err) {

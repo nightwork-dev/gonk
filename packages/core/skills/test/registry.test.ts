@@ -45,6 +45,7 @@ import {
   type SkillPatchRequest,
 } from "../src/index.ts";
 import { makeFilesystemHarness, type FilesystemHarness } from "./harness.ts";
+import type { GonkSyncState } from "@gonk/store";
 
 const harnesses: FilesystemHarness[] = [];
 const make = (...args: Parameters<typeof makeFilesystemHarness>) => {
@@ -200,7 +201,7 @@ describe("authorized filesystem mutations", () => {
       "test-session"
     );
     expect(existsSync(defaultSessionHome)).toBe(false);
-    const registry = new FilesystemManagedSkillRegistry({ env });
+    const registry = new FilesystemManagedSkillRegistry({ env, stateSource: harness.stateSource });
 
     const created = await registry.create({
       auth: authContext(),
@@ -225,7 +226,7 @@ describe("authorized filesystem mutations", () => {
     mkdirSync(dirname(sessions), { recursive: true });
     mkdirSync(outside, { recursive: true });
     symlinkSync(outside, sessions, "dir");
-    const registry = new FilesystemManagedSkillRegistry({ env });
+    const registry = new FilesystemManagedSkillRegistry({ env, stateSource: harness.stateSource });
 
     await expect(
       registry.create({
@@ -355,7 +356,7 @@ describe("authorized filesystem mutations", () => {
     const first = await harness.registry.patch(request);
     expect(first.status).toBe("ok");
 
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     expect(await restarted.patch(request)).toEqual(first);
 
     const recovered = await restarted.getMutationReceipt({
@@ -390,25 +391,20 @@ describe("authorized filesystem mutations", () => {
       })
     ).toMatchObject({ status: "failed", reason: "conflict" });
 
-    const journalPath = join(
-      harness.home("project"),
-      ".agents",
-      "store",
-      "skills.lifecycle",
-      "kv.json"
-    );
-    const raw = readFileSync(journalPath, "utf8");
-    expect(raw).not.toContain(request.idempotencyKey);
-    expect(raw).not.toContain("authorize");
-    const persisted = JSON.parse(raw) as Record<string, { value?: unknown }>;
-    const record = Object.values(persisted)
-      .map((entry) => entry.value)
+    const journal = harness.state.kv("project", "skills.lifecycle");
+    const persistedEntry = journal
+      .keys("mutation:")
+      .map((key) => ({ key, value: journal.get<unknown>(key) }))
       .find(
-        (value) =>
+        ({ value }) =>
           value !== null &&
           typeof value === "object" &&
           (value as { kind?: unknown }).kind === "skill-mutation-journal"
       );
+    if (!persistedEntry) throw new Error("expected persisted mutation entry");
+    const { key: journalKey, value: record } = persistedEntry;
+    expect(JSON.stringify(record)).not.toContain(request.idempotencyKey);
+    expect(JSON.stringify(record)).not.toContain("authorize");
     expect(valid(skillMutationJournalRecordSchema, record)).toBe(true);
     expect(
       valid(skillMutationJournalRecordSchema, {
@@ -416,18 +412,10 @@ describe("authorized filesystem mutations", () => {
         extra: true,
       })
     ).toBe(false);
-    expect(readdirSync(dirname(journalPath)).some((name) => name.includes(".tmp"))).toBe(false);
-
-    const persistedEntry = Object.entries(persisted).find(
-      ([, entry]) => entry.value === record
-    );
-    if (!persistedEntry) throw new Error("expected persisted mutation entry");
-    persisted[persistedEntry[0]] = {
-      value: { ...(record as Record<string, unknown>), extra: true },
-    };
-    writeFileSync(journalPath, JSON.stringify(persisted), "utf8");
+    journal.set(journalKey, { ...(record as Record<string, unknown>), extra: true });
     const recoveredFromCorruptJournal = new FilesystemManagedSkillRegistry({
       env: harness.env,
+      stateSource: harness.stateSource,
     });
     expect(
       await recoveredFromCorruptJournal.getMutationReceipt({
@@ -445,12 +433,12 @@ describe("authorized filesystem mutations", () => {
     const registry = new FilesystemManagedSkillRegistry({
       env: harness.env,
       lifecycleJournal: journalFailingOnce(
-        harness.env,
+        harness.state,
         "mutation",
         () => {
           crash.capture();
           expect(
-            () => new FilesystemManagedSkillRegistry({ env: harness.env })
+            () => new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource })
           ).toThrow("Another skill transaction is active in scope: project");
           concurrentConstructionObservedPendingState = existsSync(
             join(harness.home("project"), "skills", "journal-rollback")
@@ -483,7 +471,7 @@ describe("authorized filesystem mutations", () => {
     expect(
       existsSync(join(harness.home("project"), "skills", request.id))
     ).toBe(true);
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     expect(await restarted.get({ id: request.id, scope: request.scope })).toEqual({
       status: "not-found",
       id: request.id,
@@ -505,7 +493,7 @@ describe("authorized filesystem mutations", () => {
     const registry = new FilesystemManagedSkillRegistry({
       env: harness.env,
       lifecycleJournal: journalWritingThenThrowingOnce(
-        harness.env,
+        harness.state,
         "mutation",
         crash.capture
       ),
@@ -523,7 +511,7 @@ describe("authorized filesystem mutations", () => {
     expect(created.status).toBe("ok");
     crash.restore();
 
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     expect(await restarted.create(request)).toEqual(created);
     expect(await restarted.get({ id: request.id, scope: request.scope })).toMatchObject({
       status: "found",
@@ -644,6 +632,7 @@ describe("authorized filesystem mutations", () => {
 
     const approved = new FilesystemManagedSkillRegistry({
       env: harness.env,
+      stateSource: harness.stateSource,
       promotionApprovalProvider: {
         decide: () => ({ outcome: "approved", reason: "reviewed" }),
       },
@@ -737,7 +726,7 @@ describe("authorized filesystem mutations", () => {
     expect(valid(skillActivationReceiptSchema, first.receipt)).toBe(true);
     expect(valid(skillActivationReceiptSchema, second.receipt)).toBe(true);
 
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     const listed = await restarted.listActivationReceipts({ auth });
     expect(listed.receipts).toHaveLength(2);
     expect(new Set(listed.receipts.map(({ id }) => id))).toEqual(
@@ -783,19 +772,10 @@ describe("authorized filesystem mutations", () => {
     }
     expect(contents).toEqual(new Set(["one body", "two body"]));
 
-    const journalPath = join(
-      harness.home("project"),
-      ".agents",
-      "store",
-      "skills.lifecycle",
-      "kv.json"
-    );
-    const persisted = JSON.parse(readFileSync(journalPath, "utf8")) as Record<
-      string,
-      { value?: unknown }
-    >;
-    const activationRecords = Object.values(persisted)
-      .map((entry) => entry.value)
+    const journal = harness.state.kv("project", "skills.lifecycle");
+    const activationRecords = journal
+      .keys("activation:")
+      .map((key) => journal.get<unknown>(key))
       .filter(
         (value) =>
           value !== null &&
@@ -864,7 +844,7 @@ describe("authorized filesystem mutations", () => {
     const registry = new FilesystemManagedSkillRegistry({
       env: harness.env,
       lifecycleJournal: journalFailingOnce(
-        harness.env,
+        harness.state,
         "activation",
         crash.capture
       ),
@@ -891,7 +871,7 @@ describe("authorized filesystem mutations", () => {
     crash.restore();
     const interrupted = await registry.get({ id: request.id, scope: "project" });
     expect(interrupted.status === "found" ? interrupted.skill.useCount : undefined).toBe(1);
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     const recovered = await restarted.get({ id: request.id, scope: "project" });
     expect(recovered.status).toBe("found");
     if (recovered.status !== "found") throw new Error("expected recovered skill");
@@ -919,7 +899,7 @@ describe("authorized filesystem mutations", () => {
     const registry = new FilesystemManagedSkillRegistry({
       env: harness.env,
       lifecycleJournal: journalWritingThenThrowingOnce(
-        harness.env,
+        harness.state,
         "activation"
       ),
     });
@@ -935,7 +915,7 @@ describe("authorized filesystem mutations", () => {
     const skill = await registry.get({ id: "activation-committed", scope: "project" });
     expect(skill.status === "found" ? skill.skill.useCount : undefined).toBe(1);
 
-    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env });
+    const restarted = new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource });
     expect(
       await restarted.getActivationReceipt({
         auth,
@@ -1070,6 +1050,43 @@ describe("authorized filesystem mutations", () => {
 });
 
 describe("filesystem safety and parsing", () => {
+  it("fails closed when lifecycle state is not injected", () => {
+    const harness = make();
+    expect(() => new FilesystemManagedSkillRegistry({ env: harness.env })).toThrow(
+      "requires stateSource"
+    );
+  });
+
+  it("keeps transaction images in an existing legacy substrate during migration", async () => {
+    const harness = make();
+    const legacyNamespace = join(
+      harness.home("project"),
+      ".gonk",
+      "store",
+      "skills.lifecycle-transactions"
+    );
+    mkdirSync(legacyNamespace, { recursive: true });
+    let pendingSeen = false;
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      lifecycleJournal: journalFailingOnce(harness.state, "mutation", () => {
+        pendingSeen = readdirSync(legacyNamespace).some((name) => name.startsWith(".pending-"));
+      }),
+    });
+
+    await expect(
+      registry.create({
+        auth: authContext(),
+        idempotencyKey: "legacy-substrate-transaction",
+        id: "legacy-substrate",
+        scope: "project",
+        description: "legacy substrate",
+        body: "must roll back",
+      })
+    ).rejects.toThrow("injected mutation journal failure");
+    expect(pendingSeen).toBe(true);
+  });
+
   it("snapshots static scope inputs at construction", async () => {
     const harness = make();
     await harness.seed({ scope: "project", id: "anchored" });
@@ -1091,6 +1108,7 @@ describe("filesystem safety and parsing", () => {
         projectRoot: harness.home("project"),
         resolvePersonaHome: () => active,
       },
+      stateSource: harness.stateSource,
     });
     const a = await registry.get({ id: "persona-live" });
     expect(a.status === "found" ? a.skill.body.trim() : undefined).toBe("persona A");
@@ -1112,7 +1130,7 @@ describe("filesystem safety and parsing", () => {
       projectRoot: harness.home("project"),
       resolvePersonaHome: () => active,
     };
-    const registry = new FilesystemManagedSkillRegistry({ env });
+    const registry = new FilesystemManagedSkillRegistry({ env, stateSource: harness.stateSource });
     active = personaB;
     const request = {
       auth: authContext("allow", "agent:persona-rebind"),
@@ -1127,10 +1145,10 @@ describe("filesystem safety and parsing", () => {
     expect(existsSync(join(personaA, "skills", request.id))).toBe(false);
     expect(existsSync(join(personaB, "skills", request.id))).toBe(true);
     expect(
-      existsSync(join(personaB, ".agents", "store", "skills.lifecycle", "kv.json"))
-    ).toBe(true);
+      harness.state.kv("persona", "skills.lifecycle").keys("mutation:")
+    ).not.toHaveLength(0);
 
-    const restarted = new FilesystemManagedSkillRegistry({ env });
+    const restarted = new FilesystemManagedSkillRegistry({ env, stateSource: harness.stateSource });
     expect(await restarted.create(request)).toEqual(created);
   });
 
@@ -1172,7 +1190,7 @@ describe("filesystem safety and parsing", () => {
     );
 
     expect(
-      () => new FilesystemManagedSkillRegistry({ env: harness.env })
+      () => new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource })
     ).toThrow("Skill transaction target contains a symbolic link");
     expect(readFileSync(victim, "utf8")).toBe("outside must survive");
     expect(readFileSync(join(pending, "0"), "utf8")).toBe(
@@ -1468,11 +1486,11 @@ describe("extension fixture parity", () => {
 });
 
 function journalFailingOnce(
-  env: FilesystemHarness["env"],
+  state: GonkSyncState,
   target: "mutation" | "activation",
   beforeFailure?: () => void
 ): SkillLifecycleJournal {
-  const delegate = new FilesystemSkillLifecycleJournal(env);
+  const delegate = new FilesystemSkillLifecycleJournal(state);
   let failed = false;
   return {
     mutationReceiptId: (query) => delegate.mutationReceiptId(query),
@@ -1502,11 +1520,11 @@ function journalFailingOnce(
 }
 
 function journalWritingThenThrowingOnce(
-  env: FilesystemHarness["env"],
+  state: GonkSyncState,
   target: "mutation" | "activation",
   afterWrite?: () => void
 ): SkillLifecycleJournal {
-  const delegate = new FilesystemSkillLifecycleJournal(env);
+  const delegate = new FilesystemSkillLifecycleJournal(state);
   let failed = false;
   return {
     mutationReceiptId: (query) => delegate.mutationReceiptId(query),

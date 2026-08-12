@@ -18,7 +18,7 @@ adapters.
 ## Install
 
 ```sh
-npm i @gonk/retrieval @gonk/auth @gonk/store
+npm i @gonk/retrieval @gonk/auth @gonk/store @mirk/store
 ```
 
 Install `@gonk/context` as well when using the optional context adapter.
@@ -26,27 +26,23 @@ Install `@gonk/context` as well when using the optional context adapter.
 ## Coordinated source
 
 ```ts
-import { FsStoreBackend, BackedKvStore } from "@gonk/store";
 import {
   RetrievalEngine,
   RetrievalIndexCoordinator,
   RetrievalSourceRegistry,
 } from "@gonk/retrieval";
+import type { SyncStore } from "@mirk/store";
 
 const registry = new RetrievalSourceRegistry();
 registry.register(projectDocumentsSource);
 
-const storage = {
-  generations: new BackedKvStore(
-    new FsStoreBackend(".gonk/retrieval/generations"),
-  ),
-  pointers: new BackedKvStore(
-    new FsStoreBackend(".gonk/retrieval/pointers"),
-  ),
-  citations: new BackedKvStore(
-    new FsStoreBackend(".gonk/retrieval/citations"),
-  ),
-};
+// The host selects and owns the source adapter, then injects Mirk ports.
+// Namespace binding (for example, through @gonk/store's bindGonkSyncState)
+// belongs at the host composition boundary.
+declare const generations: SyncStore;
+declare const pointers: SyncStore;
+declare const citations: SyncStore;
+const storage = { generations, pointers, citations };
 const coordinator = new RetrievalIndexCoordinator({ registry, storage });
 const retrieval = new RetrievalEngine({ registry, coordinator, storage });
 

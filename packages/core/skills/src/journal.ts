@@ -1,12 +1,7 @@
 import { createHash } from "node:crypto";
 
-import {
-  createScope,
-  SCOPE_RESOLUTION_ORDER,
-  type ScopeEnvironment,
-  type ScopeName,
-} from "@gonk/scope";
-import { createStore, type KvStore } from "@gonk/store";
+import { SCOPE_RESOLUTION_ORDER, type ScopeName } from "@gonk/scope";
+import type { GonkSyncState } from "@gonk/store";
 
 import {
   skillActivationJournalRecordSchema,
@@ -29,12 +24,12 @@ const MUTATION_PREFIX = "mutation:";
 const ACTIVATION_PREFIX = "activation:";
 
 /**
- * Restart-durable lifecycle receipts stored under each scope's hidden
- * `.agents/store/skills.lifecycle` namespace. The backing KV store provides
- * atomic temp-file-plus-rename writes.
+ * Restart-durable lifecycle receipts stored under each scope's bound Mirk
+ * `skills.lifecycle` namespace. The host owns source selection and lifecycle;
+ * this journal only owns its record schema and namespace policy.
  */
 export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
-  constructor(private readonly env: ScopeEnvironment) {}
+  constructor(private readonly state: GonkSyncState) {}
 
   mutationReceiptId(query: SkillMutationJournalQuery): string {
     return mutationReceiptId(query);
@@ -114,7 +109,9 @@ export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
   listActivations(securityContextKey: string): readonly SkillActivationReceipt[] {
     const receipts: SkillActivationReceipt[] = [];
     for (const scope of SCOPE_RESOLUTION_ORDER) {
-      for (const { value } of this.kv(scope).entries(ACTIVATION_PREFIX)) {
+      const state = this.kv(scope);
+      for (const key of state.keys(ACTIVATION_PREFIX)) {
+        const value = state.get(key);
         const record = parseActivationRecord(value);
         if (
           record &&
@@ -154,8 +151,8 @@ export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
     );
   }
 
-  private kv(scope: ScopeName): KvStore<unknown> {
-    return createStore(createScope(this.env)).kv(scope, JOURNAL_NAMESPACE);
+  private kv(scope: ScopeName) {
+    return this.state.kv(scope, JOURNAL_NAMESPACE);
   }
 }
 

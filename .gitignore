@@ -3,6 +3,7 @@ dist/
 *.tsbuildinfo
 .vite/
 .omc/
+.omx/
 .gonk/
 .nx/
 .DS_Store

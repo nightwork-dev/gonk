@@ -1,6 +1,7 @@
 import type { AuthContext, AuthenticatedPrincipal } from "@gonk/auth";
 import type { ContextContributor } from "@gonk/context";
 import type { ScopeEnvironment } from "@gonk/scope";
+import type { GonkSyncStateSource } from "@gonk/store";
 import type { ToolContext } from "@gonk/tool-registry";
 import type { ApprovalProvider } from "@gonk/tool-registry/security";
 
@@ -569,6 +570,8 @@ export interface WritableManagedSkillRegistry extends ManagedSkillRegistry {
 
 export interface FilesystemManagedSkillRegistryOptions {
   env: ScopeEnvironment;
+  /** Host-owned Mirk source. Required when the default lifecycle journal is used. */
+  stateSource?: GonkSyncStateSource;
   freshnessProbe?: SkillFreshnessProbe;
   now?: () => string;
   promotionApprovalProvider?: ApprovalProvider;

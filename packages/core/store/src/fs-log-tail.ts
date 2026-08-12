@@ -60,6 +60,9 @@ export interface TailLogOptions<R> {
 
 /** Tail a store log dir for appended records, cross-process. Returns a handle
  *  whose `close()` stops watching. See `TailLogOptions` for the contract. */
+/** @deprecated Filesystem log watching is not a portable state contract. Use
+ * a Gonk lifecycle/watch signal. Kept for the migration release; removed in
+ * the next breaking release. */
 export function tailLog<R>(opts: TailLogOptions<R>): LogTail {
   const { dir, onRecord, onError } = opts;
   const logPath = join(dir, LOG_FILE);

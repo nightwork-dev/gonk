@@ -33,6 +33,7 @@
     "@gonk/auth": "workspace:*",
     "@gonk/context": "workspace:*",
     "@gonk/store": "workspace:*",
+    "@mirk/store": "catalog:",
     "@standard-schema/spec": "catalog:"
   },
   "devDependencies": {

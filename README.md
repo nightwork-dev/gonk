@@ -12,7 +12,7 @@ Every harness has grown strengths the others lack — [Hermes](https://github.co
 
 This repo is the foundation — identity and authorization, deterministic context
 compilation, authorized retrieval, managed skills, the registry, scope, host
-adapters, and persistence beneath them.
+adapters, and the state binding beneath them.
 Build capabilities on these primitives and they ship once, to run on any host.
 
 ## Architecture
@@ -34,7 +34,10 @@ The foundation primitives, each its own package, plus an authoring layer on top 
 - **Managed skills** — [`@gonk/skills`](packages/core/skills). Canonical read and authorized writable lifecycle contracts over five scope tiers, with deterministic shadowing, hidden staging/archive stores, restart-durable security-bound mutation/activation receipts, strict path handling, typed tags/provenance/freshness, stable revisions, and a reusable conformance suite.
 - **Tool definitions** — [`@gonk/tool-registry`](packages/core/tool-registry). A tool is a typed handler with Standard Schema I/O and a self-declared approval tier (`read` / `write` / `exec`). Define it once; every adapter below can surface it.
 - **Scope** — [`@gonk/scope`](packages/core/scope). One resolution chain, five tiers, multi-root and symlink-aware. Tools never invent their own config storage; they read and write namespaced keys through scope and inherit the resolution for free.
-- **Persistence** — [`@gonk/store`](packages/core/store). The same idea for *data* that scope is for *config*: KV, blob, append-log, and vector-KNN primitives a capability reads and writes without knowing — or caring — whether the backing is the filesystem, a database, or a vector index. Pure-`fs` by default, swappable underneath without touching a caller.
+- **State binding** — [`@gonk/store`](packages/core/store). Binds a scope tier and
+  capability namespace to caller-provided Mirk state ports. Hosts choose the
+  adapter and own its lifecycle; the deprecated filesystem/backend surface is
+  retained only for the bounded migration release.
 - **Connectivity address & identity** — [`@gonk/channel`](packages/core/channel). The transport-agnostic message contract underneath cross-agent comms and the remote front doors: an address-on-the-message envelope (`persona@host#scope`), a channel registry, and a loopback reference impl.
 - **Time & activity** — [`@gonk/temporal`](packages/core/temporal). The temporal-awareness surface (wall-clock, session elapsed, turn index, idle) plus the periodic-run scheduler and persistent-presence wake/defer policy that every "should this fire now?" decision reads.
 - **Adapters** — [`@gonk/tool-registry-{cli,mcp,pi}`](packages/adapters). Each exposes the *same* registry + orchestrator to a different host, so a capability ships once and surfaces everywhere.
@@ -71,6 +74,10 @@ scope.resolve("tts.provider");  // → every tier where it is set, most → leas
 
 ## Package reference
 
+Core currently contains **20 publishable packages**. The maintained package
+index is [docs/packages.md](docs/packages.md); it records package ownership and
+whether a surface is a contract, projection, or compatibility bridge.
+
 New here? Application scaffolds can import **`@gonk/core`** for the common
 auth + scope + registry surface. Published libraries and host adapters should
 usually import the focused package they actually need, especially
@@ -86,7 +93,7 @@ a separate foundation.
 | `@gonk/retrieval` | Authorized source discovery and deterministic lexical retrieval: native/coordinated sources, immutable generations and tombstones, metadata-only hits, authoritative resolution, stable citations, and redacted domain receipts. |
 | `@gonk/skills` | Canonical managed-skill discovery and authorized lifecycle contracts over five-tier scope, with restart-durable mutation/activation receipts, strict visibility and path invariants, typed tags/provenance/freshness, stable revisions, and a reusable conformance suite. |
 | `@gonk/scope` | Five-tier scoped key/value resolution (`session > directory > project > persona > global`). |
-| `@gonk/store` | Backing-agnostic persistence primitives (KV / blob / append-log / vector-KNN) over a `StoreBackend` SPI; pure-`fs` default, scope-resolved locations. |
+| `@gonk/store` | Scope-bound state policy over caller-provided Mirk ports, plus the bounded legacy importer and deprecated compatibility surface. |
 | `@gonk/channel` | Transport-agnostic connectivity primitives — the message/address contract (`persona@host#scope`), channel registry, loopback reference impl. |
 | `@gonk/temporal` | Temporal-awareness surface (wall-clock, session elapsed, turn index, idle) + periodic-run scheduler and persistent-presence wake/defer policy. |
 | `@gonk/tool-registry` | Typed tool definitions + registry, Standard Schema I/O, policy/resource/approval enforcement, metrics, and redacted audit receipts. |

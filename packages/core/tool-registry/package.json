@@ -43,6 +43,14 @@
       "types": "./dist/outcome.d.ts",
       "import": "./dist/outcome.js"
     },
+    "./receipt": {
+      "types": "./dist/receipt.d.ts",
+      "import": "./dist/receipt.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle.d.ts",
+      "import": "./dist/lifecycle.js"
+    },
     "./security": {
       "types": "./dist/security.d.ts",
       "import": "./dist/security.js"

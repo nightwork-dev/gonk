@@ -21,6 +21,9 @@ import type {
 // semantics for free, while still serving KNN from its own index (via
 // `vectorSearch`) instead of being forced through a facade scan.
 
+/** @deprecated Use a namespaced Mirk `SyncStore` from `bindGonkSyncState`.
+ * Kept unchanged for the migration release; removed in the next breaking
+ * release. */
 export class BackedKvStore<T> implements KvStore<T> {
   constructor(private readonly backend: StoreBackend) {}
 
@@ -83,6 +86,8 @@ export class BackedKvStore<T> implements KvStore<T> {
   }
 }
 
+/** @deprecated Classify bytes as Mirk artifacts or capability-owned files.
+ * Kept for the migration release; removed in the next breaking release. */
 export class BackedBlobStore implements BlobStore {
   constructor(private readonly backend: StoreBackend) {}
 
@@ -105,6 +110,8 @@ export class BackedBlobStore implements BlobStore {
   }
 }
 
+/** @deprecated Use capability-owned ordered records in a Mirk collection.
+ * Kept for the migration release; removed in the next breaking release. */
 export class BackedLogStore<R> implements LogStore<R> {
   constructor(private readonly backend: StoreBackend) {}
 
@@ -122,6 +129,8 @@ export class BackedLogStore<R> implements LogStore<R> {
   }
 }
 
+/** @deprecated Use Mirk's vector port from `bindGonkSyncState`. Kept for the
+ * migration release; removed in the next breaking release. */
 export class BackedVectorStore implements VectorStore {
   constructor(private readonly backend: StoreBackend) {}
 

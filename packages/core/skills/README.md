@@ -10,14 +10,19 @@ typed provenance, optional freshness, stable revisions, and a normalized
 supporting-file tree.
 
 ```bash
-npm install @gonk/skills @gonk/scope
+npm install @gonk/skills @gonk/scope @gonk/store @mirk/store
 ```
 
 ```ts
 import { FilesystemManagedSkillRegistry } from "@gonk/skills";
+import type { GonkSyncStateSource } from "@gonk/store";
+
+// The host selects and owns the Mirk adapter and its lifecycle.
+declare const stateSource: GonkSyncStateSource;
 
 const skills = new FilesystemManagedSkillRegistry({
   env: { cwd: process.cwd(), sessionId: "session-123" },
+  stateSource,
 });
 
 const listed = await skills.list();
@@ -81,26 +86,24 @@ Applications and host adapters must authorize list visibility, detail and
 definition disclosure, and body/supporting-file reads before exposing results to
 a principal. Writable APIs take canonical `AuthContext` and fail closed.
 
-Lifecycle records use `@gonk/store` at
-`<tier-home>/.agents/store/skills.lifecycle/kv.json` (or the pre-existing legacy
-`.gonk/store/skills.lifecycle/kv.json` selected by scope). Records use closed
-schemas and atomic KV writes; raw auth contexts, policy functions, request bodies,
-and idempotency keys are not stored. The journal inherits `@gonk/store`'s
-single-writer-per-namespace assumption. Pending pre-images live in the sibling
-`skills.lifecycle-transactions` namespace with atomic markers containing only
+Lifecycle records use a host-owned Mirk `SyncStore` supplied through
+`FilesystemManagedSkillRegistryOptions.stateSource`. Gonk binds that source to
+the scope and the `skills.lifecycle` namespace; it does not select an adapter,
+assemble a path, or own `close()`. Records use closed schemas and capability
+policy; raw auth contexts, policy functions, request bodies, and idempotency keys
+are not stored. The journal inherits the source's single-writer semantics.
+Pending pre-images live in the scope's existing operational filesystem
+substrate (`store/skills.lifecycle-transactions`, under the canonical `.agents`
+namespace or its read-old `.gonk` fallback) with atomic markers containing only
 relative paths and opaque receipt identifiers. Recovery resolves scope homes
 live, rejects symlinked target components, and validates every backup before any
-rollback write. A scope lock is held from pending snapshot creation through
-receipt commit and cleanup; live-owner locks prevent a second registry from
-constructing over an in-flight mutation, while dead-owner locks are reclaimed on
-reconstruction. If a journal write throws after persisting the exact receipt,
-Core keeps the matching filesystem result instead of rolling it back. To roll
-back or clear receipt history,
-stop writers, construct the registry once to reconcile pending transactions,
-verify that namespace has no `.pending-*` directories, back up, then remove only
-the `skills.lifecycle` namespace directory in the affected tiers. Managed skill
-directories remain untouched; the tradeoff is that old mutation calls can no
-longer replay and old activation receipts cannot be recovered.
+rollback write. A scope lock is held from pending
+snapshot creation through receipt commit and cleanup; live-owner locks prevent a
+second registry from constructing over an in-flight mutation, while dead-owner
+locks are reclaimed on reconstruction. If a journal write throws after
+persisting the exact receipt, Core keeps the matching filesystem result instead
+of rolling it back. A registry without either `stateSource` or an explicit
+`lifecycleJournal` fails at construction.
 
 Future stores can import the runner-neutral
 `managedSkillRegistryConformanceCases()` from `@gonk/skills/conformance` and

@@ -6,7 +6,7 @@ import type {
   ToolEvent,
   ToolRegistry,
 } from "@gonk/tool-registry";
-import { makeBaseContext } from "@gonk/tool-registry";
+import { formatToolDescription, makeBaseContext } from "@gonk/tool-registry";
 import type { AuthContext } from "@gonk/auth";
 import type { Orchestrator } from "@gonk/tool-orchestrator";
 import type { ScopeStore } from "@gonk/scope";
@@ -263,7 +263,8 @@ function printToolList(out: { write(s: string): void }, options: CliAdapterOptio
   }
   for (const [cat, bucket] of byCategory) {
     out.write(`${cat}\n`);
-    for (const t of bucket) out.write(`  ${t.name.padEnd(24)}  ${t.description}\n`);
+    for (const t of bucket)
+      out.write(`  ${t.name.padEnd(24)}  ${formatToolDescription(t)}\n`);
   }
 }
 
@@ -274,7 +275,7 @@ function printToolHelp(
 ): void {
   const positional = tool.hints?.cli?.positional ?? [];
   const positionalStr = positional.map((p) => `<${p}>`).join(" ");
-  out.write(`${tool.name} — ${tool.description}\n\n`);
+  out.write(`${tool.name} — ${formatToolDescription(tool)}\n\n`);
   out.write(`Usage: ${bin} ${tool.name} ${positionalStr} [flags]\n`);
 
   const schema = tool.inputJsonSchema as Record<string, unknown> | undefined;
@@ -328,6 +329,9 @@ function renderEvent(event: ToolEvent, io: CliIO, jsonMode: boolean): void {
         renderDisplay(event.display, io.stdout);
       } else {
         io.stdout.write(`${JSON.stringify(event.data)}\n`);
+      }
+      if (event.metadata !== undefined) {
+        io.stderr.write(`[metadata] ${JSON.stringify(event.metadata)}\n`);
       }
       break;
     }

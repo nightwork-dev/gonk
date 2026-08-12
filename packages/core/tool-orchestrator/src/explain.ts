@@ -15,7 +15,11 @@
  * mechanism it has (orchestrator.visibilityOf, raw-hint inspection, etc.).
  */
 
-import type { ToolDefinition, ToolVisibility } from "@gonk/tool-registry";
+import {
+  formatToolDescription,
+  type ToolDefinition,
+  type ToolVisibility,
+} from "@gonk/tool-registry";
 
 /** Full structured record returned by `tool_explain`. Mirrors the
  *  ToolDefinition shape an agent might care about — every introspectable
@@ -30,7 +34,10 @@ export interface ToolExplainRecord {
   tags?: string[];
   keywords?: string[];
   relatedTo?: string[];
+  relatedCapabilities?: readonly string[];
   capabilities?: ToolDefinition["capabilities"];
+  lifecycle?: ToolDefinition["lifecycle"];
+  composition?: ToolDefinition["composition"];
   hints?: ToolDefinition["hints"];
   inputJsonSchema?: Record<string, unknown>;
 }
@@ -50,7 +57,7 @@ export function explainTool(
 ): ToolExplainRecord {
   const record: ToolExplainRecord = {
     name: tool.name,
-    description: tool.description,
+    description: formatToolDescription(tool),
     visibility: effectiveVisibility,
   };
   if (tool.category !== undefined) record.category = tool.category;
@@ -59,7 +66,11 @@ export function explainTool(
   if (tool.tags !== undefined) record.tags = tool.tags;
   if (tool.keywords !== undefined) record.keywords = tool.keywords;
   if (tool.relatedTo !== undefined) record.relatedTo = tool.relatedTo;
+  if (tool.relatedCapabilities !== undefined)
+    record.relatedCapabilities = tool.relatedCapabilities;
   if (tool.capabilities !== undefined) record.capabilities = tool.capabilities;
+  if (tool.lifecycle !== undefined) record.lifecycle = tool.lifecycle;
+  if (tool.composition !== undefined) record.composition = tool.composition;
   if (tool.hints !== undefined) record.hints = tool.hints;
   if (tool.inputJsonSchema !== undefined) record.inputJsonSchema = tool.inputJsonSchema;
   return record;

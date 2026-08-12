@@ -20,7 +20,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@gonk/store": "workspace:*"
+    "@mirk/store": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

@@ -34,6 +34,20 @@ export type {
   ToolCostClass,
   ToolDefinition,
   ToolEvent,
+  ToolResultMetadata,
+  ToolResultProvenance,
+  ToolResultEvidenceAnchor,
+  ToolResultFreshness,
+  ToolResultFreshnessState,
+  ToolResultCacheMetadata,
+  ToolResultCachePolicy,
+  ToolResultSize,
+  ToolResultSizeUnit,
+  ToolResultTruncation,
+  ToolArtifactReference,
+  ToolContinuationReference,
+  ToolLifecycle,
+  ToolComposition,
   ToolHandler,
   ToolHandlerReturn,
   ToolHints,
@@ -42,8 +56,14 @@ export type {
   ToolVisibility,
 } from "./types.ts";
 
-export type { CollectToolOutcomeOptions, ToolOutcome } from "./outcome.ts";
+export type {
+  CollectToolOutcomeOptions,
+  ToolOutcome,
+} from "./outcome.ts";
 export { collectToolOutcome } from "./outcome.ts";
+export { projectToolResultReceipt } from "./receipt.ts";
+export type { ToolResultReceiptProjection } from "./receipt.ts";
+export { formatToolDescription, formatToolLifecycle } from "./lifecycle.ts";
 
 export type {
   AuthSecurityReceipt,

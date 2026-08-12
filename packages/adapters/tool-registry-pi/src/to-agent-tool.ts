@@ -16,7 +16,12 @@
  * (pi-agent-core type), nothing about the wider AuxClient.
  */
 
-import type { ToolDefinition } from "@gonk/tool-registry";
+import {
+  formatToolDescription,
+  projectToolResultReceipt,
+  type ToolDefinition,
+  type ToolResultMetadata,
+} from "@gonk/tool-registry";
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 
@@ -65,7 +70,10 @@ export function toAgentTool(
   return {
     name: tool.name,
     label: tool.name,
-    description: appendCostLatencyHints(tool, resolvedDescription),
+    description: appendCostLatencyHints(
+      tool,
+      formatToolDescription({ ...tool, description: resolvedDescription }),
+    ),
     parameters,
     async execute(_toolCallId, params, signal) {
       const ctx = makeMinimalCtx(
@@ -75,10 +83,18 @@ export function toAgentTool(
       const handlerResult = (
         tool as ToolDefinition<unknown, unknown>
       ).handler(params as unknown, ctx as never);
-      const data = await unwrapHandlerReturn(handlerResult);
+      const outcome = await unwrapHandlerReturn(handlerResult);
+      const details =
+        outcome.metadata === undefined
+          ? outcome.data
+          : {
+              data: outcome.data,
+              metadata: outcome.metadata,
+              receipt: projectToolResultReceipt(outcome.metadata),
+            };
       const result: AgentToolResult<unknown> = {
-        content: [{ type: "text", text: JSON.stringify(data) }],
-        details: data,
+        content: [{ type: "text", text: JSON.stringify(outcome.data) }],
+        details,
       };
       return result;
     },
@@ -138,20 +154,30 @@ export function resolveAdvertisedDescription(
  *  iterable form returns the last `result` event's `data`. */
 async function unwrapHandlerReturn(
   ret: ReturnType<ToolDefinition<unknown, unknown>["handler"]>,
-): Promise<unknown> {
+): Promise<{ data: unknown; display?: unknown; metadata?: ToolResultMetadata }> {
   const isPromise =
     ret !== null &&
     typeof ret === "object" &&
     typeof (ret as { then?: unknown }).then === "function";
   if (isPromise) {
     const settled = (await ret) as { data: unknown };
-    return settled.data;
+    return settled;
   }
-  let captured: unknown = undefined;
+  let captured: { data: unknown; display?: unknown; metadata?: ToolResultMetadata } | undefined;
   for await (const ev of ret as AsyncIterable<{ type: string; data?: unknown }>) {
-    if (ev.type === "result") captured = ev.data;
+    if (ev.type === "result") {
+      captured = {
+        data: ev.data,
+        ...((ev as { display?: unknown }).display === undefined
+          ? {}
+          : { display: (ev as { display?: unknown }).display }),
+        ...((ev as { metadata?: ToolResultMetadata }).metadata === undefined
+          ? {}
+          : { metadata: (ev as { metadata?: ToolResultMetadata }).metadata }),
+      };
+    }
   }
-  return captured;
+  return captured ?? { data: undefined };
 }
 
 /** Minimum `ToolContext` for handler execution. Substrate handlers driven

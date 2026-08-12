@@ -35,9 +35,10 @@ import {
   createScope,
   SCOPE_RESOLUTION_ORDER,
   resolveTierHomes,
+  substrateDir,
   type ScopeName,
 } from "@gonk/scope";
-import { resolveStoreDir } from "@gonk/store";
+import { bindGonkSyncState } from "@gonk/store";
 import { ToolError, type ToolDefinition } from "@gonk/tool-registry";
 import { stringify as stringifyYaml } from "yaml";
 
@@ -151,8 +152,17 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     this.freshnessProbe = options.freshnessProbe;
     this.now = options.now ?? (() => new Date().toISOString());
     this.promotionApprovalProvider = options.promotionApprovalProvider;
-    this.lifecycleJournal =
-      options.lifecycleJournal ?? new FilesystemSkillLifecycleJournal(this.env);
+    if (options.lifecycleJournal) {
+      this.lifecycleJournal = options.lifecycleJournal;
+    } else {
+      if (!options.stateSource) {
+        throw new TypeError(
+          "FilesystemManagedSkillRegistry requires stateSource when lifecycleJournal is not provided"
+        );
+      }
+      const state = bindGonkSyncState(createScope(this.env), options.stateSource);
+      this.lifecycleJournal = new FilesystemSkillLifecycleJournal(state);
+    }
     this.transactionStore = new FilesystemSkillTransactionStore(
       this.env,
       this.lifecycleJournal
@@ -1718,13 +1728,13 @@ class FilesystemSkillTransactionStore {
   }
 
   private namespace(scope: ScopeName, home: string): string {
+    // Transaction images are operational filesystem state, not capability
+    // records. Keep the existing scope substrate policy (including the
+    // `.gonk` read-old fallback) while lifecycle records go through injected
+    // Mirk state.
     return verifiedTransactionNamespace(
       home,
-      resolveStoreDir(
-        createScope(this.env),
-        scope,
-        SKILL_TRANSACTION_NAMESPACE
-      )
+      join(substrateDir(scope, home, "store"), SKILL_TRANSACTION_NAMESPACE)
     );
   }
 
