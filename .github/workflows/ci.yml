@@ -29,3 +29,15 @@ jobs:
 
       - name: Test
         run: pnpm nx run-many -t test --all
+
+      # The nx targets above do not run the repository-level fences, so run
+      # them explicitly here. `pnpm test` chains check:store-imports, but CI
+      # invokes nx directly and would otherwise skip all three.
+      - name: Client-safe contracts fence
+        run: pnpm check:client-safe
+
+      - name: Store import fence
+        run: pnpm check:store-imports
+
+      - name: Public documentation check
+        run: pnpm check:docs
