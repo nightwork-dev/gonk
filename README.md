@@ -17,11 +17,35 @@ Build capabilities on these primitives and they ship once, to run on any host.
 
 The current R1 implementation is source-complete through the host-composition
 part of GS-05: Core consumers and official hosts use caller-provided Mirk state,
-the legacy surface is frozen and fenced, and legacy import is explicit. GS-05
-remains partial until the migration release is packed, clean-installed, and
-exercised from installed artifacts. This is working-tree evidence, not a claim
-of publication, installation, or runtime deployment; the candidate roadmap
-remains proposed and not adopted.
+the legacy surface is frozen and fenced, and legacy import is explicit. GS-05 is
+**partial**: a local Verdaccio receipt verifies a prior `0.8.0` package set, but
+the exact `main@0f10b7046a8f4eef5209e92bc73a311081af349d` source-to-pack-to-
+installed-host chain is still open. This is source and local package evidence,
+not a claim of a public or remote release, an installed-host pass, or runtime
+deployment. The [roadmap](docs/roadmap.md) is **proposed; not adopted** and
+tracks the exact installed-release gate plus the one-release Store migration
+bridge and its GS-05 → GS-06 deletion sequence.
+
+## Current release evidence
+
+Observed 2026-08-12:
+
+- Core `main` is clean at `0f10b7046a8f4eef5209e92bc73a311081af349d`, ahead of
+  `origin/main` by 29 commits. The current package line contains 20 publishable
+  packages on `0.8.0`.
+- Source validation is evidence for the working tree only. It does not prove
+  that the current commit was packed, published, installed, or exercised by a
+  host.
+- The on-disk Nx run record (`.nx/cache/run.json`) contains a fresh Core
+  `run-many -t test` record with 20 test tasks and no non-zero task status. This
+  is source-test evidence only, not package or host proof.
+- The local cross-repository release receipt in
+  [`gonk-extensions/docs/receipts/fabric-v1-verdaccio-release-2026-08-12.md`](../gonk-extensions/docs/receipts/fabric-v1-verdaccio-release-2026-08-12.md)
+  records packed and locally installed Core packages from `a3cea8fac323ef75aafb6f76cb9fcc0af6138d8c`.
+  That receipt is useful package-layer evidence, but it does not bind the
+  current documentation commit to an installed host.
+- No statement here should be read as public npm publication, remote merge,
+  installed Codex/host adoption, or deployment.
 
 ## Architecture
 

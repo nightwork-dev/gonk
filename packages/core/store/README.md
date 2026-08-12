@@ -1,5 +1,10 @@
 # @gonk/store
 
+**Status:** migration bridge — source target implemented; GS-05 **partial**;
+GS-06 **open**. This package retains the deprecated facade for one migration
+release only. The next breaking release removes it; there is no third
+"still-deprecated" release.
+
 `@gonk/store` is in a one-release migration from its original backing-agnostic
 store facade to a small scope-and-namespace binding over Mirk. New capability
 code should receive a host-owned Mirk port explicitly. The host owns adapter
@@ -62,7 +67,9 @@ deprecation markers: `createStore`, `resolveStoreDir`, `StoreBackend`,
 `BackendFactory`, `FsStoreBackend`, the `Backed*Store` classes, Gonk vector
 types and `cosineSimilarity`, `tailLog`, `FoldStore`, and `compact`. Do not add
 new production imports of these exports. The next breaking release removes
-them.
+them. The current source has not deleted this architecture; the deprecation
+window is an explicit compatibility boundary, not proof that the package is
+already a thin Mirk-only facade.
 
 **Why it exists.** Capabilities used to persist by reaching *past* scope straight to the filesystem — opening `better-sqlite3`, writing JSON/JSONL at paths they assembled themselves. That hardcodes both the location (drifting from the canonical `.agents/` home) and the backing (you can't move a capability that `new Database()`s to anything else without rewriting it). One rule fixes both: **persist through a store the foundation provides, never through a path you assemble.**
 
@@ -118,3 +125,14 @@ const provider = createStoreProvider(scope, { backendFactory: mirkBackendFactory
 - `@gonk/store/legacy-import` — explicit Node-only legacy filesystem inspector
   and importer. This is an operator action; ordinary store construction never
   imports data.
+
+## Release and consumer proof
+
+GS-05 is complete only when the migration package is packed from a clean source
+revision, installed outside the monorepo, and exercised by each official host
+family. A current production-source scan of Gonk Extensions reports no new
+legacy `@gonk/store` imports, but that scan is not a consumer migration receipt.
+External consumers must provide their own source revision, package version, and
+runtime proof before GS-06 can delete the compatibility architecture. See the
+[tracked Gonk roadmap](../../../docs/roadmap.md#r7--remove-the-store-compatibility-architecture)
+for the release sequence and removal ledger.
