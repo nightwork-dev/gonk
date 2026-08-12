@@ -1,5 +1,13 @@
 # @gonk/core
 
+## 0.8.0
+
+### Patch Changes
+
+- @gonk/auth@0.8.0
+- @gonk/scope@0.8.0
+- @gonk/tool-registry@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes

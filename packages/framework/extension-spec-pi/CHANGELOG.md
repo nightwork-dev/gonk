@@ -1,5 +1,19 @@
 # @gonk/extension-spec-pi
 
+## 0.8.0
+
+### Minor Changes
+
+- 19c0dd5: Require Pi extension hosts to supply the internal tool registry security policy explicitly.
+
+### Patch Changes
+
+- @gonk/tool-registry-pi@0.8.0
+- @gonk/auth@0.8.0
+- @gonk/scope@0.8.0
+- @gonk/tool-registry@0.8.0
+- @gonk/extension-spec@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes
