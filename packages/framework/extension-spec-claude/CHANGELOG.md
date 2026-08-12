@@ -1,5 +1,12 @@
 # @gonk/extension-spec-claude
 
+## 0.8.0
+
+### Patch Changes
+
+- @gonk/utils@0.8.0
+- @gonk/extension-spec@0.8.0
+
 ## 0.7.0
 
 ### Patch Changes
