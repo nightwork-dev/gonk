@@ -12,7 +12,7 @@
     "test": "nx run-many -t test && pnpm check:store-imports",
     "typecheck": "nx run-many -t typecheck",
     "check:docs": "node --test scripts/check-public-docs.test.mjs && node scripts/check-public-docs.mjs",
-    "check:client-safe": "node --test scripts/check-client-safe-contracts.test.mjs",
+    "check:client-safe": "node --test scripts/check-client-safe-contracts.test.mjs && node scripts/check-client-safe-contracts.mjs",
     "check:store-imports": "node --test scripts/check-store-import-fence.test.mjs && node scripts/check-store-import-fence.mjs",
     "clean": "nx run-many -t clean",
     "graph": "nx graph",
