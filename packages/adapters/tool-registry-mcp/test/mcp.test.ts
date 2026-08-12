@@ -171,6 +171,56 @@ describe("createMcpServer", () => {
     expect(result.structuredContent).toEqual({ echoed: "hi" });
   });
 
+  it("projects registered result metadata into MCP _meta", async () => {
+    const r = mcpOwnerRegistry();
+    r.register({
+      name: "paged",
+      description: "paged",
+      lifecycle: {
+        status: "deprecated",
+        reason: "use the bounded operation",
+        replacement: "paged.v2",
+      },
+      input: passthrough(),
+      handler: async () => ({
+        data: { rows: [1] },
+        metadata: {
+          size: { original: 100, returned: 20, unit: "bytes" },
+          truncation: {
+            truncated: true,
+            limit: 20,
+            reason: "MCP display limit",
+            continuation: { cursor: "private-cursor" },
+          },
+        },
+      }),
+    });
+    const adapter = createMcpServer({
+      serverName: "test",
+      serverVersion: "0",
+      source: r,
+      makeAuthContext: () => MCP_OWNER_AUTH,
+    });
+    const client = await pair(adapter);
+    expect((await client.listTools()).tools[0]?.description).toContain("Deprecated");
+
+    const result = await client.callTool({ name: "paged", arguments: {} });
+    expect(result.structuredContent).toEqual({ rows: [1] });
+    expect(result._meta).toMatchObject({
+      "gonk/tool-result-metadata": {
+        truncation: { truncated: true, reason: "MCP display limit" },
+      },
+      "gonk/tool-result-receipt": {
+        truncation: { truncated: true, reason: "MCP display limit" },
+      },
+    });
+    expect(
+      JSON.stringify(
+        (result._meta as Record<string, unknown>)["gonk/tool-result-receipt"]
+      )
+    ).not.toContain("private-cursor");
+  });
+
   it("returns isError for unknown tool", async () => {
     const r = mcpOwnerRegistry();
     const adapter = createMcpServer({

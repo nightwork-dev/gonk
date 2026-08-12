@@ -62,6 +62,8 @@ function tool(
     ...(opts.category ? { category: opts.category } : {}),
     ...(opts.authorization ? { authorization: opts.authorization } : {}),
     ...(opts.capabilities ? { capabilities: opts.capabilities } : {}),
+    ...(opts.lifecycle ? { lifecycle: opts.lifecycle } : {}),
+    ...(opts.composition ? { composition: opts.composition } : {}),
   };
 }
 
@@ -238,6 +240,32 @@ describe("Orchestrator", () => {
     const results = orch.search("todo");
     expect(results.length).toBeGreaterThan(0);
     expect(results[0]?.tool.name).toBe("todo"); // name token match wins over body match
+  });
+
+  it("keeps lifecycle and composition metadata in discovery projections", async () => {
+    const r = ownerRegistry();
+    r.register(
+      tool("legacy", {
+        description: "old operation",
+        lifecycle: {
+          status: "superseded",
+          reason: "bounded replacement",
+          replacement: "current",
+        },
+        composition: {
+          consumes: [{ id: "query", schema: "query.v1" }],
+          produces: [{ id: "page", mediaType: "application/json" }],
+        },
+      })
+    );
+    const orch = createOrchestrator({
+      registries: [r],
+      scope: "mcp",
+      registerMetaTools: false,
+    });
+    const discovered = orch.allTools().find((candidate) => candidate.name === "legacy");
+    expect(discovered?.lifecycle?.status).toBe("superseded");
+    expect(discovered?.composition?.produces?.[0]?.id).toBe("page");
   });
 
   it("recommend skips already-active tools", () => {

@@ -1,6 +1,6 @@
 # @gonk/temporal
 
-The time-and-activity decision primitive for gonk: a pure temporal-awareness surface (wall clock, session elapsed, turn index, idle signals), a periodic-run scheduler (`shouldRun`), and a persistent-presence policy (`wake`/`defer`). Pure functions where possible; the only I/O is a thin wrapper over a `@gonk/store` `KvStore` for the last-activity timestamp. Subsumes the former `@gonk/scheduler`.
+The time-and-activity decision primitive for gonk: a pure temporal-awareness surface (wall clock, session elapsed, turn index, idle signals), a periodic-run scheduler (`shouldRun`), and a persistent-presence policy (`wake`/`defer`). Pure functions where possible; the only I/O is a thin wrapper over an injected Mirk `SyncStore` for the last-activity timestamp. Subsumes the former `@gonk/scheduler`.
 
 ## Three halves of one question
 
@@ -12,7 +12,7 @@ The time-and-activity decision primitive for gonk: a pure temporal-awareness sur
 
 ## Durable state
 
-The single field that must survive across turns — `lastActivityMs` — is read and written through a `@gonk/store` `KvStore<TemporalDurableState>` the caller supplies. `@gonk/temporal` owns no filesystem.
+The single field that must survive across turns — `lastActivityMs` — is read and written through an `@mirk/store` `SyncStore` the caller supplies. `@gonk/temporal` owns no filesystem or adapter lifecycle.
 
 ```ts
 import { computeTemporal, loadLastActivity, recordActivity } from "@gonk/temporal";
@@ -75,7 +75,7 @@ const { outcome, reason } = decidePersistentPresence(reading, {
 ## Install
 
 ```sh
-npm i @gonk/temporal
+npm i @gonk/temporal @mirk/store
 ```
 
 ## License

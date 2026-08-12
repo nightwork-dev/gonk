@@ -61,6 +61,8 @@ export interface LogStore<R = unknown> {
 /** Vector store with cosine-KNN search. The default backend computes cosine
  *  similarity in pure JS; the SPI is shaped so a native index (sqlite-vec, a
  *  remote index) can implement the same surface later. */
+/** @deprecated Use Mirk's `VectorStore` directly through the state binding.
+ * Removed in the breaking cleanup release after this migration release. */
 export interface VectorStore {
   upsert(id: string, vector: number[], meta?: Record<string, unknown>): void;
   search(vector: number[], k: number, filter?: VectorFilter): VectorMatch[];
@@ -68,8 +70,12 @@ export interface VectorStore {
 }
 
 /** Predicate over an entry's metadata, used to narrow a search. */
+/** @deprecated Use Mirk's `VectorStore` and search options directly. Removed in
+ * the breaking cleanup release after this migration release. */
 export type VectorFilter = (meta: Record<string, unknown>) => boolean;
 
+/** @deprecated Use Mirk's `VectorSearchResult` directly. Removed in the
+ * breaking cleanup release after this migration release. */
 export interface VectorMatch {
   id: string;
   /** Cosine similarity in [-1, 1]; higher is nearer. */
@@ -84,6 +90,8 @@ export interface VectorMatch {
 /** Obtains the four store types for a (tier, namespace). The location is
  *  resolved internally through scope — callers pass a tier + a namespace, never
  *  a path. */
+/** @deprecated Use `GonkSyncState` over caller-provided Mirk ports. Removed in
+ * the breaking cleanup release after this migration release. */
 export interface Store {
   kv<T = unknown>(tier: ScopeName, namespace: string): KvStore<T>;
   blob(tier: ScopeName, namespace: string): BlobStore;
@@ -109,6 +117,8 @@ export interface KvEntry {
   expiresAt?: number;
 }
 
+/** @deprecated Gonk no longer accepts a generic backend SPI. Hosts provide
+ * Mirk ports directly. Removed in the breaking cleanup release. */
 export interface StoreBackend {
   // ---- KV ------------------------------------------------------------------
   kvGet(key: string): KvEntry | undefined;
@@ -144,6 +154,8 @@ export interface StoreBackend {
 }
 
 /** A persisted vector record. */
+/** @deprecated Use Mirk's `VectorDocument` directly. Removed in the breaking
+ * cleanup release after this migration release. */
 export interface VectorEntry {
   id: string;
   vector: number[];
@@ -154,4 +166,16 @@ export interface VectorEntry {
  *  `fsBackendFactory` resolves the on-disk dir through scope and returns an
  *  `FsStoreBackend`; substituting this factory is how a different backing is
  *  installed. */
+/** @deprecated Provide Mirk ports through `bindGonkSyncState`; do not add new
+ * backend implementations. Removed in the breaking cleanup release. */
 export type BackendFactory = (tier: ScopeName, namespace: string) => StoreBackend;
+
+// State-binding types live in their own module so importing the type-only
+// subpath never evaluates a runtime adapter. Re-export them here for callers
+// that already use `@gonk/store/types`.
+export type {
+  GonkStateBindingOptions,
+  GonkSyncState,
+  GonkSyncStateSource,
+  GonkSyncStateTier,
+} from "./state.ts";

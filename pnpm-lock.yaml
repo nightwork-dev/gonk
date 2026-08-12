@@ -269,6 +269,9 @@ importers:
       '@gonk/store':
         specifier: workspace:*
         version: link:../store
+      '@mirk/store':
+        specifier: 'catalog:'
+        version: 0.8.1(better-sqlite3@12.10.0)
       '@standard-schema/spec':
         specifier: 'catalog:'
         version: 1.1.0
@@ -332,6 +335,9 @@ importers:
         specifier: 'catalog:'
         version: 2.9.0
     devDependencies:
+      '@mirk/store':
+        specifier: 'catalog:'
+        version: 0.8.1(better-sqlite3@12.10.0)
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.17
@@ -375,9 +381,9 @@ importers:
 
   packages/core/temporal:
     dependencies:
-      '@gonk/store':
-        specifier: workspace:*
-        version: link:../store
+      '@mirk/store':
+        specifier: 'catalog:'
+        version: 0.8.1(better-sqlite3@12.10.0)
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

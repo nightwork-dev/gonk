@@ -4,8 +4,8 @@ import type {
   AuthorizationRequest,
 } from "@gonk/auth";
 import { ContextCompiler, ContextContributorRegistry } from "@gonk/context";
-import { BackedKvStore } from "@gonk/store";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { InMemoryKv } from "@mirk/store";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -26,7 +26,6 @@ import {
   retrievalContextSourceProbeResultSchema,
 } from "../src/context-adapter.ts";
 import { validateStandard } from "../src/validation.ts";
-import { MemoryStoreBackend } from "./memory-backend.ts";
 
 const NOW = "2026-07-17T03:45:00.000Z";
 
@@ -337,9 +336,9 @@ function makeFixture() {
   registry.register(new TestNativeSource("visible"));
   registry.register(new TestNativeSource("hidden"));
   const storage: RetrievalGenerationStorage = {
-    generations: new BackedKvStore<unknown>(new MemoryStoreBackend()),
-    pointers: new BackedKvStore<unknown>(new MemoryStoreBackend()),
-    citations: new BackedKvStore<unknown>(new MemoryStoreBackend()),
+    generations: new InMemoryKv(),
+    pointers: new InMemoryKv(),
+    citations: new InMemoryKv(),
   };
   const auth = authContext(policy, principal());
   const coordinator = new RetrievalIndexCoordinator({

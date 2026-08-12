@@ -1,5 +1,7 @@
 import {
+  formatToolDescription,
   makeBaseContext,
+  projectToolResultReceipt,
   type Display,
   type DisplayBlock,
   type Logger,
@@ -186,7 +188,10 @@ function toPiToolSpec(
   return {
     name: piName,
     label: tool.name,
-    description: appendCostLatencyHints(tool, resolvedDescription),
+    description: appendCostLatencyHints(
+      tool,
+      formatToolDescription({ ...tool, description: resolvedDescription }),
+    ),
     parameters: tool.inputJsonSchema ?? { type: "object", properties: {}, additionalProperties: true },
     async execute(_toolCallId, params, signal, onUpdate, piCtx) {
       const baseCtx = makeBaseContext({ signal, log, auth: options.auth });
@@ -217,6 +222,7 @@ function toPiToolSpec(
 
       let resultData: unknown;
       let resultDisplay: Display | undefined;
+      let resultMetadata: import("@gonk/tool-registry").ToolResultMetadata | undefined;
       let errorEvent: { code: string; message: string; details?: unknown } | undefined;
 
       const stream = options.source.invoke(tool.name, params, ctx);
@@ -239,6 +245,7 @@ function toPiToolSpec(
           case "result":
             resultData = ev.data;
             if (ev.display !== undefined) resultDisplay = ev.display;
+            if (ev.metadata !== undefined) resultMetadata = ev.metadata;
             break;
           case "error":
             errorEvent = {
@@ -270,9 +277,17 @@ function toPiToolSpec(
         };
       }
 
+      const details =
+        resultMetadata === undefined
+          ? resultData
+          : {
+              data: resultData,
+              metadata: resultMetadata,
+              receipt: projectToolResultReceipt(resultMetadata),
+            };
       return {
         content: renderDisplay(resultDisplay, resultData),
-        details: resultData,
+        details,
       };
     },
   };

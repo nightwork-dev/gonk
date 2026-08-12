@@ -1,10 +1,10 @@
-import type { KvStore } from "@gonk/store/types";
+import type { SyncStore } from "@mirk/store";
 
 // ---------------------------------------------------------------------------
 // Durable state — the one field that must survive across turns.
 // ---------------------------------------------------------------------------
 
-/** Host reads/writes this through the @gonk/store KvStore the caller supplies. */
+/** Host reads/writes this through the injected Mirk SyncStore. */
 export interface TemporalDurableState {
   /** ms since epoch. Updated by the host via `recordActivity()`. */
   lastActivityMs: number;
@@ -59,18 +59,18 @@ export function computeTemporal(inputs: TemporalInputs): TemporalReading {
 }
 
 // ---------------------------------------------------------------------------
-// Durable helpers — the only I/O surface (thin wrapper over the KvStore).
+// Durable helpers — the only I/O surface (thin wrapper over the SyncStore).
 // ---------------------------------------------------------------------------
 
 /** Load the last-activity timestamp from durable storage. Returns 0 if never
  *  recorded (new session, or store not yet written). */
-export function loadLastActivity(kv: KvStore<TemporalDurableState>): number {
-  return kv.get(DURABLE_KEY)?.lastActivityMs ?? 0;
+export function loadLastActivity(kv: SyncStore): number {
+  return kv.get<TemporalDurableState>(DURABLE_KEY)?.lastActivityMs ?? 0;
 }
 
 /** Persist `now` as the last-activity timestamp. Call once per turn. */
 export function recordActivity(
-  kv: KvStore<TemporalDurableState>,
+  kv: SyncStore,
   now: number,
 ): void {
   kv.set(DURABLE_KEY, { lastActivityMs: now });

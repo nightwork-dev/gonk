@@ -29,3 +29,10 @@ export {
 } from "./stores.ts";
 export type { LogTail, LogTailRecord, TailLogOptions } from "./fs-log-tail.ts";
 export { tailLog } from "./fs-log-tail.ts";
+export type {
+  GonkStateBindingOptions,
+  GonkSyncState,
+  GonkSyncStateSource,
+  GonkSyncStateTier,
+} from "./state.ts";
+export { bindGonkSyncState } from "./state.ts";

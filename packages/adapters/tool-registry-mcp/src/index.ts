@@ -12,6 +12,7 @@ import {
 import type { Orchestrator } from "@gonk/tool-orchestrator";
 import {
   collectToolOutcome,
+  formatToolDescription,
   makeBaseContext,
   resolveApproval,
   resolveInputJsonSchema,
@@ -146,7 +147,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
           const annotations = mapAnnotations(tool.hints?.mcp?.annotations);
           return {
             name: tool.hints?.mcp?.mcpName ?? tool.name,
-            description: tool.description,
+            description: formatToolDescription(tool),
             inputSchema: ensureObjectSchema(resolveInputJsonSchema(tool)),
             ...(annotations ? { annotations } : {}),
           };
@@ -203,6 +204,16 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
       return {
         content,
         ...(isRecord(outcome.data) ? { structuredContent: outcome.data } : {}),
+        ...(outcome.metadata === undefined && outcome.receipt === undefined
+          ? {}
+          : {
+              _meta: {
+                "gonk/tool-result-metadata": outcome.metadata,
+                ...(outcome.receipt === undefined
+                  ? {}
+                  : { "gonk/tool-result-receipt": outcome.receipt }),
+              },
+            }),
       };
     }
   );

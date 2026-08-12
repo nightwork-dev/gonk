@@ -165,6 +165,131 @@ export type DisplayBlock =
 export type Display = string | DisplayBlock[];
 
 // =============================================================================
+// Result metadata
+// =============================================================================
+
+/** A stable, host-neutral source reference for a tool result. */
+export interface ToolResultEvidenceAnchor {
+  kind: string;
+  value: string;
+}
+
+export interface ToolResultProvenance {
+  sourceKind: string;
+  sourceId: string;
+  sourceRevision?: string;
+  sourceVersion?: string;
+  evidenceAnchors?: readonly ToolResultEvidenceAnchor[];
+}
+
+export type ToolResultFreshnessState = "fresh" | "stale" | "expired" | "unknown";
+
+/** Observation and freshness are metadata, not authorization to reuse data. */
+export interface ToolResultFreshness {
+  observedAt?: string;
+  checkedAt?: string;
+  state: ToolResultFreshnessState;
+  expiresAt?: string;
+}
+
+export type ToolResultCachePolicy =
+  | "reusable"
+  | "stale-revalidate"
+  | "non-cacheable";
+
+export interface ToolResultCacheMetadata {
+  policy: ToolResultCachePolicy;
+  key?: string;
+  validator?: string;
+  guidance?: string;
+}
+
+export type ToolResultSizeUnit = "bytes" | "characters" | "tokens" | "items";
+
+export interface ToolResultSize {
+  original?: number;
+  returned?: number;
+  unit?: ToolResultSizeUnit;
+}
+
+/** An artifact/manifest identity. Bytes remain owned by Mirk or the caller. */
+export interface ToolArtifactReference {
+  id: string;
+  schema?: string;
+  version?: string;
+  mediaType?: string;
+  digest?: string;
+}
+
+/** A continuation cursor must be bound by its issuing host to this context. */
+export interface ToolContinuationReference {
+  cursor: string;
+  principalBinding?: string;
+  scopeBinding?: string;
+  sourceRevision?: string;
+  authorizationPolicy?: string;
+}
+
+interface ToolResultTruncationBase {
+  truncated: boolean;
+  limit?: number;
+  unit?: ToolResultSizeUnit;
+  reason?: string;
+}
+
+export type ToolResultTruncation =
+  | (ToolResultTruncationBase & {
+      truncated: false;
+      continuation?: never;
+      artifact?: never;
+    })
+  | (ToolResultTruncationBase & {
+      truncated: true;
+      continuation: ToolContinuationReference;
+      artifact?: never;
+    })
+  | (ToolResultTruncationBase & {
+      truncated: true;
+      artifact: ToolArtifactReference;
+      continuation?: never;
+    });
+
+/** Optional metadata carried by both promise and streaming terminal results. */
+export interface ToolResultMetadata {
+  provenance?: ToolResultProvenance;
+  freshness?: ToolResultFreshness;
+  cache?: ToolResultCacheMetadata;
+  size?: ToolResultSize;
+  truncation?: ToolResultTruncation;
+}
+
+// =============================================================================
+// Lifecycle and composition metadata
+// =============================================================================
+
+export type ToolLifecycle =
+  | { status: "active"; reason?: string; since?: string }
+  | {
+      status: "deprecated";
+      reason: string;
+      replacement?: string;
+      since?: string;
+      sunset?: string;
+    }
+  | {
+      status: "superseded";
+      reason: string;
+      replacement: string;
+      since?: string;
+      sunset?: string;
+    };
+
+export interface ToolComposition {
+  consumes?: readonly ToolArtifactReference[];
+  produces?: readonly ToolArtifactReference[];
+}
+
+// =============================================================================
 // Events / Results
 // =============================================================================
 
@@ -177,13 +302,14 @@ export type ToolEvent<T = unknown> =
     }
   | { type: "progress"; percent?: number; message?: string }
   | { type: "data"; chunk: unknown }
-  | { type: "result"; data: T; display?: Display }
+  | { type: "result"; data: T; display?: Display; metadata?: ToolResultMetadata }
   | { type: "error"; code: string; message: string; details?: unknown };
 
 export interface ToolResult<T = unknown> {
   data: T;
   /** Falls back to JSON.stringify(data) when omitted. */
   display?: Display;
+  metadata?: ToolResultMetadata;
 }
 
 export type ToolHandlerReturn<T> =
@@ -263,6 +389,13 @@ export interface ToolDefinition<I = unknown, O = unknown> {
   tags?: string[];
   keywords?: string[];
   relatedTo?: string[];
+  /** Related capability IDs used by discovery and host projections. */
+  relatedCapabilities?: readonly string[];
+  /** Explicit lifecycle state. Deprecated tools remain callable; superseded
+   * tools are never silently redirected by the registry. */
+  lifecycle?: ToolLifecycle;
+  /** Descriptive input/output artifact contracts for planning. */
+  composition?: ToolComposition;
 
   /** Coarse cost class so the LLM can make budget-aware decisions without
    *  needing the operator to plumb usage data through. The agent surface

@@ -51,6 +51,8 @@ export interface FoldEvent<E> {
  *  (`store.log(tier, namespace)`). Multiple `FoldStore` handles over the same
  *  backing are safe: appends are commutative at the log level and state is
  *  always re-derived, never written back. */
+/** @deprecated Move fold-on-read state into the owning capability. Kept for
+ * the migration release; removed in the next breaking release. */
 export class FoldStore<S, E> {
   constructor(
     private readonly log: LogStore<FoldEvent<E>>,
@@ -97,6 +99,9 @@ export class FoldStore<S, E> {
  *  or transactional semantics from a future SqliteStoreBackend) is deferred.
  *
  *  This stub exists so the gap is named in code, not silently skipped. */
+/** @deprecated No generic compaction operation is provided. Kept as a throwing
+ * compatibility stub for the migration release; removed in the next breaking
+ * release. */
 export function compact(): never {
   throw new Error(
     "FoldStore.compact: log compaction requires a cross-process lock not provided by the fs backend; deferred (see fold.ts).",

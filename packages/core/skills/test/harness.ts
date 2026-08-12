@@ -2,7 +2,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type { ScopeEnvironment } from "@gonk/scope";
+import { createScope, type ScopeEnvironment, type ScopeName } from "@gonk/scope";
+import { bindGonkSyncState, type GonkSyncState, type GonkSyncStateSource } from "@gonk/store";
+import { InMemoryKv } from "@mirk/store";
 
 import type {
   ManagedSkillConformanceHarness,
@@ -15,6 +17,8 @@ export interface FilesystemHarness extends ManagedSkillConformanceHarness {
   registry: WritableManagedSkillRegistry;
   root: string;
   env: ScopeEnvironment;
+  stateSource: GonkSyncStateSource;
+  state: GonkSyncState;
   home(scope: ManagedSkillFixture["scope"]): string;
 }
 
@@ -38,11 +42,26 @@ export function makeFilesystemHarness(
     sessionHome: homes.session,
     sessionId: "test-session",
   };
+  const stores = new Map<ScopeName, InMemoryKv>();
+  const stateSource: GonkSyncStateSource = {
+    kv(scope) {
+      let store = stores.get(scope);
+      if (!store) {
+        store = new InMemoryKv();
+        stores.set(scope, store);
+      }
+      return store;
+    },
+  };
+  const state = bindGonkSyncState(createScope(env), stateSource);
   return {
     root,
     env,
+    stateSource,
+    state,
     registry: new FilesystemManagedSkillRegistry({
       env,
+      stateSource,
       ...(freshnessProbe === undefined ? {} : { freshnessProbe }),
     }),
     home: (scope) => homes[scope],

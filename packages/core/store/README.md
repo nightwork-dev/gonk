@@ -1,14 +1,79 @@
 # @gonk/store
 
-Backing-agnostic persistence primitives for gonk capabilities. The same idea for *data* that [`@gonk/scope`](../scope) is for *config*: a capability declares what it stores and how it reads it, and the store owns *where* (a scope-resolved, `.agents`-preferring location) and *what backing* (a pure-`fs` default today, swappable for sqlite/remote without touching the caller).
+`@gonk/store` is in a one-release migration from its original backing-agnostic
+store facade to a small scope-and-namespace binding over Mirk. New capability
+code should receive a host-owned Mirk port explicitly. The host owns adapter
+selection, paths, credentials, and `close()`.
+
+```ts
+import { bindGonkSyncState } from "@gonk/store";
+
+const state = bindGonkSyncState(scope, {
+  // The host chooses and owns this Mirk adapter.
+  kv: (tier) => hostMirkSource.kv(tier),
+});
+
+const jobs = state.kv("jobs");
+jobs.set("attempt-1", { status: "running" });
+```
+
+The source is required. There is no filesystem fallback in the binding, and
+Gonk never closes a caller-provided adapter.
+
+## Explicit legacy import
+
+Opening `MirkStoreBackend` or binding ordinary Gonk state never scans legacy
+filesystem data. Migration is an explicit Node-only operator action:
+
+```ts
+import { importLegacyFsStore } from "@gonk/store/legacy-import";
+
+const receipt = importLegacyFsStore({
+  sourceDir: legacyNamespaceDir,
+  destination: {
+    kind: "gonk-state",
+    state,
+    tier: "global",
+    namespace: "memory",
+    identity: "primary-state",
+  },
+  mode: "dry-run",
+  // The operator supplies the version of the legacy source package.
+  packageVersions: { source: "0.4.0" },
+});
+```
+
+Inspect the dry-run receipt, then repeat with `mode: "write"`. Write mode also
+requires `destination.runExclusive`, a host callback that encloses destination
+preflight, writes, and the receipt in one exclusive transaction or lock. For a
+host-owned `SqliteAdapter`, use
+`runExclusive: (work) => adapter.transaction(work, "immediate")`.
+
+The importer preflights every destination record, refuses differing data,
+writes its receipt last, and leaves the source untouched. Repeating an unchanged
+completed import returns `already-imported` without writing again. Future TTL
+values are quarantined as records in `legacy-kv-ttl`; they are not silently
+converted into immortal KV values. Destination identity is a safe operator
+label, not a database path or credential. Keep the legacy source quiescent
+during import; symlinked source entries are rejected.
+
+The previous factory/backend surface remains for this migration release with
+deprecation markers: `createStore`, `resolveStoreDir`, `StoreBackend`,
+`BackendFactory`, `FsStoreBackend`, the `Backed*Store` classes, Gonk vector
+types and `cosineSimilarity`, `tailLog`, `FoldStore`, and `compact`. Do not add
+new production imports of these exports. The next breaking release removes
+them.
 
 **Why it exists.** Capabilities used to persist by reaching *past* scope straight to the filesystem — opening `better-sqlite3`, writing JSON/JSONL at paths they assembled themselves. That hardcodes both the location (drifting from the canonical `.agents/` home) and the backing (you can't move a capability that `new Database()`s to anything else without rewriting it). One rule fixes both: **persist through a store the foundation provides, never through a path you assemble.**
 
-**Who uses it.** The `@gonk/*` extension capabilities — `jobs`, `work-items`, `curator`, `reflector`, `self-model-reflector`, `rlm` (cache + traces), and `memory` (KV + curated blobs) — obtain their store from `createStore(scope)` and never see a path. Relational domains (memory triples/sessions, knowledge FTS5, traces index) deliberately stay on their own capability-local interfaces rather than forcing SQL through the universal store.
+**Who still uses the compatibility facade.** Extension capabilities that have
+not completed their migration may still obtain legacy stores from
+`createStore(scope)`. New and migrated capabilities receive Mirk state
+explicitly.
 
 **How often.** On every persist — it is the write path for capability state.
 
-## The four primitives
+## Legacy compatibility facade
 
 Each is obtained from a factory keyed by `(scope-tier, namespace)`; the location resolves through scope's substrate dir, so all five tiers (`session > directory > project > persona > global`) work identically.
 
@@ -50,3 +115,6 @@ const provider = createStoreProvider(scope, { backendFactory: mirkBackendFactory
 - `@gonk/store` — `createStore`, `resolveStoreDir`, `FsStoreBackend`, `cosineSimilarity`, and the store/backend value+type surface.
 - `@gonk/store/types` — types only (`KvStore`, `BlobStore`, `LogStore`, `VectorStore`, `Store`, `StoreBackend`, …) for client-safe imports.
 - `@gonk/store/sqlite` — explicit native-backed Mirk SQLite adapter (`MirkStoreBackend`, `mirkBackendFactory`, `mirkStoreDbPath`). This subpath fails with a descriptive peer-dependency error if `better-sqlite3` is not installed by the host.
+- `@gonk/store/legacy-import` — explicit Node-only legacy filesystem inspector
+  and importer. This is an operator action; ordinary store construction never
+  imports data.

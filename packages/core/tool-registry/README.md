@@ -66,6 +66,9 @@ interface ToolDefinition<I, O> {
   handler: (input: I, ctx: ToolContext) => Promise<ToolResult<O>> | AsyncIterable<ToolEvent<O>>;
   capabilities?: { readsFs?, writesFs?, network?, longRunning?, idempotent?, duplex? };
   tags?, keywords?, relatedTo?;
+  relatedCapabilities?: readonly string[];
+  lifecycle?: ToolLifecycle;
+  composition?: ToolComposition;
   hints?: { cli, mcp, pi };
 }
 ```
@@ -93,9 +96,40 @@ type ToolEvent =
   | { type: "log"; level: ...; message: string; meta?: unknown }
   | { type: "progress"; percent?, message? }
   | { type: "data"; chunk: unknown }
-  | { type: "result"; data: T; display?: Display }
+  | { type: "result"; data: T; display?: Display; metadata?: ToolResultMetadata }
   | { type: "error"; code: string; message: string; details? };
 ```
+
+Terminal results may carry a host-neutral `metadata` envelope. It keeps
+provenance (`sourceKind`, `sourceId`, revision/version, evidence anchors),
+freshness (`state`, observation/check times, expiry), cache policy, size
+(`original`/`returned`), and truncation state together. Truncation records the
+limit and reason and must include either a bound continuation cursor or an
+artifact reference when data was omitted; adapters must not clip data silently.
+`projectToolResultReceipt(metadata)` produces a redaction-safe projection for
+receipts by omitting payloads, cache keys/validators, cursors, and authorization
+bindings.
+
+Definitions can also declare lifecycle and composition metadata:
+
+```ts
+{
+  lifecycle: {
+    status: "superseded",
+    reason: "The paged operation replaces this unbounded read.",
+    replacement: "notes.search-page",
+  },
+  composition: {
+    consumes: [{ id: "query", schema: "notes-query", version: "1" }],
+    produces: [{ id: "notes-page", mediaType: "application/json" }],
+  },
+}
+```
+
+Lifecycle state is surfaced in discovery and host descriptions. It is
+descriptive: deprecated tools remain callable, superseded tools are never
+silently redirected, and `ctx.invoke()` remains the one governed composition
+path.
 
 ## Entry points
 

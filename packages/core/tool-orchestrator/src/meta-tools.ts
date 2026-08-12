@@ -1,4 +1,5 @@
 import {
+  formatToolDescription,
   shape,
   toolAuthorizationResource,
   type ToolContext,
@@ -306,6 +307,9 @@ interface ToolSummary {
   category?: string;
   visibility: string;
   tags?: string[];
+  relatedCapabilities?: readonly string[];
+  lifecycle?: ToolDefinition["lifecycle"];
+  composition?: ToolDefinition["composition"];
 }
 
 interface RankedSummary extends ToolSummary {
@@ -322,25 +326,33 @@ interface ToolDetail extends ToolSummary {
 function summarize(t: ToolDefinition): ToolSummary {
   const out: ToolSummary = {
     name: t.name,
-    description: t.description,
+    description: formatToolDescription(t),
     visibility: t.visibility ?? "on-demand",
   };
   if (t.category !== undefined) out.category = t.category;
   if (t.tags !== undefined) out.tags = t.tags;
+  if (t.relatedCapabilities !== undefined)
+    out.relatedCapabilities = t.relatedCapabilities;
+  if (t.lifecycle !== undefined) out.lifecycle = t.lifecycle;
+  if (t.composition !== undefined) out.composition = t.composition;
   return out;
 }
 
 function detailize(t: ToolDefinition, effectiveVisibility: string): ToolDetail {
   const out: ToolDetail = {
     name: t.name,
-    description: t.description,
+    description: formatToolDescription(t),
     visibility: effectiveVisibility,
   };
   if (t.category !== undefined) out.category = t.category;
   if (t.tags !== undefined) out.tags = t.tags;
   if (t.keywords !== undefined) out.keywords = t.keywords;
   if (t.relatedTo !== undefined) out.relatedTo = t.relatedTo;
+  if (t.relatedCapabilities !== undefined)
+    out.relatedCapabilities = t.relatedCapabilities;
   if (t.capabilities !== undefined) out.capabilities = t.capabilities;
+  if (t.lifecycle !== undefined) out.lifecycle = t.lifecycle;
+  if (t.composition !== undefined) out.composition = t.composition;
   return out;
 }
 

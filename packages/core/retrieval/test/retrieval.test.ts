@@ -1,5 +1,5 @@
 import type { AuthContext, AuthenticatedPrincipal, AuthorizationRequest } from "@gonk/auth";
-import { BackedKvStore, type KvSetOptions, type KvStore } from "@gonk/store";
+import { InMemoryKv, type SyncStore } from "@mirk/store";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { describe, expect, it } from "vitest";
 
@@ -30,7 +30,6 @@ import {
   type NativeAuthorizedRankingConformanceHarness,
   type RetrievalConformanceHarness,
 } from "../src/conformance.ts";
-import { MemoryStoreBackend } from "./memory-backend.ts";
 
 const NOW = "2026-07-16T18:00:00.000Z";
 
@@ -138,6 +137,30 @@ describe("authorization isolation", () => {
 });
 
 describe("generation publication", () => {
+  it("reads a published generation through a reconstructed engine on the same provider", async () => {
+    const fixture = makeFixture();
+    fixture.source.replace([document("source", "durable", "r1", "durable lantern")]);
+    expect(
+      (await fixture.coordinator.index(indexRequest("same-provider", fixture.auth, "source"))).status
+    ).toBe("published");
+
+    const restartedCoordinator = new RetrievalIndexCoordinator({
+      registry: fixture.registry,
+      storage: fixture.storage,
+      clock: { now: () => NOW },
+    });
+    const restarted = new RetrievalEngine({
+      registry: fixture.registry,
+      coordinator: restartedCoordinator,
+      storage: fixture.storage,
+      clock: { now: () => NOW },
+    });
+    const result = await restarted.search(
+      searchRequest("same-provider-read", fixture.auth, "lantern")
+    );
+    expect(result.hits.map(({ resource }) => resource.id)).toEqual(["durable"]);
+  });
+
   it("rejects tenant broadening and preserves the old publication pointer", async () => {
     const fixture = makeFixture();
     fixture.source.replace([document("source", "alpha", "r1", "stable lantern")]);
@@ -158,8 +181,8 @@ describe("generation publication", () => {
   });
 
   it("preserves the old pointer when the single publication write fails", async () => {
-    const pointers = new FailingKvStore<unknown>(
-      new BackedKvStore<unknown>(new MemoryStoreBackend()),
+    const pointers = new FailingKvStore(
+      new InMemoryKv(),
     );
     const fixture = makeFixture("source", pointers);
     fixture.source.replace([document("source", "alpha", "r1", "old lantern")]);
@@ -194,10 +217,11 @@ describe("generation publication", () => {
     fixture.source.replace([document("source", "alpha", "r1", "stable lantern")]);
     expect((await fixture.coordinator.index(indexRequest("index", fixture.auth, "source"))).status)
       .toBe("published");
-    const [generationKey] = fixture.storage.generations.list("generation/");
-    const stored = fixture.storage.generations.get(generationKey!) as {
+    const [generationKey] = fixture.storage.generations.keys("generation/");
+    const stored = fixture.storage.generations.get<{
       documents: Array<{ searchText: string }>;
-    };
+    }>(generationKey!);
+    if (!stored) throw new Error("expected stored generation");
     stored.documents[0]!.searchText = "tampered lantern";
     fixture.storage.generations.set(generationKey!, stored);
 
@@ -574,14 +598,14 @@ describe("source modes and revision capabilities", () => {
   });
 });
 
-function makeFixture(sourceId = "source", pointers?: KvStore<unknown>) {
+function makeFixture(sourceId = "source", pointers?: SyncStore) {
   const registry = new RetrievalSourceRegistry();
   const source = new TestCoordinatedSource(sourceId);
   registry.register(source);
   const storage: RetrievalGenerationStorage = {
-    generations: new BackedKvStore(new MemoryStoreBackend()),
-    pointers: pointers ?? new BackedKvStore(new MemoryStoreBackend()),
-    citations: new BackedKvStore(new MemoryStoreBackend()),
+    generations: new InMemoryKv(),
+    pointers: pointers ?? new InMemoryKv(),
+    citations: new InMemoryKv(),
   };
   const policy = new Policy();
   const userAuth = auth(policy);
@@ -626,9 +650,9 @@ function nativeConformanceHarness(): NativeAuthorizedRankingConformanceHarness {
   const source = new ConformantNativeSource("conformance");
   registry.register(source);
   const storage: RetrievalGenerationStorage = {
-    generations: new BackedKvStore(new MemoryStoreBackend()),
-    pointers: new BackedKvStore(new MemoryStoreBackend()),
-    citations: new BackedKvStore(new MemoryStoreBackend()),
+    generations: new InMemoryKv(),
+    pointers: new InMemoryKv(),
+    citations: new InMemoryKv(),
   };
   const policy = new Policy();
   const context = auth(policy);
@@ -852,25 +876,37 @@ class Policy {
   }
 }
 
-class FailingKvStore<T> implements KvStore<T> {
+class FailingKvStore implements SyncStore {
   failNextSet = false;
-  constructor(private readonly delegate: KvStore<T>) {}
-  get(key: string): T | undefined { return this.delegate.get(key); }
-  set(key: string, value: T, options?: KvSetOptions): void {
+  constructor(private readonly delegate: SyncStore) {}
+  get<T>(key: string): T | null { return this.delegate.get<T>(key); }
+  set<T>(key: string, value: T): void {
     if (this.failNextSet) {
       this.failNextSet = false;
       throw new Error("publication failed");
     }
-    this.delegate.set(key, value, options);
+    this.delegate.set(key, value);
   }
-  patch(key: string, partial: Partial<T>, options?: KvSetOptions): void {
-    this.delegate.patch(key, partial, options);
+  has(key: string): boolean { return this.delegate.has(key); }
+  delete(key: string): boolean { return this.delegate.delete(key); }
+  keys(prefix?: string): string[] { return this.delegate.keys(prefix); }
+  list<T>(collection: string, filter?: Parameters<SyncStore["list"]>[1]): T[] {
+    return this.delegate.list<T>(collection, filter);
   }
-  delete(key: string): void { this.delegate.delete(key); }
-  list(prefix?: string): string[] { return this.delegate.list(prefix); }
-  entries(prefix?: string): Array<{ key: string; value: T }> {
-    return this.delegate.entries(prefix);
+  getById<T>(collection: string, id: string): T | null {
+    return this.delegate.getById<T>(collection, id);
   }
+  put<T extends { id: string }>(collection: string, item: T): T {
+    return this.delegate.put(collection, item);
+  }
+  remove(collection: string, id: string): boolean {
+    return this.delegate.remove(collection, id);
+  }
+  count(collection: string, filter?: Parameters<SyncStore["count"]>[1]): number {
+    return this.delegate.count(collection, filter);
+  }
+
+  get meta(): SyncStore["meta"] { return this.delegate.meta; }
 }
 
 interface TagFilter { tag: string }

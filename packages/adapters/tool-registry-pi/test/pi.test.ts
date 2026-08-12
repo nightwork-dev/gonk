@@ -157,6 +157,52 @@ describe("registerGonkTools", () => {
     expect(result.details).toEqual({ said: "hi" });
   });
 
+  it("preserves result metadata in the registered Pi projection", async () => {
+    const r = ownerRegistry();
+    r.register({
+      name: "large-result",
+      description: "large result",
+      input: passthrough(),
+      lifecycle: {
+        status: "deprecated",
+        reason: "use the paged result",
+        replacement: "paged-result",
+      },
+      handler: async () => ({
+        data: { rows: [1] },
+        metadata: {
+          size: { original: 100, returned: 20, unit: "bytes" },
+          truncation: {
+            truncated: true,
+            limit: 20,
+            reason: "host limit",
+            continuation: { cursor: "private-cursor" },
+          },
+        },
+      }),
+    });
+    const pi = new FakePi();
+    registerGonkTools({ auth: OWNER_AUTH, pi, source: r });
+    expect(pi.registered[0]?.description).toContain("Deprecated");
+    const result = await pi.registered[0]!.execute(
+      "call",
+      {},
+      new AbortController().signal,
+      undefined,
+      undefined,
+    );
+    expect(result.details).toMatchObject({
+      data: { rows: [1] },
+      metadata: {
+        truncation: { truncated: true, continuation: { cursor: "private-cursor" } },
+      },
+      receipt: { truncation: { truncated: true } },
+    });
+    expect(JSON.stringify((result.details as { receipt?: unknown }).receipt)).not.toContain(
+      "private-cursor",
+    );
+  });
+
   it("execute() forwards progress and data to onUpdate", async () => {
     const r = ownerRegistry();
     r.register({

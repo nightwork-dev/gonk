@@ -255,6 +255,45 @@ describe("ToolRegistry", () => {
     expect(events[0]).toMatchObject({ type: "result", data: { echoed: "hi" } });
   });
 
+  it("carries the same terminal metadata through promise and streaming handlers", async () => {
+    const metadata = {
+      provenance: {
+        sourceKind: "http",
+        sourceId: "example",
+        sourceRevision: "rev-1",
+        evidenceAnchors: [{ kind: "response", value: "response:1" }],
+      },
+      freshness: { state: "fresh" as const, checkedAt: "2026-08-11T00:00:00Z" },
+      cache: { policy: "reusable" as const, guidance: "safe to reuse" },
+      size: { original: 10, returned: 10, unit: "bytes" as const },
+      truncation: { truncated: false as const },
+    };
+    const r = ownerRegistry();
+    r.register([
+      {
+        name: "metadata.promise",
+        description: "promise result metadata",
+        input: passthrough(),
+        handler: async () => ({ data: { ok: true }, metadata }),
+      },
+      {
+        name: "metadata.stream",
+        description: "stream result metadata",
+        input: passthrough(),
+        handler: async function* () {
+          yield { type: "result", data: { ok: true }, metadata };
+        },
+      },
+    ]);
+
+    await expect(
+      collect(r.invoke("metadata.promise", {}, ownerCtx()))
+    ).resolves.toEqual([{ type: "result", data: { ok: true }, metadata }]);
+    await expect(
+      collect(r.invoke("metadata.stream", {}, ownerCtx()))
+    ).resolves.toEqual([{ type: "result", data: { ok: true }, metadata }]);
+  });
+
   it("validates input and emits INVALID_INPUT on failure", async () => {
     const r = ownerRegistry();
     r.register({

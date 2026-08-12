@@ -11,6 +11,20 @@ export type {
   Display,
   ToolEvent,
   ToolResult,
+  ToolResultMetadata,
+  ToolResultProvenance,
+  ToolResultEvidenceAnchor,
+  ToolResultFreshness,
+  ToolResultFreshnessState,
+  ToolResultCacheMetadata,
+  ToolResultCachePolicy,
+  ToolResultSize,
+  ToolResultSizeUnit,
+  ToolResultTruncation,
+  ToolArtifactReference,
+  ToolContinuationReference,
+  ToolLifecycle,
+  ToolComposition,
   ToolHandlerReturn,
   ToolHandler,
   ToolVisibility,
@@ -78,6 +92,11 @@ export type { DispatchDetachedWithWaitOptions } from "./async-dispatch.ts";
 
 export { collectToolOutcome } from "./outcome.ts";
 export type { CollectToolOutcomeOptions, ToolOutcome } from "./outcome.ts";
+
+export { projectToolResultReceipt } from "./receipt.ts";
+export type { ToolResultReceiptProjection } from "./receipt.ts";
+
+export { formatToolDescription, formatToolLifecycle } from "./lifecycle.ts";
 
 export { resolveApproval, isToolTier, tierRank } from "./approval.ts";
 export type {
