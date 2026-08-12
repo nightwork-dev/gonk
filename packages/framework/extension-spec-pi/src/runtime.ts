@@ -1,7 +1,10 @@
 import type { AuthContext } from "@gonk/auth";
 import type { ScopeStore } from "@gonk/scope";
 import type { ExtensionSpec, SubcommandContext } from "@gonk/extension-spec";
-import { ToolRegistry } from "@gonk/tool-registry";
+import {
+  ToolRegistry,
+  type ToolRegistrySecurityOptions,
+} from "@gonk/tool-registry";
 import {
   recordGonkExtension,
   registerGonkTools,
@@ -38,6 +41,11 @@ export interface RegisterSpecOptions {
    *  transport-authenticated principal. There is no default:
    *  `ToolContext.auth` is required, so core refuses to invoke without one. */
   auth: AuthContext;
+  /** Approval and authorization policy for the internal registry that owns
+   *  this extension's tools. This is required so a host must deliberately
+   *  choose an approval provider or an explicit trusted-boundary bypass.
+   *  There is no ambient or permissive fallback. */
+  security: ToolRegistrySecurityOptions;
   /** Spec to materialize. */
   spec: ExtensionSpec;
   /** npm package name (e.g. "@gonk/pi-introspect"). When supplied, gets
@@ -95,7 +103,7 @@ export type EditFlowHandler = (
  *  currently expose unregister APIs, so the function is a no-op today —
  *  reserved for future symmetry.) */
 export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
-  const { pi, scope, spec, tui, editFlow, packageName, auth } = opts;
+  const { pi, scope, spec, tui, editFlow, packageName, auth, security } = opts;
 
   // Record this extension's load in the process-wide gonk registry. This
   // is what `harness_status` reads to answer "which extensions are loaded
@@ -110,7 +118,7 @@ export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
 
   // 1. Tools
   if (spec.tools && spec.tools.length > 0) {
-    const registry = new ToolRegistry();
+    const registry = new ToolRegistry({ security });
     registry.register(spec.tools);
     registerGonkTools({ pi, source: registry, scope, auth });
   }

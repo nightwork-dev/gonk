@@ -5,9 +5,20 @@ Pi runtime that materializes an `ExtensionSpec` into a registered Pi extension â
 ## Entry point
 
 ```ts
+import { ownerPrincipal } from "@gonk/auth";
 import { registerSpecExtension } from "@gonk/extension-spec-pi";
 
-registerSpecExtension({ pi, scope, spec, tui, editFlow });
+registerSpecExtension({
+  pi,
+  scope,
+  spec,
+  auth: ownerPrincipal(process.env),
+  // This Pi process is a trusted, single-owner host. Multi-user hosts should
+  // supply an approval provider instead.
+  security: { approvalMode: "bypass" },
+  tui,
+  editFlow,
+});
 ```
 
 That single call wires:

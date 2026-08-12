@@ -30,6 +30,7 @@ describe("registerSpecExtension — readiness threading", () => {
       pi: fakePi() as never,
       scope: fakeScope,
       auth,
+      security: { approvalMode: "bypass" },
       spec,
       packageName: "@gonk/pi-voice",
     });
@@ -46,6 +47,7 @@ describe("registerSpecExtension — readiness threading", () => {
       pi: fakePi() as never,
       scope: fakeScope,
       auth,
+      security: { approvalMode: "bypass" },
       spec,
       packageName: "@gonk/pi-introspect",
     });
