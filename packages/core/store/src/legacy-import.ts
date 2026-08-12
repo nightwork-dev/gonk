@@ -511,14 +511,13 @@ function parseBlobs(
   const candidates: LegacyBlobCandidate[] = [];
   const files = walkFiles(base);
   const fileSet = new Set(files);
-  // A `.mime` suffix is data unless a neighboring data file makes it an
-  // unambiguous sidecar. A sidecar for a `.mime` data key is therefore
-  // `<key>.mime` (for example, `foo.mime.mime`).
+  // Preserve the legacy backend's precedence: a `.mime` file is a sidecar
+  // whenever its base data file exists. A genuine `.mime` blob key remains data
+  // when no base file exists, and its own sidecar is `<key>.mime`.
   const isMimeSidecar = (relativePath: string): boolean =>
     fileSet.has(relativePath) &&
     relativePath.endsWith(".mime") &&
-    fileSet.has(relativePath.slice(0, -".mime".length)) &&
-    !fileSet.has(`${relativePath}.mime`);
+    fileSet.has(relativePath.slice(0, -".mime".length));
 
   for (const relativePath of files) {
     if (isMimeSidecar(relativePath)) continue;
