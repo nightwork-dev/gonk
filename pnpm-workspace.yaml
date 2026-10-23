@@ -25,13 +25,7 @@ minimumReleaseAge: 10080
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
 # @mirk/store is pinned exactly and validated through local Verdaccio.
-# The MCP v2.0.0 train was reviewed and verified ahead of the normal seven-day
-# cooldown. Keep these selectors version-specific so later MCP releases return
-# to the default quarantine.
 minimumReleaseAgeExclude:
-  - "@modelcontextprotocol/client@2.0.0"
-  - "@modelcontextprotocol/core@2.0.0"
-  - "@modelcontextprotocol/server@2.0.0"
   - "@earendil-works/*"
   - "@mariozechner/*"
   - "@aws-sdk/*"
@@ -42,13 +36,31 @@ minimumReleaseAgeExclude:
   - "rollup"
   - "@mirk/store"
 
+overrides:
+  axios: 1.20.0
+  brace-expansion: 5.0.12
+  esbuild: 0.28.1
+  follow-redirects: 1.16.1
+  form-data: 4.0.6
+  "js-yaml@^3.0.0": 3.15.2
+  "js-yaml@^4.0.0": 4.3.2
+  nanoid: 3.3.18
+  postcss: 8.5.23
+  protobufjs: 7.6.5
+  smol-toml: 1.9.1
+  source-map-js: 1.2.2
+  tmp: 0.2.7
+  vite: 7.3.7
+  yaml: 2.9.0
+  zod: 4.6.7
+
 # Canonical versions for heavily-reused dependencies. Packages reference these via
 # "catalog:" so a version lives in exactly one place. Bump here, not in every file.
 catalog:
   "@earendil-works/pi-agent-core": 0.77.0
   "@inquirer/prompts": 7.10.1
-  "@modelcontextprotocol/client": 2.0.0
-  "@modelcontextprotocol/server": 2.0.0
+  "@modelcontextprotocol/client": 2.3.0
+  "@modelcontextprotocol/server": 2.3.0
   "@mirk/store": 0.9.0
   "@standard-schema/spec": 1.1.0
   "@types/better-sqlite3": 7.6.13
@@ -57,7 +69,7 @@ catalog:
   tsup: 8.5.1
   typebox: 1.1.38
   typescript: 5.9.3
-  vitest: 2.1.9
+  vitest: 4.1.12
   yaml: 2.9.0
 
 # Which dependencies may run install/build lifecycle scripts. Everything not listed
