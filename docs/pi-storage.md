@@ -55,13 +55,17 @@ leaves `.agents/gonk/directory/state.db` wherever it runs. Generated `gonk`,
 `pi-state`, `memory-state`, `autotune-claims`, and `objective-watch` directories
 inside `.agents` or `.gonk` are storage, not project markers: a namespace that
 holds only these and the older substrate kinds (`memory`, `knowledge`,
-`sessions`, `store`) does not make its parent a project root. Authored
+`sessions`, `store`) does not make its parent a project root. The names
+match in any letter case, because a case-insensitive filesystem treats
+`.agents/Gonk` and `.agents/gonk` as the same folder. Authored
 settings, skills, and persona definitions keep their existing scope rules.
 `migrateSubstrateHome` does not move these runtime directories, because a bare
 directory with the same name can be authored content.
 
 `findProjectRoot` accepts a `ceiling`, and `ScopeEnvironment` accepts
-`projectCeiling`. The project walk examines the ceiling and stops there.
+`projectCeiling`. The project walk examines the ceiling and stops there. It
+never reads a directory above the ceiling, also when the start reaches the
+ceiling through a symlink.
 Sandboxes and tests set it to their own root so that markers in parent
 directories cannot change their project resolution.
 
