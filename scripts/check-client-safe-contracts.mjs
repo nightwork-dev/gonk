@@ -32,9 +32,15 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = join(__dirname, "..");
+
+/** The workspace TypeScript compiler, resolved from this script rather than
+ *  through `npx` or PATH: fixture runs use a temp cwd outside the repo, where
+ *  `npx tsc` fetches npm's unrelated `tsc` placeholder package. */
+export const TSC_BIN = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 /** Every package's client-safe contracts subpath this gate guards. Bounded
  *  per GR-84: only the packages a UI consumer names today. Add an entry
@@ -114,8 +120,8 @@ export function runClientSafeContractsCheck({
     );
 
     const result = spawnSync(
-      "npx",
-      ["tsc", "--noEmit", "-p", toPosix(tsconfigPath)],
+      process.execPath,
+      [TSC_BIN, "--noEmit", "-p", toPosix(tsconfigPath)],
       { cwd: repoRoot, encoding: "utf8" }
     );
     return { manifest, result };
