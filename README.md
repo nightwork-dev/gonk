@@ -39,9 +39,9 @@ Observed 2026-08-12:
 - The on-disk Nx run record (`.nx/cache/run.json`) contains a fresh Core
   `run-many -t test` record with 20 test tasks and no non-zero task status. This
   is source-test evidence only, not package or host proof.
-- The local cross-repository release receipt in
-  [`gonk-extensions/docs/receipts/fabric-v1-verdaccio-release-2026-08-12.md`](../gonk-extensions/docs/receipts/fabric-v1-verdaccio-release-2026-08-12.md)
-  records packed and locally installed Core packages from `a3cea8fac323ef75aafb6f76cb9fcc0af6138d8c`.
+- The local cross-repository release receipt at
+  `docs/receipts/fabric-v1-verdaccio-release-2026-08-12.md` in the private
+  gonk-extensions repository records packed and locally installed Core packages from `a3cea8fac323ef75aafb6f76cb9fcc0af6138d8c`.
   That receipt is useful package-layer evidence, but it does not bind the
   current documentation commit to an installed host.
 - No statement here should be read as public npm publication, remote merge,

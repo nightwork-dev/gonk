@@ -66,8 +66,8 @@ No state implies the next.
 - Fabric Release B does not prove public npm, git push, external production, or
   one immutable binding from exact source through installed modular plugins.
 
-The current Fabric boundary and receipts are maintained in the Extensions
-[Fabric status page](../../gonk-extensions/docs/fabric-status.md).
+The current Fabric boundary and receipts are maintained in the Fabric status
+page, `docs/fabric-status.md` in the private gonk-extensions repository.
 
 ## Ordered roadmap
 
