@@ -117,6 +117,7 @@ const SPEC_TO_CLAUDE_EVENTS: Record<string, ClaudeHookEvent[]> = {
   session_end: ["SessionEnd"],
   turn_complete: ["Stop"],
   before_provider_request: ["UserPromptSubmit"],
+  tool_complete: ["PostToolUse"],
 };
 
 export const defaultHookPlacement: HookPlacementPolicy = (input) => {

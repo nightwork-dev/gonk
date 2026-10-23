@@ -28,7 +28,7 @@
     "typebox": "catalog:"
   },
   "peerDependencies": {
-    "@earendil-works/pi-agent-core": ">=0.75.0 <1"
+    "@earendil-works/pi-agent-core": ">=0.75.0 <2"
   },
   "devDependencies": {
     "@earendil-works/pi-agent-core": "catalog:",

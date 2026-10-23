@@ -6,16 +6,23 @@ export {
 } from "./materialize.ts";
 
 export { defaultCodexHookPlacement } from "./placement.ts";
-export { MAX_BOUNDARY_CONTEXT_CHARS, runCodexHook } from "./run-hook.ts";
+export {
+  dispatchCodexHook,
+  MAX_BOUNDARY_CONTEXT_CHARS,
+  runCodexHook,
+} from "./run-hook.ts";
 
 export type {
   CodexPluginInterface,
   CodexPluginManifest,
+  CodexActionContextEvent,
+  CodexActionContextHookPlacement,
   CodexBoundaryHookPlacement,
   CodexHookCommand,
   CodexHookEvent,
   CodexHookMatcher,
   CodexHookPlacement,
+  CodexHookPlacementAuthorization,
   CodexHookPlacementInput,
   CodexHookPlacementPolicy,
   CodexHooksFile,
@@ -30,6 +37,8 @@ export type {
 } from "./types.ts";
 
 export type {
+  CodexActionContextHookContext,
+  CodexActionContextHookOutput,
   CodexBoundaryHookContext,
   CodexBoundaryHookOutput,
   CodexHookOutput,

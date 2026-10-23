@@ -13,6 +13,8 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
+  // run-hook serializes function bodies into standalone plugin modules; keep them executable.
+  minify: false,
   target: "es2022",
   splitting: true,
 });

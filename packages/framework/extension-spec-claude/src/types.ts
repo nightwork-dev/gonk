@@ -141,7 +141,8 @@ export type SpecHookEvent =
   | "session_start"
   | "session_end"
   | "turn_complete"
-  | "before_provider_request";
+  | "before_provider_request"
+  | "tool_complete";
 
 /** Claude hook event names. See
  *  https://docs.claude.com/en/docs/claude-code/hooks for the full set. */

@@ -41,8 +41,8 @@ export interface MaterializeCodexOptions {
   skillPlacement?: SkillPlacementPolicy;
 
   /** Optional override for translating portable spec hooks into Codex hook
-   *  events. The result type separates cache-boundary hooks from side-effect
-   *  hooks so non-boundary placements cannot request model context output. */
+   *  events. Action-context placements require an explicit policy choice;
+   *  the default remains side-effect-only during a turn. */
   hookPlacement?: CodexHookPlacementPolicy;
 
   /** Command prefix referenced from generated `hooks/hooks.json` entries.
@@ -172,7 +172,12 @@ export type CodexHookEvent =
   | "UserPromptSubmit"
   | "SubagentStart"
   | "SubagentStop"
-  | "Stop";
+  | "Stop"
+  | "SessionEnd"
+  | "Interrupt";
+
+/** Codex currently accepts additionalContext from these turn-time hooks. */
+export type CodexActionContextEvent = "PreToolUse" | "PostToolUse" | "UserPromptSubmit";
 
 export interface CodexHookCommand {
   type: "command";
@@ -190,8 +195,8 @@ export interface CodexHooksFile {
   hooks: Partial<Record<CodexHookEvent, CodexHookMatcher[]>>;
 }
 
-/** Only `SessionStart` may establish model-visible context. Its `compact`
- *  source is Codex's supported post-compaction cache boundary. */
+/** `SessionStart` context is the default model-visible boundary. Its `compact`
+ *  and `fork` sources are supported start boundaries. */
 export interface CodexBoundaryHookPlacement {
   kind: "boundary-context";
   event: "SessionStart";
@@ -199,21 +204,41 @@ export interface CodexBoundaryHookPlacement {
   command: CodexHookCommand;
 }
 
-/** Non-boundary hooks may observe and perform side effects, but the generated
- *  runtime never emits prompt/developer context for them. */
-export interface CodexSideEffectHookPlacement {
-  kind: "side-effect";
-  event: Exclude<CodexHookEvent, "SessionStart" | "SubagentStart">;
+/** Explicit opt-in for event-specific context that can change the active turn.
+ *  The default policy never creates this placement. */
+export interface CodexActionContextHookPlacement {
+  kind: "action-context";
+  event: CodexActionContextEvent;
   matcher?: string;
   command: CodexHookCommand;
 }
 
-export type CodexHookPlacement = CodexBoundaryHookPlacement | CodexSideEffectHookPlacement;
+/** Side-effect placements never emit prompt/developer context. */
+export interface CodexSideEffectHookPlacement {
+  kind: "side-effect";
+  event: CodexHookEvent;
+  matcher?: string;
+  command: CodexHookCommand;
+}
+
+export type CodexHookPlacement =
+  | CodexBoundaryHookPlacement
+  | CodexActionContextHookPlacement
+  | CodexSideEffectHookPlacement;
+
+/** The host event and context authority encoded in each materialized command. */
+export type CodexHookPlacementAuthorization =
+  | Pick<CodexBoundaryHookPlacement, "kind" | "event">
+  | Pick<CodexActionContextHookPlacement, "kind" | "event">
+  | Pick<CodexSideEffectHookPlacement, "kind" | "event">;
 
 export interface CodexHookPlacementInput {
   specEvent: string;
   specId: string;
   dispatchBinary: string;
+  /** Build a dispatcher command that binds this portable hook to the exact
+   *  Codex placement. Use this for every placement returned by a custom policy. */
+  dispatchCommand: (placement: CodexHookPlacementAuthorization) => CodexHookCommand;
 }
 
 export type CodexHookPlacementPolicy = (
