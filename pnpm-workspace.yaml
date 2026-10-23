@@ -4,6 +4,10 @@ packages:
 # Write exact versions (no ^ range) on `pnpm add`.
 savePrefix: ""
 
+# Refuse to install on a Node release outside the root `engines.node` range,
+# which requires the CVE-2026-111497 fix. Without this pnpm only warns.
+engineStrict: true
+
 # Supply-chain cooldown: refuse to install any version published less than this
 # many minutes ago (7 days). Defends against pulling a just-published compromised
 # release before it is detected and yanked. Only affects fresh resolution — a
