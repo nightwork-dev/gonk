@@ -168,6 +168,25 @@ describe("findProjectRoot", () => {
     expect(findProjectRoot(join(ceiling, "work"), { ceiling })).toBe(ceiling);
   });
 
+  it("examines only the start directory when the ceiling is not above it", () => {
+    const outer = join(tmp, "outer-unrelated");
+    mkdirSync(join(outer, ".git"), { recursive: true });
+    mkdirSync(join(outer, "work"), { recursive: true });
+    const elsewhere = join(tmp, "elsewhere");
+    mkdirSync(elsewhere);
+    expect(findProjectRoot(join(outer, "work"), { ceiling: elsewhere })).toBeUndefined();
+    expect(findProjectRoot(join(outer, "work"), { ceiling: join(tmp, "missing") })).toBeUndefined();
+    expect(findProjectRoot(outer, { ceiling: elsewhere })).toBe(outer);
+  });
+
+  it("honours a ceiling for a start directory that does not exist yet", () => {
+    const outer = join(tmp, "outer-missing-start");
+    const ceiling = join(outer, "sandbox");
+    mkdirSync(join(outer, ".git"), { recursive: true });
+    mkdirSync(ceiling);
+    expect(findProjectRoot(join(ceiling, "not", "yet"), { ceiling })).toBeUndefined();
+  });
+
   it("a .agents holding memory/ substrate still does NOT mark a project", () => {
     // Confirms the SUBSTRATE_KINDS set still excludes the pre-existing kinds
     // after adding "store".
