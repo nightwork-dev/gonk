@@ -31,6 +31,27 @@ const LEGACY_SUBSTRATE_NS = ".gonk";
  *  failing test, just over-eager project-tier resolution). */
 export const SUBSTRATE_KINDS = ["memory", "knowledge", "sessions", "store"] as const;
 
+/** Directories that host runtimes create under a tier's `.agents`/`.gonk`
+ *  namespace for generated state: the host-owned storage root (`gonk`), the
+ *  compatibility database roots (`pi-state`, `memory-state`), autotune's
+ *  cross-process claims, and the Objective Watch session store. Like
+ *  {@link SUBSTRATE_KINDS}, a namespace holding only these is storage, not a
+ *  project marker.
+ *
+ *  They are deliberately NOT substrate kinds: `migrateSubstrateHome` moves bare
+ *  `<home>/<kind>` directories, and a bare `gonk` or `pi-state` directory can be
+ *  authored content (a checkout named `gonk`), which must never be moved. */
+export const RUNTIME_STATE_KINDS = [
+  "gonk",
+  "pi-state",
+  "memory-state",
+  "autotune-claims",
+  "objective-watch",
+] as const;
+
+/** Every generated directory name that never marks a project on its own. */
+export const PROJECT_NEUTRAL_KINDS: readonly string[] = [...SUBSTRATE_KINDS, ...RUNTIME_STATE_KINDS];
+
 /** The one common function that resolves where a tier's operational substrate of
  *  `kind` lives, based on the scope `tier` and its `tierHome`. Nothing should
  *  hardcode these paths — call this.

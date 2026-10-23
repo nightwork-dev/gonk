@@ -15,7 +15,7 @@ import {
 import { StandardRootAdapter } from "./standard-adapter.ts";
 import { canonicalPath } from "./canonical-path.ts";
 import { resolveStableSessionId } from "./session-id.ts";
-import { SUBSTRATE_KINDS, substrateDir } from "./substrate.ts";
+import { PROJECT_NEUTRAL_KINDS, substrateDir } from "./substrate.ts";
 
 // =============================================================================
 // Tier home discovery
@@ -40,7 +40,9 @@ export function resolveTierHomes(env: ScopeEnvironment): Map<ScopeName, string> 
   }
 
   // Project → walk for marker
-  const projectRoot = env.projectRoot ?? findProjectRoot(env.cwd);
+  const projectRoot =
+    env.projectRoot ??
+    findProjectRoot(env.cwd, env.projectCeiling === undefined ? {} : { ceiling: env.projectCeiling });
   if (projectRoot) out.set("project", canonical(projectRoot));
 
   // Directory → cwd
@@ -82,10 +84,11 @@ export function resolveSessionHome(cwd: string): string {
 
 // Plain markers: their mere presence denotes a project root.
 const PLAIN_PROJECT_MARKERS = [".claude", ".pi", "agents", ".git"];
-// gonk-managed namespaces. These may hold ONLY auto-spawned substrate
-// (memory/knowledge/sessions), which must NOT promote a dir to a project root.
+// gonk-managed namespaces. These may hold ONLY auto-spawned substrate or host
+// runtime state (PROJECT_NEUTRAL_KINDS), which must NOT promote a dir to a
+// project root.
 const NAMESPACE_PROJECT_MARKERS = [".agents", ".gonk"];
-const SUBSTRATE_KIND_SET = new Set<string>(SUBSTRATE_KINDS);
+const SUBSTRATE_KIND_SET = new Set<string>(PROJECT_NEUTRAL_KINDS);
 
 /** A gonk namespace dir (`.agents`/`.gonk`) marks a project only when it holds
  *  user-bound content — a bound root (agents/settings/skills/blobs) or a doc —
@@ -110,9 +113,16 @@ function namespaceMarksProject(nsDir: string): boolean {
   return meaningful.some((e) => !SUBSTRATE_KIND_SET.has(e));
 }
 
+export interface FindProjectRootOptions {
+  /** Highest directory examined. The walk checks it and stops; its parents
+   *  are never read. */
+  ceiling?: string;
+}
+
 /** Walk up from `start` looking for a recognized project root marker. */
-export function findProjectRoot(start: string): string | undefined {
+export function findProjectRoot(start: string, options: FindProjectRootOptions = {}): string | undefined {
   let current = resolve(start);
+  const ceiling = options.ceiling === undefined ? undefined : canonicalPath(options.ceiling);
   while (true) {
     for (const m of PLAIN_PROJECT_MARKERS) {
       if (isDir(join(current, m))) return current;
@@ -121,6 +131,7 @@ export function findProjectRoot(start: string): string | undefined {
       const nsDir = join(current, m);
       if (isDir(nsDir) && namespaceMarksProject(nsDir)) return current;
     }
+    if (ceiling !== undefined && canonicalPath(current) === ceiling) return undefined;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;
