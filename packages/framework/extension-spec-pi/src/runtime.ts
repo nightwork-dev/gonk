@@ -105,6 +105,14 @@ const SPEC_TO_PI_EVENT: Record<string, string> = {
   tool_complete: "tool_execution_end",
 };
 
+function isNestedToolCall(event: unknown): boolean {
+  return (
+    typeof event === "object" &&
+    event !== null &&
+    typeof (event as { parentToolCallId?: unknown }).parentToolCallId === "string"
+  );
+}
+
 /** Materialize an ExtensionSpec into a registered Pi extension. Wires:
  *    - tools → `pi.registerTool` via `@gonk/tool-registry-pi`
  *    - slash command → `pi.registerCommand` with auto-injected
@@ -166,9 +174,13 @@ export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
   // `Stop`, extension-spec-cli no-ops it). Pi names the turn boundary
   // `turn_end`, shutdown `session_shutdown`, and a finished tool call
   // `tool_execution_end`; other names pass through as native Pi events.
+  // Pi also emits `tool_execution_end` for calls a tool makes through
+  // `ctx.executeTool()` (marked by `parentToolCallId`); `tool_complete` skips
+  // those so it fires once per model-issued call, as Claude's PostToolUse does.
   if (spec.hooks) {
     for (const [event, handler] of Object.entries(spec.hooks)) {
       const piHandler: PiHookHandler = async (ev, piCtx) => {
+        if (event === "tool_complete" && isNestedToolCall(ev)) return;
         await handler(ev, piCtx);
       };
       pi.on(SPEC_TO_PI_EVENT[event] ?? event, piHandler);
