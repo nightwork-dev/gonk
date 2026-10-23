@@ -13,9 +13,8 @@ A 7-day supply-chain cooldown (`minimumReleaseAge` in `pnpm-workspace.yaml`) ref
 
 - **Excludes** for the pi/build-chain transitive surface core never ships (`@aws-sdk/*`, `@smithy/*`, `@google/*`, `protobufjs`, `@rollup/*`, `rollup`).
 - **Exact-version excludes** for dependency trains that received an explicit
-  early review. The MCP v2 migration uses this only for
-  `@modelcontextprotocol/{client,core,server}@2.0.0`; later MCP versions return
-  to the normal seven-day quarantine.
+  early review. None are active now; the MCP 2.0.0 exemption ended when MCP
+  moved to 2.3.0 under the normal seven-day quarantine.
 
 To regenerate the lockfile after an ordinary dependency bump, wait for the
 cooldown and run:
