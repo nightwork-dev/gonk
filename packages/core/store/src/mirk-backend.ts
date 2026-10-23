@@ -81,7 +81,7 @@ export class MirkStoreBackend implements StoreBackend {
   constructor(dir: string) {
     mkdirSync(dir, { recursive: true });
     this.dbPath = join(dir, DB_FILE);
-    this.adapter = new SqliteAdapter({ path: this.dbPath, forceJsCosine: true });
+    this.adapter = new SqliteAdapter({ path: this.dbPath });
     this.kv = this.adapter.kv;
     if (this.vectorFacet || this.adapter.vector.meta.dimensions > 0) {
       this.vectorFacet = this.currentVectorFacet();
@@ -233,7 +233,6 @@ export class MirkStoreBackend implements StoreBackend {
       path: this.dbPath,
       db: db as never,
       dimensions,
-      forceJsCosine: true,
     });
     this.vectorFacet = adapterWithDimensions.vector;
     return this.vectorFacet;

@@ -54,7 +54,7 @@ describe("bindGonkSyncState", () => {
     const root = mkdtempSync(join(tmpdir(), "gonk-state-sqlite-"));
     roots.push(root);
     const path = join(root, "state.db");
-    const adapter = new SqliteAdapter({ path, dimensions: 2, forceJsCosine: true });
+    const adapter = new SqliteAdapter({ path, dimensions: 2 });
     const scope = new MemoryScopeStore();
     const state = bindGonkSyncState(scope, {
       kv: () => adapter.kv,
@@ -69,7 +69,7 @@ describe("bindGonkSyncState", () => {
     });
     adapter.close();
 
-    const reopened = new SqliteAdapter({ path, dimensions: 2, forceJsCosine: true });
+    const reopened = new SqliteAdapter({ path, dimensions: 2 });
     const restored = bindGonkSyncState(scope, {
       kv: () => reopened.kv,
       vector: () => reopened.vector,
