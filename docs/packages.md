@@ -13,7 +13,7 @@ runtime proof; release evidence is tracked separately.
 | `@gonk/retrieval` | `packages/core/retrieval` | authorized deterministic retrieval |
 | `@gonk/scope` | `packages/core/scope` | five-tier scoped configuration |
 | `@gonk/skills` | `packages/core/skills` | managed skill lifecycle and policy |
-| `@gonk/store` | `packages/core/store` | scope-bound state over Mirk ports; migration bridge |
+| `@gonk/store` | `packages/core/store` | scope-bound state over Mirk ports; host storage leases; migration bridge |
 | `@gonk/temporal` | `packages/core/temporal` | time, activity, and scheduling policy |
 | `@gonk/tool-orchestrator` | `packages/core/tool-orchestrator` | semantic registry selection |
 | `@gonk/tool-registry` | `packages/core/tool-registry` | capability schema, invocation, result, lifecycle |
@@ -24,8 +24,8 @@ runtime proof; release evidence is tracked separately.
 | `@gonk/extension-spec` | `packages/framework/extension-spec` | host-neutral extension declaration |
 | `@gonk/extension-spec-cli` | `packages/framework/extension-spec-cli` | CLI materializer |
 | `@gonk/extension-spec-claude` | `packages/framework/extension-spec-claude` | Claude Code materializer |
-| `@gonk/extension-spec-codex` | `packages/framework/extension-spec-codex` | Codex materializer |
-| `@gonk/extension-spec-pi` | `packages/framework/extension-spec-pi` | Pi materializer |
+| `@gonk/extension-spec-codex` | `packages/framework/extension-spec-codex` | Codex materializer and host storage binding |
+| `@gonk/extension-spec-pi` | `packages/framework/extension-spec-pi` | Pi materializer and host storage binding (`./storage`; see [Pi storage](pi-storage.md)) |
 
 This index describes package ownership only. It does not adopt the proposed
 roadmap or imply publication, installation, or runtime proof.
