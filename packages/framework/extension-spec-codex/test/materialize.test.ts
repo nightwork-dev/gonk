@@ -163,11 +163,11 @@ describe("materializeCodexPlugin", () => {
       hooks: {
         SessionStart: [
           {
-            matcher: "startup|resume|clear|compact",
+            matcher: "startup|resume|clear|compact|fork",
             hooks: [
               {
                 type: "command",
-                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona session_start',
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" \'persona\' \'session_start\' \'boundary-context\' \'SessionStart\'',
                 timeout: 5,
               },
             ],
@@ -178,7 +178,7 @@ describe("materializeCodexPlugin", () => {
             hooks: [
               {
                 type: "command",
-                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona turn_complete',
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" \'persona\' \'turn_complete\' \'side-effect\' \'Stop\'',
                 timeout: 5,
               },
             ],
@@ -189,7 +189,7 @@ describe("materializeCodexPlugin", () => {
             hooks: [
               {
                 type: "command",
-                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" persona before_provider_request',
+                command: 'node "$PLUGIN_ROOT/hooks/gonk-codex-hook.mjs" \'persona\' \'before_provider_request\' \'side-effect\' \'UserPromptSubmit\'',
                 timeout: 5,
               },
             ],

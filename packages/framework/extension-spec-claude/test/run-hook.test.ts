@@ -8,6 +8,15 @@ function specWith(handler: (event: unknown, ctx: unknown) => void): ExtensionSpe
 }
 
 describe("runClaudeHook", () => {
+  it("delivers advisory tool_complete context without a blocking decision", async () => {
+    const spec: ExtensionSpec = {
+      id: "watch", description: "watch",
+      hooks: { tool_complete: (_event, ctx) => (ctx as ClaudeHookContext).injectContext("Check contribution to the objective.") },
+    };
+    const out = await runClaudeHook(spec, { specEvent: "tool_complete", payload: { hook_event_name: "PostToolUse" } });
+    expect(out).toEqual({ hookSpecificOutput: { hookEventName: "PostToolUse", additionalContext: "Check contribution to the objective." } });
+    expect(out).not.toHaveProperty("decision");
+  });
   it("emits injected text as SessionStart additionalContext", async () => {
     const spec = specWith((_e, ctx) => (ctx as ClaudeHookContext).injectContext("hello"));
     const out = await runClaudeHook(spec, { specEvent: "session_start", payload: { cwd: "/tmp" } });

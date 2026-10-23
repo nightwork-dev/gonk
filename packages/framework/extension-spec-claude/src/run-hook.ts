@@ -18,7 +18,7 @@ export interface ClaudeHookContext {
   event: Record<string, unknown>;
   /** Directory the hook fired in (from the payload, else process.cwd()). */
   cwd: string;
-  /** For SessionStart: "startup" | "resume" | "compact" | "clear". The
+  /** For SessionStart: "startup" | "resume" | "clear" | "compact" | "fork". The
    *  `"compact"` source is how post-compaction re-injection arrives. */
   source?: string;
   /** Inject text into the model's context. Concatenated and emitted as
@@ -37,6 +37,7 @@ const SPEC_TO_CLAUDE_EVENT: Record<string, string> = {
   session_end: "SessionEnd",
   turn_complete: "Stop",
   before_provider_request: "UserPromptSubmit",
+  tool_complete: "PostToolUse",
 };
 
 /** Claude accepts additionalContext only on these mapped events. SessionEnd
@@ -46,6 +47,7 @@ const CONTEXT_OUTPUT_EVENTS = new Set([
   "SessionStart",
   "Stop",
   "UserPromptSubmit",
+  "PostToolUse",
 ]);
 
 /** Invoke a spec's hook handler for `specEvent` and return the Claude hook

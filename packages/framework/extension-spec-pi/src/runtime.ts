@@ -11,6 +11,12 @@ import {
 } from "@gonk/tool-registry-pi";
 
 import { buildCommandHandler } from "./command.ts";
+import {
+  clearSettingValue,
+  coerceSettingValue,
+  readSettingValue,
+  writeSettingValue,
+} from "./settings.ts";
 import type {
   PiExtensionAPI,
   PiExtensionContext,
@@ -93,6 +99,12 @@ export type EditFlowHandler = (
   next: () => Promise<void>,
 ) => Promise<void> | void;
 
+const SPEC_TO_PI_EVENT: Record<string, string> = {
+  turn_complete: "turn_end",
+  session_end: "session_shutdown",
+  tool_complete: "tool_execution_end",
+};
+
 /** Materialize an ExtensionSpec into a registered Pi extension. Wires:
  *    - tools → `pi.registerTool` via `@gonk/tool-registry-pi`
  *    - slash command → `pi.registerCommand` with auto-injected
@@ -151,15 +163,15 @@ export function registerSpecExtension(opts: RegisterSpecOptions): () => void {
   //
   // Spec hooks use gonk's portable event vocabulary; each host adapter maps
   // them to native events (extension-spec-claude maps `turn_complete` →
-  // `Stop`, extension-spec-cli no-ops it). Pi's turn-boundary event is
-  // `turn_end` — pi never emits `turn_complete`, so passing the spec key
-  // through verbatim would register a hook that never fires.
+  // `Stop`, extension-spec-cli no-ops it). Pi names the turn boundary
+  // `turn_end`, shutdown `session_shutdown`, and a finished tool call
+  // `tool_execution_end`; other names pass through as native Pi events.
   if (spec.hooks) {
     for (const [event, handler] of Object.entries(spec.hooks)) {
       const piHandler: PiHookHandler = async (ev, piCtx) => {
         await handler(ev, piCtx);
       };
-      pi.on(event === "turn_complete" ? "turn_end" : event, piHandler);
+      pi.on(SPEC_TO_PI_EVENT[event] ?? event, piHandler);
     }
   }
 
@@ -242,13 +254,13 @@ export async function defaultEditFlow(
   const { item, tier } = action;
 
   if (item.type.kind === "text" && piCtx.ui.editor) {
-    const current = ctx.scope.get<string>(item.key) ?? "";
+    const current = readSettingValue<string>(ctx.scope, item) ?? "";
     const next = await piCtx.ui.editor(`${item.label} (@ ${tier})`, current);
     if (next === undefined) return;
     const trimmed = next.trim();
     try {
-      if (trimmed.length === 0) ctx.scope.delete(item.key, tier);
-      else ctx.scope.set(item.key, trimmed, tier);
+      if (trimmed.length === 0) clearSettingValue(ctx.scope, item, tier);
+      else writeSettingValue(ctx.scope, item, coerceSettingValue(item, trimmed), tier);
       ctx.notify(`${item.label} updated @ ${tier}`, "info");
     } catch (err) {
       ctx.notify(err instanceof Error ? err.message : String(err), "error");
@@ -257,11 +269,11 @@ export async function defaultEditFlow(
   }
 
   if (item.type.kind === "custom") {
-    const current = ctx.scope.get<unknown>(item.key);
+    const current = readSettingValue<unknown>(ctx.scope, item);
     const next = await item.type.pick(ctx, current, tier);
     if (next === undefined) return;
     try {
-      ctx.scope.set(item.key, next, tier);
+      writeSettingValue(ctx.scope, item, next, tier);
       ctx.notify(`${item.label} set @ ${tier}`, "info");
     } catch (err) {
       ctx.notify(err instanceof Error ? err.message : String(err), "error");
@@ -286,27 +298,24 @@ export async function defaultEditFlow(
     ctx.notify("Pi UI lacks an input prompt; cannot edit this setting.", "error");
     return;
   }
-  const current = ctx.scope.get<unknown>(item.key);
+  const current = readSettingValue<unknown>(ctx.scope, item);
   const placeholder = current !== undefined ? String(current) : String(item.default ?? "");
   const raw = await piCtx.ui.input(`${item.label} (@ ${tier})`, placeholder);
   if (raw === undefined) return;
   const trimmed = raw.trim();
   if (!trimmed) {
-    ctx.scope.delete(item.key, tier);
-    ctx.notify(`${item.label} cleared @ ${tier}`, "info");
+    try {
+      clearSettingValue(ctx.scope, item, tier);
+      ctx.notify(`${item.label} cleared @ ${tier}`, "info");
+    } catch (err) {
+      ctx.notify(err instanceof Error ? err.message : String(err), "error");
+    }
     return;
   }
-  let value: unknown = trimmed;
-  if (item.type.kind === "number") {
-    const n = Number.parseFloat(trimmed);
-    if (Number.isNaN(n)) {
-      ctx.notify(`Not a number: ${trimmed}`, "error");
-      return;
-    }
-    value = n;
-  }
+  let value: unknown;
   try {
-    ctx.scope.set(item.key, value, tier);
+    value = coerceSettingValue(item, trimmed);
+    writeSettingValue(ctx.scope, item, value, tier);
     ctx.notify(`${item.label} = ${JSON.stringify(value)} @ ${tier}`, "info");
   } catch (err) {
     ctx.notify(err instanceof Error ? err.message : String(err), "error");
