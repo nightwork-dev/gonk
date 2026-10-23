@@ -12,6 +12,8 @@ import { dirname, join, resolve, sep } from "node:path";
 import { safeJoin } from "@gonk/utils/path";
 
 import type {
+  CodexHookPlacementAuthorization,
+  CodexHookPlacementInput,
   CodexPluginInterface,
   CodexPluginManifest,
   CodexSkill,
@@ -172,7 +174,18 @@ function buildHooksFile(opts: MaterializeCodexOptions): import("./types.ts").Cod
   }
   const grouped: import("./types.ts").CodexHooksFile["hooks"] = {};
   for (const specEvent of Object.keys(opts.spec.hooks ?? {}).sort()) {
-    for (const placement of policy({ specEvent, specId: opts.spec.id, dispatchBinary })) {
+    const placementInput: CodexHookPlacementInput = {
+      specEvent,
+      specId: opts.spec.id,
+      dispatchBinary,
+      dispatchCommand: (placement) => buildHookDispatchCommand({
+        dispatchBinary,
+        specId: opts.spec.id,
+        specEvent,
+        placement,
+      }),
+    };
+    for (const placement of policy(placementInput)) {
       const entries = (grouped[placement.event] ??= []);
       entries.push({
         ...(placement.matcher !== undefined ? { matcher: placement.matcher } : {}),
@@ -188,6 +201,29 @@ function buildHooksFile(opts: MaterializeCodexOptions): import("./types.ts").Cod
   return { hooks };
 }
 
+function buildHookDispatchCommand(args: {
+  dispatchBinary: string;
+  specId: string;
+  specEvent: string;
+  placement: CodexHookPlacementAuthorization;
+}): import("./types.ts").CodexHookCommand {
+  return {
+    type: "command",
+    command: [
+      args.dispatchBinary,
+      shellQuote(args.specId),
+      shellQuote(args.specEvent),
+      shellQuote(args.placement.kind),
+      shellQuote(args.placement.event),
+    ].join(" "),
+    timeout: 5,
+  };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 function existsFile(path: string): boolean {
   try {
     return statSync(path).isFile();
@@ -199,8 +235,15 @@ function existsFile(path: string): boolean {
 function renderHookRunner(): string {
   return `#!/usr/bin/env node
 import { dispatchCodexHook } from "./gonk-codex-hook-policy.mjs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+const specId = process.argv[2];
 const specEvent = process.argv[3];
-const root = process.env.PLUGIN_ROOT ?? process.env.CLAUDE_PLUGIN_ROOT;
+const placementKind = process.argv[4];
+const codexEvent = process.argv[5];
+const root = process.env.PLUGIN_ROOT
+  || process.env.CLAUDE_PLUGIN_ROOT
+  || dirname(dirname(fileURLToPath(import.meta.url)));
 
 async function readStdin() {
   if (process.stdin.isTTY) return "";
@@ -210,14 +253,22 @@ async function readStdin() {
 }
 
 async function main() {
-  if (!specEvent || !root) return process.stdout.write("{}");
+  if (!specId || !specEvent || !placementKind || !codexEvent || !root) {
+    return process.stdout.write("{}");
+  }
   let payload = {};
   try {
     const raw = await readStdin();
     if (raw.trim()) payload = JSON.parse(raw);
   } catch {}
   try {
-    const output = await dispatchCodexHook({ root, specEvent, payload });
+    const output = await dispatchCodexHook({
+      root,
+      specId,
+      specEvent,
+      placement: { kind: placementKind, event: codexEvent },
+      payload,
+    });
     process.stdout.write(JSON.stringify(output));
   } catch (error) {
     process.stderr.write(\`[gonk-codex-hook] \${error instanceof Error ? error.stack : String(error)}\\n\`);

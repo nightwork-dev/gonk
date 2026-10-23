@@ -4,6 +4,10 @@ Pi adapter — registers `ToolDefinition`s as native Pi-callable tools via `pi.r
 
 The adapter declares **structural types** for the Pi extension API. It does not import `@earendil-works/pi-coding-agent` directly, so consumers can install this package without pulling Pi's runtime. The user's real `ExtensionAPI` matches the structural interface at call time.
 
+The optional `@earendil-works/pi-agent-core` peer is compatible with the 0.x
+line and Pi 1.x; the adapter's agent-tool conversion is exercised against
+Pi agent core 1.4.0.
+
 ## Usage
 
 ```ts

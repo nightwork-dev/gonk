@@ -2,10 +2,10 @@ import type { HostCapabilityProfile } from "@gonk/extension-spec";
 
 /** Codex's capability profile (GR-85 Half A).
  *
- *  - `enforcement: "observe-only"` — declared conservatively: this binding
- *    never emits a decision/block output for any event. `runCodexHook`
- *    hard-clamps every non-boundary event to `{}` after side effects run,
- *    and `CodexHookOutput` (`run-hook.ts`) has no decision variant at all.
+ *  - `enforcement: "observe-only"` — this binding never emits a
+ *    decision/block output for any event. `CodexHookOutput` (`run-hook.ts`)
+ *    contains informational context only; explicit action-context placements
+ *    are clamped to the declared context events.
  *    Note the honest caveat: `CodexHookEvent` (`types.ts`) also lists
  *    `PreToolUse` and `PermissionRequest` as native Codex event names,
  *    which suggests the host itself may support permission decisions —
@@ -13,12 +13,10 @@ import type { HostCapabilityProfile } from "@gonk/extension-spec";
  *    here confirms their output contract, so this profile reports only
  *    what is provably exercised, not what the host might additionally
  *    support.
- *  - `injectionModel: "scoped"` — only `SessionStart` may emit
- *    `additionalContext` (the `boundary-context` placement kind); the
- *    README documents this as deliberate — Codex itself supports dynamic
- *    context on other events too, but this binding hard-clamps them for
- *    prompt-cache stability (see `README.md` "Hook convention and cache
- *    epochs").
+ *  - `injectionModel: "scoped"` — the default placement emits context only
+ *    at `SessionStart`; `PreToolUse`, `PostToolUse` and `UserPromptSubmit` context requires
+ *    an explicit `action-context` placement. Every context output is bound to
+ *    the exact event encoded in the materialized command.
  *  - `commandSurface: "none"` — Codex plugins here expose verbs as
  *    `skills/*\/SKILL.md` (natural-language-triggered), not a native
  *    slash-command surface (see `materialize.ts`'s `buildDefaultSkills`).

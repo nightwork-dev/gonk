@@ -61,19 +61,35 @@ The default mapping is deliberately narrow:
 
 | Portable event | Codex event | Context contract |
 |---|---|---|
-| `session_start` | `SessionStart` (`startup\|resume\|clear\|compact`) | May emit a deterministic instruction floor, capped at 16,384 characters |
+| `session_start` | `SessionStart` (`startup\|resume\|clear\|compact\|fork`) | May emit a deterministic instruction floor, capped at 16,384 characters |
 | `before_provider_request` | `UserPromptSubmit` | Side effects only; runtime output is always `{}` |
 | `turn_complete` | `Stop` | Side effects only; runtime output is always `{}` |
 
 Codex reports post-compaction reinjection as `SessionStart` with
-`source: "compact"`; `PostCompact` itself does not support additional developer
-context. The runtime therefore grants `injectContext()` only when both the
-portable event is `session_start` and the host payload proves a real
-`SessionStart` boundary with a valid source. Every non-boundary event receives a
-side-effect-only context and is hard-clamped to empty JSON, even where Codex
-itself supports dynamic `additionalContext`. That keeps the cached prompt prefix
-byte-stable inside an epoch. Query-dependent memory, knowledge, persona, and
-self-model context remains pull-based through tools and skills.
+`source: "compact"`; a forked thread uses `source: "fork"`. `PostCompact` itself
+does not support additional developer context. The runtime grants
+`injectContext()` at `SessionStart` only when the materialized command authorizes
+that exact event and the payload includes a recognized start source.
+
+`PreToolUse`, `PostToolUse` and `UserPromptSubmit` can also return Codex
+`additionalContext`. These placements are opt-in because they can change the
+active turn. A policy can explicitly enable one and use `input.dispatchCommand()`
+to bind its event to the generated runner:
+
+```ts
+hookPlacement: (input) => {
+  if (input.specEvent !== "after_tool") return defaultCodexHookPlacement(input);
+  const placement = { kind: "action-context", event: "PostToolUse", matcher: "Bash" } as const;
+  return [{ ...placement, command: input.dispatchCommand(placement) }];
+}
+```
+
+The command carries the placement kind and exact Codex event. The dispatcher
+requires `payload.hook_event_name` to match those command arguments before it
+runs the portable handler, so a payload field cannot grant action-context
+authority. Other placements receive a side-effect-only context and return `{}`.
+Query-dependent memory, knowledge, persona, and self-model context remains
+pull-based through tools and skills.
 
 Spec-owned stdout is suppressed for every event, covering module evaluation,
 factory resolution, and handler execution: `console.log`, `console.info`,

@@ -57,7 +57,7 @@ overrides:
 # Canonical versions for heavily-reused dependencies. Packages reference these via
 # "catalog:" so a version lives in exactly one place. Bump here, not in every file.
 catalog:
-  "@earendil-works/pi-agent-core": 0.77.0
+  "@earendil-works/pi-agent-core": 1.4.0
   "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/client": 2.3.0
   "@modelcontextprotocol/server": 2.3.0
