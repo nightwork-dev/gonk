@@ -88,7 +88,9 @@ const PLAIN_PROJECT_MARKERS = [".claude", ".pi", "agents", ".git"];
 // runtime state (PROJECT_NEUTRAL_KINDS), which must NOT promote a dir to a
 // project root.
 const NAMESPACE_PROJECT_MARKERS = [".agents", ".gonk"];
-const SUBSTRATE_KIND_SET = new Set<string>(PROJECT_NEUTRAL_KINDS);
+// Compared case-insensitively: on a case-insensitive filesystem (APFS, NTFS) a
+// renamed `.agents/Gonk` is still the same runtime folder.
+const SUBSTRATE_KIND_SET = new Set<string>(PROJECT_NEUTRAL_KINDS.map((kind) => kind.toLowerCase()));
 
 /** A gonk namespace dir (`.agents`/`.gonk`) marks a project only when it holds
  *  user-bound content — a bound root (agents/settings/skills/blobs) or a doc —
@@ -110,7 +112,7 @@ function namespaceMarksProject(nsDir: string): boolean {
   // a bare `.gonk`/`.agents` to mark a project still gets one. The exclusion is
   // narrow: a namespace that holds ONLY auto-spawned substrate is NOT a project.
   if (meaningful.length === 0) return true;
-  return meaningful.some((e) => !SUBSTRATE_KIND_SET.has(e));
+  return meaningful.some((e) => !SUBSTRATE_KIND_SET.has(e.toLowerCase()));
 }
 
 export interface FindProjectRootOptions {
@@ -124,10 +126,8 @@ export interface FindProjectRootOptions {
 export function findProjectRoot(start: string, options: FindProjectRootOptions = {}): string | undefined {
   let current = resolve(start);
   let ceiling = options.ceiling === undefined ? undefined : canonicalExisting(options.ceiling);
-  if (ceiling !== undefined) {
-    const from = canonicalExisting(current);
-    const inside = from === ceiling || from.startsWith(ceiling.endsWith(sep) ? ceiling : ceiling + sep);
-    if (!inside) ceiling = from;
+  if (ceiling !== undefined && !isWithin(canonicalExisting(current), ceiling)) {
+    ceiling = canonicalExisting(current);
   }
   while (true) {
     for (const m of PLAIN_PROJECT_MARKERS) {
@@ -137,11 +137,22 @@ export function findProjectRoot(start: string, options: FindProjectRootOptions =
       const nsDir = join(current, m);
       if (isDir(nsDir) && namespaceMarksProject(nsDir)) return current;
     }
-    if (ceiling !== undefined && canonicalExisting(current) === ceiling) return undefined;
-    const parent = dirname(current);
+    let parent = dirname(current);
+    if (ceiling !== undefined) {
+      const here = canonicalExisting(current);
+      if (here === ceiling) return undefined;
+      // A lexical parent can leave the ceiling's subtree when `start` reached
+      // it through a symlink. Continue from the real parent instead, which is
+      // still inside the subtree because `here` is inside and not the ceiling.
+      if (!isWithin(canonicalExisting(parent), ceiling)) parent = dirname(here);
+    }
     if (parent === current) return undefined;
     current = parent;
   }
+}
+
+function isWithin(path: string, root: string): boolean {
+  return path === root || path.startsWith(root.endsWith(sep) ? root : root + sep);
 }
 
 // =============================================================================
