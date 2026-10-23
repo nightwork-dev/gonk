@@ -11,6 +11,7 @@ export default defineConfig({
     "entity-list-tui": "src/entity-list-tui.ts",
     command: "src/command.ts",
     runtime: "src/runtime.ts",
+    storage: "src/storage.ts",
   },
   format: ["esm"],
   dts: true,
