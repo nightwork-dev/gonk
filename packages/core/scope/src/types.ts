@@ -250,6 +250,10 @@ export interface ScopeEnvironment {
   /** Override of the project root. If unset, walk from `cwd` looking for a
    *  root marker (`.gonk`, `.claude`, `.agents`, `agents`, then `.git`). */
   projectRoot?: string;
+  /** Highest directory the project-root walk examines. The walk checks this
+   *  directory and stops there, never looking at its parents. Sandboxes and
+   *  tests set it to their own root so markers above it cannot leak in. */
+  projectCeiling?: string;
   /** Override session-scope home. If unset, sessions live under
    *  `<homeRoot>/.gonk/sessions/<id>/`. */
   sessionHome?: string;

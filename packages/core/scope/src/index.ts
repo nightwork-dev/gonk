@@ -22,6 +22,7 @@ export {
   scanDocuments,
   scopeStateHome,
 } from "./resolver.ts";
+export type { FindProjectRootOptions } from "./resolver.ts";
 export {
   NATIVE_HOST_ROOT_KINDS,
   SUBSTRATE_NS,

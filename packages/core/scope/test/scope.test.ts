@@ -30,6 +30,7 @@ function envWith(extras: Partial<ScopeEnvironment> = {}): ScopeEnvironment {
   return {
     cwd: extras.cwd ?? join(tmp, "cwd"),
     homeRoot: extras.homeRoot ?? join(tmp, "home"),
+    projectCeiling: tmp,
     ...(extras.personaHome ? { personaHome: extras.personaHome } : {}),
     ...(extras.sessionId ? { sessionId: extras.sessionId } : {}),
     ...(extras.projectRoot ? { projectRoot: extras.projectRoot } : {}),
@@ -84,28 +85,28 @@ describe("findProjectRoot", () => {
     const root = join(tmp, "proj");
     mkdirSync(join(root, "src", "deep"), { recursive: true });
     mkdirSync(join(root, ".gonk"), { recursive: true });
-    expect(findProjectRoot(join(root, "src", "deep"))).toBe(root);
+    expect(findProjectRoot(join(root, "src", "deep"), { ceiling: tmp })).toBe(root);
   });
 
   it("finds .claude as a project marker", () => {
     const root = join(tmp, "claude-proj");
     mkdirSync(join(root, "src"), { recursive: true });
     mkdirSync(join(root, ".claude"), { recursive: true });
-    expect(findProjectRoot(join(root, "src"))).toBe(root);
+    expect(findProjectRoot(join(root, "src"), { ceiling: tmp })).toBe(root);
   });
 
   it("finds agents/ as a project marker", () => {
     const root = join(tmp, "agents-proj");
     mkdirSync(join(root, "src"), { recursive: true });
     mkdirSync(join(root, "agents"), { recursive: true });
-    expect(findProjectRoot(join(root, "src"))).toBe(root);
+    expect(findProjectRoot(join(root, "src"), { ceiling: tmp })).toBe(root);
   });
 
   it("falls back to .git", () => {
     const root = join(tmp, "git-only");
     mkdirSync(join(root, "src"), { recursive: true });
     mkdirSync(join(root, ".git"), { recursive: true });
-    expect(findProjectRoot(join(root, "src"))).toBe(root);
+    expect(findProjectRoot(join(root, "src"), { ceiling: tmp })).toBe(root);
   });
 
   it("a .agents holding ONLY auto-spawned substrate does NOT mark a project", () => {
@@ -113,7 +114,7 @@ describe("findProjectRoot", () => {
     // project root — otherwise it hijacks project-tier resolution.
     const dir = join(tmp, "substrate-only");
     mkdirSync(join(dir, ".agents", "memory"), { recursive: true });
-    expect(findProjectRoot(dir)).toBeUndefined();
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
   });
 
   it("a .agents holding ONLY a store/ substrate does NOT mark a project", () => {
@@ -122,7 +123,49 @@ describe("findProjectRoot", () => {
     // root (regression for the SUBSTRATE_KINDS-excludes-"store" footgun).
     const dir = join(tmp, "store-only");
     mkdirSync(join(dir, ".agents", "store"), { recursive: true });
-    expect(findProjectRoot(dir)).toBeUndefined();
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
+  });
+
+  it("a .agents holding ONLY the Pi host runtime substrate does NOT mark a project", () => {
+    const dir = join(tmp, "pi-host-only");
+    mkdirSync(join(dir, ".agents", "gonk", "directory"), { recursive: true });
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
+  });
+
+  it("a .agents holding ONLY legacy Pi state does NOT mark a project", () => {
+    const dir = join(tmp, "legacy-pi-state-only");
+    mkdirSync(join(dir, ".agents", "pi-state", "directory"), { recursive: true });
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
+  });
+
+  it("a .gonk holding ONLY legacy autotune claims does NOT mark a project", () => {
+    const dir = join(tmp, "autotune-claims-only");
+    mkdirSync(join(dir, ".gonk", "autotune-claims"), { recursive: true });
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
+  });
+
+  it("the runtime state an agent session leaves in its cwd does NOT mark a project", () => {
+    // The exact tree Pi sessions left in /private/tmp: host-owned directory
+    // state, memory caches, and the Objective Watch session store.
+    const dir = join(tmp, "agent-cwd");
+    mkdirSync(join(dir, ".agents", "gonk", "directory"), { recursive: true });
+    mkdirSync(join(dir, ".agents", "memory"), { recursive: true });
+    mkdirSync(join(dir, ".agents", "objective-watch"), { recursive: true });
+    expect(findProjectRoot(join(dir, "nested"), { ceiling: tmp })).toBeUndefined();
+    mkdirSync(join(dir, ".agents", "settings"), { recursive: true });
+    expect(findProjectRoot(join(dir, "nested"), { ceiling: tmp })).toBe(dir);
+  });
+
+  it("stops at its ceiling and never reads a marker above it", () => {
+    const outer = join(tmp, "outer");
+    const ceiling = join(outer, "sandbox");
+    mkdirSync(join(outer, ".git"), { recursive: true });
+    mkdirSync(join(ceiling, "work"), { recursive: true });
+    expect(findProjectRoot(join(ceiling, "work"))).toBe(outer);
+    expect(findProjectRoot(join(ceiling, "work"), { ceiling })).toBeUndefined();
+    expect(resolveTierHomes({ cwd: join(ceiling, "work"), homeRoot: tmp, projectCeiling: ceiling }).has("project")).toBe(false);
+    mkdirSync(join(ceiling, ".git"));
+    expect(findProjectRoot(join(ceiling, "work"), { ceiling })).toBe(ceiling);
   });
 
   it("a .agents holding memory/ substrate still does NOT mark a project", () => {
@@ -130,14 +173,14 @@ describe("findProjectRoot", () => {
     // after adding "store".
     const dir = join(tmp, "memory-only-after-store");
     mkdirSync(join(dir, ".agents", "memory"), { recursive: true });
-    expect(findProjectRoot(dir)).toBeUndefined();
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
   });
 
   it("a .agents holding a bound root (settings/) DOES mark a project", () => {
     const root = join(tmp, "bound-root");
     mkdirSync(join(root, "src"), { recursive: true });
     mkdirSync(join(root, ".agents", "settings"), { recursive: true });
-    expect(findProjectRoot(join(root, "src"))).toBe(root);
+    expect(findProjectRoot(join(root, "src"), { ceiling: tmp })).toBe(root);
   });
 
   it("substrate in a monorepo subpackage does not shadow the repo-root project", () => {
@@ -146,7 +189,7 @@ describe("findProjectRoot", () => {
     mkdirSync(join(repo, ".git"), { recursive: true });
     mkdirSync(join(pkg, ".agents", "memory"), { recursive: true }); // cache only
     // findProjectRoot ascends past the substrate-only .agents to the repo root.
-    expect(findProjectRoot(pkg)).toBe(repo);
+    expect(findProjectRoot(pkg, { ceiling: tmp })).toBe(repo);
   });
 });
 
