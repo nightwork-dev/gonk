@@ -187,6 +187,28 @@ describe("findProjectRoot", () => {
     expect(findProjectRoot(join(ceiling, "not", "yet"), { ceiling })).toBeUndefined();
   });
 
+  it("never escapes the ceiling when the start reaches it through a symlink", () => {
+    const sandbox = join(tmp, "sandbox");
+    const home = join(tmp, "symlink-home");
+    mkdirSync(join(sandbox, "work", "deep"), { recursive: true });
+    mkdirSync(join(home, ".claude"), { recursive: true });
+    symlinkSync(join(sandbox, "work"), join(home, "door"));
+    const start = join(home, "door", "deep");
+    expect(findProjectRoot(start)).toBe(home);
+    expect(findProjectRoot(start, { ceiling: sandbox })).toBeUndefined();
+    mkdirSync(join(sandbox, ".git"));
+    expect(canonical(findProjectRoot(start, { ceiling: sandbox }) ?? "")).toBe(canonical(sandbox));
+  });
+
+  it("ignores runtime folder names in any letter case", () => {
+    const dir = join(tmp, "renamed-runtime");
+    mkdirSync(join(dir, ".agents", "Gonk", "directory"), { recursive: true });
+    mkdirSync(join(dir, ".agents", "OBJECTIVE-WATCH"), { recursive: true });
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBeUndefined();
+    mkdirSync(join(dir, ".agents", "Settings"));
+    expect(findProjectRoot(dir, { ceiling: tmp })).toBe(dir);
+  });
+
   it("a .agents holding memory/ substrate still does NOT mark a project", () => {
     // Confirms the SUBSTRATE_KINDS set still excludes the pre-existing kinds
     // after adding "store".
