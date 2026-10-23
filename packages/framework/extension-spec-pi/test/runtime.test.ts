@@ -125,4 +125,30 @@ describe("registerSpecExtension lifecycle mapping", () => {
 
     expect(on).toHaveBeenCalledWith("tool_execution_end", expect.any(Function));
   });
+
+  it("runs tool_complete only for top-level tool calls, not nested ones", async () => {
+    const on = vi.fn();
+    const seen: string[] = [];
+    const spec: ExtensionSpec = {
+      id: "tool-test",
+      description: "tool",
+      hooks: { tool_complete: (event) => { seen.push((event as { toolCallId: string }).toolCallId); } },
+    };
+
+    registerSpecExtension({
+      pi: { on, registerTool: vi.fn(), registerCommand: vi.fn() },
+      scope: new MemoryScopeStore(),
+      auth: ownerPrincipal({ USER: "extension-spec-pi-runtime-test" }),
+      security: { approvalMode: "bypass" },
+      spec,
+    });
+    const handler = on.mock.calls.find(([event]) => event === "tool_execution_end")![1];
+    await handler({ type: "tool_execution_end", toolCallId: "call-1", toolName: "codemode" }, {});
+    await handler(
+      { type: "tool_execution_end", toolCallId: "call-1/1", toolName: "bash", parentToolCallId: "call-1" },
+      {},
+    );
+
+    expect(seen).toEqual(["call-1"]);
+  });
 });

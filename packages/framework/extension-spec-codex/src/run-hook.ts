@@ -147,7 +147,12 @@ export async function runCodexHook(
       : {};
   if (opts.placement) {
     if (!isValidCodexHookPlacement(opts.placement)) return {};
-    if (payload.hook_event_name !== opts.placement.event) return {};
+    if (
+      payload.hook_event_name !== undefined &&
+      payload.hook_event_name !== opts.placement.event
+    ) {
+      return {};
+    }
   }
 
   const handler = spec.hooks?.[opts.specEvent];

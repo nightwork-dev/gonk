@@ -40,6 +40,9 @@ const DEFAULT_DISPATCH_BINARY = "gonk-claude-hook";
  *  Future PRs will add `agents/`, `skills/`, `.mcp.json`. */
 export function materializeClaudePlugin(opts: MaterializeClaudeOptions): MaterializationManifest {
   const pluginRoot = resolve(opts.outDir);
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(opts.spec.id)) {
+    throw new Error(`Invalid ExtensionSpec id for Claude materialization: ${opts.spec.id}`);
+  }
   const packageName = opts.packageName ?? opts.spec.id;
   const version = opts.version ?? "0.0.0";
   const dispatchBinary = opts.hookDispatchBinary ?? DEFAULT_DISPATCH_BINARY;

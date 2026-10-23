@@ -208,6 +208,49 @@ describe("runCodexHook", () => {
     expect(observed?.kind).toBe("action-context");
   });
 
+  it("runs a placed handler side-effect-only when the payload omits hook_event_name", async () => {
+    const kinds: string[] = [];
+    const spec: ExtensionSpec = {
+      id: "review",
+      description: "fixture",
+      hooks: {
+        after_tool: (_event, ctx) => {
+          kinds.push((ctx as { kind: string }).kind);
+          if ("injectContext" in (ctx as object)) {
+            (ctx as CodexActionContextHookContext).injectContext("must-not-appear");
+          }
+        },
+      },
+    };
+
+    await expect(
+      runCodexHook(spec, {
+        specEvent: "after_tool",
+        placement: { kind: "action-context", event: "PostToolUse" },
+        payload: { tool_name: "Bash" },
+      }),
+    ).resolves.toEqual({});
+    expect(kinds).toEqual(["side-effect"]);
+  });
+
+  it("skips a placed handler when the payload names a different event", async () => {
+    let calls = 0;
+    const spec: ExtensionSpec = {
+      id: "review",
+      description: "fixture",
+      hooks: { after_tool: () => { calls += 1; } },
+    };
+
+    await expect(
+      runCodexHook(spec, {
+        specEvent: "after_tool",
+        placement: { kind: "action-context", event: "PostToolUse" },
+        payload: { hook_event_name: "UserPromptSubmit" },
+      }),
+    ).resolves.toEqual({});
+    expect(calls).toBe(0);
+  });
+
   it("does not let payload fields forge a materialized event or grant context", async () => {
     let calls = 0;
     let contextKind = "";

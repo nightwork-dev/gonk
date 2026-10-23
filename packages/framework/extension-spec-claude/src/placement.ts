@@ -129,10 +129,15 @@ export const defaultHookPlacement: HookPlacementPolicy = (input) => {
 
 function buildDispatchCommand(input: HookPlacementInput): ClaudeHookCommand {
   // The dispatch shim receives <specId> <specEvent> and the Claude hook
-  // payload via stdin. PR 1 only writes the line; PR 2 ships the binary.
+  // payload via stdin. Claude runs the command through a shell, so both
+  // spec-supplied values are single-quoted to stay inert arguments.
   return {
     type: "command",
-    command: `${input.dispatchBinary} ${input.specId} ${input.specEvent}`,
+    command: `${input.dispatchBinary} ${shellQuote(input.specId)} ${shellQuote(input.specEvent)}`,
     timeout: 5,
   };
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
 }

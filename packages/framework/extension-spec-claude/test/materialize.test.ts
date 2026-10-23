@@ -190,7 +190,7 @@ describe("materializeClaudePlugin", () => {
     expect(sessionStartCommands[0].matcher).toBe("*");
     expect(sessionStartCommands[0].hooks[0]).toEqual({
       type: "command",
-      command: "gonk-claude-hook claude-memory session_start",
+      command: "gonk-claude-hook 'claude-memory' 'session_start'",
       timeout: 5,
     });
   });
@@ -205,7 +205,7 @@ describe("materializeClaudePlugin", () => {
 
     const hooks = JSON.parse(readFileSync(join(outDir, "hooks", "hooks.json"), "utf8"));
     expect(hooks.hooks.SessionStart[0].hooks[0].command).toBe(
-      "/usr/local/bin/gonk claude-memory session_start",
+      "/usr/local/bin/gonk 'claude-memory' 'session_start'",
     );
   });
 
