@@ -21,6 +21,15 @@ function seedFile(dir: string, name: string, body: string): void {
 }
 
 describe("migrateSubstrateHome", () => {
+  it("leaves an authored bare gonk or pi-state directory where it is", () => {
+    seedFile(join(home, "gonk"), "README.md", "a checkout named gonk");
+    seedFile(join(home, "pi-state"), "notes.md", "authored");
+    const summary = migrateSubstrateHome(home);
+    expect(summary.moved).toEqual([]);
+    expect(readFileSync(join(home, "gonk", "README.md"), "utf8")).toBe("a checkout named gonk");
+    expect(existsSync(join(home, "pi-state", "notes.md"))).toBe(true);
+  });
+
   it("moves bare <home>/memory into <home>/.agents/memory", () => {
     seedFile(join(home, "memory"), "curated.md", "fact");
     const summary = migrateSubstrateHome(home);
