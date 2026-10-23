@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 
 import {
   DEFAULT_ROOT_ORDER,
@@ -115,14 +115,20 @@ function namespaceMarksProject(nsDir: string): boolean {
 
 export interface FindProjectRootOptions {
   /** Highest directory examined. The walk checks it and stops; its parents
-   *  are never read. */
+   *  are never read. When `start` is not inside the ceiling, only `start`
+   *  itself is examined. */
   ceiling?: string;
 }
 
 /** Walk up from `start` looking for a recognized project root marker. */
 export function findProjectRoot(start: string, options: FindProjectRootOptions = {}): string | undefined {
   let current = resolve(start);
-  const ceiling = options.ceiling === undefined ? undefined : canonicalPath(options.ceiling);
+  let ceiling = options.ceiling === undefined ? undefined : canonicalExisting(options.ceiling);
+  if (ceiling !== undefined) {
+    const from = canonicalExisting(current);
+    const inside = from === ceiling || from.startsWith(ceiling.endsWith(sep) ? ceiling : ceiling + sep);
+    if (!inside) ceiling = from;
+  }
   while (true) {
     for (const m of PLAIN_PROJECT_MARKERS) {
       if (isDir(join(current, m))) return current;
@@ -131,7 +137,7 @@ export function findProjectRoot(start: string, options: FindProjectRootOptions =
       const nsDir = join(current, m);
       if (isDir(nsDir) && namespaceMarksProject(nsDir)) return current;
     }
-    if (ceiling !== undefined && canonicalPath(current) === ceiling) return undefined;
+    if (ceiling !== undefined && canonicalExisting(current) === ceiling) return undefined;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;
@@ -245,6 +251,16 @@ export function canonical(path: string): string {
  *  authoritative when (for example) cwd equals homeRoot. */
 export function scopeStateHome(scope: ScopeStore, tier: ScopeName = "global"): string {
   return scope.home(tier) ?? homedir();
+}
+
+/** Canonical spelling of a path whose tail may not exist yet: realpath the
+ *  nearest existing ancestor and re-append the missing segments. */
+function canonicalExisting(path: string): string {
+  const absolute = resolve(path);
+  if (existsSync(absolute)) return canonicalPath(absolute);
+  const parent = dirname(absolute);
+  if (parent === absolute) return absolute;
+  return join(canonicalExisting(parent), basename(absolute));
 }
 
 function isDir(path: string): boolean {
