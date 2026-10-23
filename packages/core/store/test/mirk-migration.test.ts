@@ -39,6 +39,9 @@ import { MirkStoreBackend } from "../src/mirk-backend.ts";
 const storePackageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { version: string };
+const mirkStorePackageVersion = JSON.parse(
+  readFileSync(new URL("../node_modules/@mirk/store/package.json", import.meta.url), "utf8"),
+) as { version: string };
 
 let root: string;
 let sourceDir: string;
@@ -131,7 +134,6 @@ describe("explicit legacy FsStoreBackend importer", () => {
     const adapter = new SqliteAdapter({
       path: destinationPath,
       dimensions: 3,
-      forceJsCosine: true,
     });
 
     try {
@@ -181,7 +183,7 @@ describe("explicit legacy FsStoreBackend importer", () => {
       expect(applied.skipped).toHaveLength(1);
       expect(applied.packages.source.version).toBe("0.4.0");
       expect(applied.packages.importer.version).toBe(storePackageVersion.version);
-      expect(applied.packages.destination.version).toBe("0.9.0");
+      expect(applied.packages.destination.version).toBe(mirkStorePackageVersion.version);
       expect(JSON.stringify(applied)).not.toContain(sourceDir);
       expect(applied.destination).toMatchObject({
         identity: "test-sqlite",
@@ -277,7 +279,6 @@ describe("explicit legacy FsStoreBackend importer", () => {
     const adapter = new SqliteAdapter({
       path: destinationPath,
       dimensions: 3,
-      forceJsCosine: true,
     });
     adapter.kv.set("kv.plain", { conflicting: true });
 
@@ -421,7 +422,6 @@ describe("explicit legacy FsStoreBackend importer", () => {
     const adapter = new SqliteAdapter({
       path: destinationPath,
       dimensions: 3,
-      forceJsCosine: true,
     });
     const bound = destination(adapter);
     try {
@@ -476,7 +476,6 @@ describe("explicit legacy FsStoreBackend importer", () => {
     let adapter = new SqliteAdapter({
       path: destinationPath,
       dimensions: 3,
-      forceJsCosine: true,
     });
     const failingKv = new Proxy(adapter.kv, {
       get(target, property) {
@@ -520,7 +519,6 @@ describe("explicit legacy FsStoreBackend importer", () => {
       adapter = new SqliteAdapter({
         path: destinationPath,
         dimensions: 3,
-        forceJsCosine: true,
       });
       const retry = importLegacyFsStore({
         ...common,
