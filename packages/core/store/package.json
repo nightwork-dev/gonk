@@ -18,6 +18,10 @@
     "./legacy-import": {
       "types": "./dist/legacy-import.d.ts",
       "import": "./dist/legacy-import.js"
+    },
+    "./host-storage": {
+      "types": "./dist/host-storage.d.ts",
+      "import": "./dist/host-storage.js"
     }
   },
   "main": "./dist/index.js",

@@ -7,6 +7,7 @@ export default defineConfig({
     materialize: "src/materialize.ts",
     placement: "src/placement.ts",
     "run-hook": "src/run-hook.ts",
+    storage: "src/storage.ts",
     "bin/gonk-codex-hook": "src/bin/gonk-codex-hook.ts",
   },
   format: ["esm"],

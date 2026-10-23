@@ -561,6 +561,12 @@ importers:
       '@gonk/extension-spec':
         specifier: workspace:*
         version: link:../extension-spec
+      '@gonk/scope':
+        specifier: workspace:*
+        version: link:../../core/scope
+      '@gonk/store':
+        specifier: workspace:*
+        version: link:../../core/store
       '@gonk/utils':
         specifier: workspace:*
         version: link:../../core/utils
@@ -589,6 +595,9 @@ importers:
       '@gonk/scope':
         specifier: workspace:*
         version: link:../../core/scope
+      '@gonk/store':
+        specifier: workspace:*
+        version: link:../../core/store
       '@gonk/tool-registry':
         specifier: workspace:*
         version: link:../../core/tool-registry
@@ -596,6 +605,9 @@ importers:
         specifier: workspace:*
         version: link:../../adapters/tool-registry-pi
     devDependencies:
+      '@mirk/store':
+        specifier: 'catalog:'
+        version: 0.13.0(better-sqlite3@13.0.3)
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.17

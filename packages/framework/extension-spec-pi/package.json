@@ -11,6 +11,10 @@
     "./parse-args": {
       "types": "./dist/parse-args.d.ts",
       "import": "./dist/parse-args.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js"
     }
   },
   "main": "./dist/index.js",
@@ -29,10 +33,12 @@
     "@gonk/auth": "workspace:*",
     "@gonk/extension-spec": "workspace:*",
     "@gonk/scope": "workspace:*",
+    "@gonk/store": "workspace:*",
     "@gonk/tool-registry": "workspace:*",
     "@gonk/tool-registry-pi": "workspace:*"
   },
   "devDependencies": {
+    "@mirk/store": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",
     "typescript": "catalog:",

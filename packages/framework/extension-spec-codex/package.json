@@ -23,6 +23,10 @@
     "./run-hook": {
       "types": "./dist/run-hook.d.ts",
       "import": "./dist/run-hook.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js"
     }
   },
   "main": "./dist/index.js",
@@ -42,6 +46,8 @@
   },
   "dependencies": {
     "@gonk/extension-spec": "workspace:*",
+    "@gonk/scope": "workspace:*",
+    "@gonk/store": "workspace:*",
     "@gonk/utils": "workspace:*"
   },
   "devDependencies": {
