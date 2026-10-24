@@ -234,6 +234,9 @@ compile or refresh retains the prior complete catalog. Its deliberately small
 JSON Schema 2020-12 subset supports object/array/scalar types, properties,
 required fields, closed objects, items, enum/const, and basic length/range
 limits; unsupported keywords fail the whole candidate catalog closed.
+String length uses Unicode scalar values. Arbitrary regular expressions and
+custom validator behavior are outside this subset and are not guaranteed to
+match the remote implementation.
 
 ## Development switchboard: one MCP registration, many worktrees
 

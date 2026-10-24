@@ -28,3 +28,61 @@ Do not disable `minimumReleaseAge` as a routine workflow. A new exact-version
 exclude requires an explicit review decision recorded beside the selector.
 The committed lockfile must always pass the frozen install. Frozen installs
 (CI, consumers) replay the reviewed lockfile.
+
+## Python
+
+The Python workspace requires uv `>=0.13.5` so the managed CPython 3.12.15
+runtime is selected. The repository pins that runtime in `python/.python-version`
+and CI sets `UV_MANAGED_PYTHON=true`; use the same managed interpreter locally.
+
+Set up the Python workspace from the repository root:
+
+```bash
+pnpm install --frozen-lockfile
+uv sync --project python --locked --all-packages --all-extras --group dev
+pnpm build
+```
+
+Run the Python package checks:
+
+```bash
+pnpm check:python
+pnpm check:python-wheels
+```
+
+`check:python` runs tests, strict type checks, and lint for each Python
+distribution. `check:python-wheels` builds all three distributions, installs
+the wheels in a temporary environment, and invokes a Python MCP tool through
+the TypeScript importer.
+
+### Python conformance
+
+The TypeScript auth and registry suites generate the checked-in cases under
+`conformance/`. Regenerate them after a deliberate shared-contract change:
+
+```bash
+node --experimental-transform-types scripts/python-auth-conformance.ts --write
+node --experimental-transform-types scripts/python-registry-conformance.ts
+```
+
+Review the generated differences before you accept them. The scripts derive
+the expected values from the TypeScript implementations. Add shared acceptance
+and rejection cases for regex dialects or custom validation when they affect
+both languages.
+
+### Python and Mirk integration proof
+
+The optional [artifact example](python/examples/artifact_documents.py) uses
+host-owned Mirk storage. Build the TypeScript packages that the proof imports.
+Install the Mirk store and artifact wheels in the same environment as the Gonk
+wheels. The Mirk checkout must contain built TypeScript store and artifact
+packages.
+
+Run the proof with the Python executable and Mirk checkout paths:
+
+```bash
+node scripts/python-artifact-smoke.mjs /path/to/venv/bin/python /path/to/mirk
+```
+
+The proof creates a document through MCP, restarts the Python server, reopens
+the document, and verifies the persisted artifact through TypeScript Mirk.

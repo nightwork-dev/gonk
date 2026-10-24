@@ -538,12 +538,13 @@ function validateSchemaValue(
     return;
   }
   if (typeof value === "string") {
-    if (typeof schema.minLength === "number" && value.length < schema.minLength)
+    const scalarLength = [...value].length;
+    if (typeof schema.minLength === "number" && scalarLength < schema.minLength)
       issues.push({
         message: `Expected at least ${schema.minLength} characters`,
         path,
       });
-    if (typeof schema.maxLength === "number" && value.length > schema.maxLength)
+    if (typeof schema.maxLength === "number" && scalarLength > schema.maxLength)
       issues.push({
         message: `Expected at most ${schema.maxLength} characters`,
         path,
