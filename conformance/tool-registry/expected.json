@@ -1,0 +1,193 @@
+{
+  "generatedBy": "typescript-tool-registry",
+  "version": 1,
+  "cases": [
+    {
+      "id": "sync-result",
+      "events": [
+        {
+          "type": "result",
+          "data": {
+            "echoed": "hello"
+          }
+        }
+      ]
+    },
+    {
+      "id": "async-result",
+      "events": [
+        {
+          "type": "result",
+          "data": {
+            "echoed": "awaited"
+          }
+        }
+      ]
+    },
+    {
+      "id": "stream-events",
+      "events": [
+        {
+          "type": "progress",
+          "message": "working"
+        },
+        {
+          "type": "result",
+          "data": {
+            "streamed": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "multiple-results",
+      "events": [
+        {
+          "type": "result",
+          "data": {
+            "n": 1
+          }
+        },
+        {
+          "type": "result",
+          "data": {
+            "n": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "result-then-error",
+      "events": [
+        {
+          "type": "result",
+          "data": {
+            "partial": true
+          }
+        },
+        {
+          "type": "error",
+          "code": "INTERNAL",
+          "message": "actually it blew up"
+        }
+      ]
+    },
+    {
+      "id": "invalid-input",
+      "events": [
+        {
+          "type": "error",
+          "code": "INVALID_INPUT",
+          "message": "Input validation failed",
+          "details": [
+            {
+              "message": "text required"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "handler-error",
+      "events": [
+        {
+          "type": "error",
+          "code": "BOOM",
+          "message": "kaboom"
+        }
+      ]
+    },
+    {
+      "id": "missing-tool",
+      "events": [
+        {
+          "type": "error",
+          "code": "TOOL_NOT_FOUND",
+          "message": "No such tool: missing"
+        }
+      ]
+    },
+    {
+      "id": "malformed-auth-decision",
+      "events": [
+        {
+          "type": "error",
+          "code": "TOOL_NOT_FOUND",
+          "message": "No such tool: echo"
+        }
+      ]
+    },
+    {
+      "id": "approval-required",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_REQUIRED",
+          "message": "Approval required",
+          "details": {
+            "requestId": "request-replay",
+            "approvalRequestId": "approval-replay",
+            "toolName": "approval",
+            "approvalTier": "write",
+            "reason": "replay approval",
+            "resource": {
+              "kind": "tool",
+              "target": "approval"
+            },
+            "expiresAt": "2026-10-07T00:00:00Z"
+          }
+        }
+      ]
+    },
+    {
+      "id": "approval-malformed-grant",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_DENIED",
+          "message": "Approval provider returned an invalid decision"
+        }
+      ]
+    },
+    {
+      "id": "approval-required-missing-id",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_DENIED",
+          "message": "Approval provider returned an invalid decision"
+        }
+      ]
+    },
+    {
+      "id": "approval-null-grant-scope",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_DENIED",
+          "message": "Approval provider returned an invalid decision"
+        }
+      ]
+    },
+    {
+      "id": "approval-null-request-id",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_DENIED",
+          "message": "Approval provider returned an invalid decision"
+        }
+      ]
+    },
+    {
+      "id": "approval-null-reason",
+      "events": [
+        {
+          "type": "error",
+          "code": "APPROVAL_DENIED",
+          "message": "Approval provider returned an invalid decision"
+        }
+      ]
+    }
+  ]
+}

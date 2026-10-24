@@ -141,6 +141,21 @@ describe("trusted envelope version mismatch", () => {
       expect(envelopeError.actualVersion).toBe(2);
     }
   });
+
+  it("does not treat boolean schemaVersion true as numeric version 1", () => {
+    const raw = JSON.stringify({
+      schemaVersion: true,
+      principal: minimalPrincipal(),
+    });
+    expect(() => decodeTrustedEnvelope(raw)).toThrow(TrustedEnvelopeError);
+    try {
+      decodeTrustedEnvelope(raw);
+      expect.unreachable();
+    } catch (error) {
+      expect((error as TrustedEnvelopeError).code).toBe("UNSUPPORTED_VERSION");
+      expect((error as TrustedEnvelopeError).actualVersion).toBe(true);
+    }
+  });
 });
 
 describe("trusted envelope malformed payloads — no best-effort parsing", () => {
@@ -197,6 +212,18 @@ describe("trusted envelope malformed payloads — no best-effort parsing", () =>
       execution: { personaId: "p-1", smuggled: true },
     });
     expect(() => decodeTrustedEnvelope(raw)).toThrow(TrustedEnvelopeError);
+  });
+
+  it("rejects JSON numeric overflow instead of admitting Infinity", () => {
+    const raw =
+      '{"schemaVersion":1,"principal":{"id":"p","kind":"human","identity":{"issuer":"issuer","subject":"subject","method":"oauth"},"roles":[],"scopes":[],"expiresAt":1e400}}';
+    expect(() => decodeTrustedEnvelope(raw)).toThrow(TrustedEnvelopeError);
+    try {
+      decodeTrustedEnvelope(raw);
+      expect.unreachable();
+    } catch (error) {
+      expect((error as TrustedEnvelopeError).code).toBe("MALFORMED_PAYLOAD");
+    }
   });
 });
 

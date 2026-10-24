@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "cases": [
+    { "id": "sync-result", "tool": "echo", "input": { "text": "hello" } },
+    { "id": "async-result", "tool": "async-echo", "input": { "text": "awaited" } },
+    { "id": "stream-events", "tool": "stream", "input": {} },
+    { "id": "multiple-results", "tool": "multi-stream", "input": {} },
+    { "id": "result-then-error", "tool": "flaky-stream", "input": {} },
+    { "id": "invalid-input", "tool": "echo", "input": { "wrong": true } },
+    { "id": "handler-error", "tool": "boom", "input": {} },
+    { "id": "missing-tool", "tool": "missing", "input": {} },
+    { "id": "malformed-auth-decision", "tool": "echo", "input": { "text": "hidden" }, "auth": "malformed" },
+    { "id": "approval-required", "tool": "approval", "input": {} },
+    { "id": "approval-malformed-grant", "tool": "approval", "input": {}, "approvalDecision": "malformed-grant" },
+    { "id": "approval-required-missing-id", "tool": "approval", "input": {}, "approvalDecision": "required-missing-id" },
+    { "id": "approval-null-grant-scope", "tool": "approval", "input": {}, "approvalDecision": "null-grant-scope" },
+    { "id": "approval-null-request-id", "tool": "approval", "input": {}, "approvalDecision": "null-request-id" },
+    { "id": "approval-null-reason", "tool": "approval", "input": {}, "approvalDecision": "null-reason" }
+  ]
+}

@@ -90,7 +90,10 @@ export function isAuthenticatedPrincipal(
   ) {
     return false;
   }
-  if (value.expiresAt !== undefined && typeof value.expiresAt !== "number") {
+  if (
+    value.expiresAt !== undefined &&
+    (typeof value.expiresAt !== "number" || !Number.isFinite(value.expiresAt))
+  ) {
     return false;
   }
   if (
@@ -327,7 +330,7 @@ export function isPlainClaimData(value: unknown): boolean {
   if (
     value === null ||
     typeof value === "string" ||
-    typeof value === "number" ||
+    (typeof value === "number" && Number.isFinite(value)) ||
     typeof value === "boolean"
   ) {
     return true;
