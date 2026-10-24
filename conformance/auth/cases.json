@@ -1,0 +1,724 @@
+{
+  "formatVersion": 1,
+  "generatedBy": "packages/core/auth/src/index.ts",
+  "schemaVersion": 1,
+  "keyCases": [
+    {
+      "name": "minimal",
+      "principal": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "oauth"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "securityContextKey": "gsk:v1:vawLmpIoFt9vMr7TLe9vek9-cSXJxDl9zf7dMpOlOMc",
+      "persistentGrantKey": "gpg:v1:COZX2M_ThCdngZUpk9pq38e4D1O1B1B7vsee01Wav0w"
+    },
+    {
+      "name": "rich",
+      "principal": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": "agent",
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": "session-a"
+        },
+        "roles": [
+          "member",
+          "reviewer"
+        ],
+        "scopes": [
+          "reviews:write"
+        ],
+        "expiresAt": 1800000000000,
+        "attributes": {
+          "source": "fixture",
+          "nested": {
+            "flag": true,
+            "count": 3
+          }
+        }
+      },
+      "securityContextKey": "gsk:v1:XxVD3pE2s9_Cbo07pD30ok-sdrNubOiAGNZLlEJ1p6Y",
+      "persistentGrantKey": "gpg:v1:ARYWfnQjmTLjQhtVBdXOJ8eZsEyF0MxX6OF2g1tbA1M"
+    },
+    {
+      "name": "surrogate-identifiers",
+      "principal": {
+        "id": "principal:surrogate",
+        "kind": "human",
+        "identity": {
+          "issuer": "issuer:\ud800",
+          "subject": "subject:\udfff",
+          "method": "oauth"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "securityContextKey": "gsk:v1:HKyBmH9QkRLd14q4W0iGrpL8xUZQNbMcVCJ1PmbazF0",
+      "persistentGrantKey": "gpg:v1:NDK4bP8yUg1Hm4m6rLrXYoCjQmqdBGcBtIVzo4Ch3WI"
+    },
+    {
+      "name": "rich-session-b",
+      "principal": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": "agent",
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": "session-b"
+        },
+        "roles": [
+          "member",
+          "reviewer"
+        ],
+        "scopes": [
+          "reviews:write"
+        ],
+        "expiresAt": 1800000000000,
+        "attributes": {
+          "source": "fixture",
+          "nested": {
+            "flag": true,
+            "count": 3
+          }
+        }
+      },
+      "securityContextKey": "gsk:v1:8JbyC57MKQq_SCTpPHkY9iWYWevPkHO_RzOdPxXAO7o",
+      "persistentGrantKey": "gpg:v1:ARYWfnQjmTLjQhtVBdXOJ8eZsEyF0MxX6OF2g1tbA1M"
+    },
+    {
+      "name": "rich-refreshed-claims",
+      "principal": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": "agent",
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": "session-a"
+        },
+        "roles": [
+          "member",
+          "reviewer",
+          "admin"
+        ],
+        "scopes": [
+          "reviews:write",
+          "reviews:read"
+        ],
+        "expiresAt": 1900000000000,
+        "attributes": {
+          "refreshed": true
+        }
+      },
+      "securityContextKey": "gsk:v1:XxVD3pE2s9_Cbo07pD30ok-sdrNubOiAGNZLlEJ1p6Y",
+      "persistentGrantKey": "gpg:v1:ARYWfnQjmTLjQhtVBdXOJ8eZsEyF0MxX6OF2g1tbA1M"
+    }
+  ],
+  "keyRelations": [
+    {
+      "name": "actor-session-is-security-scoped",
+      "from": "rich",
+      "to": "rich-session-b",
+      "securitySame": false,
+      "persistentSame": true
+    },
+    {
+      "name": "claims-are-outside-both-key-scopes",
+      "from": "rich",
+      "to": "rich-refreshed-claims",
+      "securitySame": true,
+      "persistentSame": true
+    }
+  ],
+  "envelopeCases": [
+    {
+      "name": "minimal",
+      "input": {
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        }
+      },
+      "encoded": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]}}",
+      "decoded": {
+        "schemaVersion": 1,
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        }
+      }
+    },
+    {
+      "name": "rich",
+      "input": {
+        "principal": {
+          "id": "principal:rich",
+          "kind": "agent",
+          "identity": {
+            "issuer": "issuer:agent",
+            "subject": "agent-1",
+            "method": "custom:agent-token"
+          },
+          "linkedIdentities": [
+            {
+              "issuer": "https://accounts.example",
+              "subject": "user-1",
+              "method": "oauth"
+            }
+          ],
+          "tenantId": "tenant-1",
+          "workspaceId": "workspace-1",
+          "delegation": {
+            "actorKind": "agent",
+            "actor": {
+              "issuer": "issuer:agent",
+              "subject": "delegate-1",
+              "method": "service-token"
+            },
+            "actorId": "agent-1",
+            "actorSessionId": "session-a"
+          },
+          "roles": [
+            "member",
+            "reviewer"
+          ],
+          "scopes": [
+            "reviews:write"
+          ],
+          "expiresAt": 1800000000000,
+          "attributes": {
+            "source": "fixture",
+            "nested": {
+              "flag": true,
+              "count": 3
+            }
+          }
+        }
+      },
+      "encoded": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:rich\",\"kind\":\"agent\",\"identity\":{\"issuer\":\"issuer:agent\",\"subject\":\"agent-1\",\"method\":\"custom:agent-token\"},\"linkedIdentities\":[{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"}],\"tenantId\":\"tenant-1\",\"workspaceId\":\"workspace-1\",\"delegation\":{\"actorKind\":\"agent\",\"actor\":{\"issuer\":\"issuer:agent\",\"subject\":\"delegate-1\",\"method\":\"service-token\"},\"actorId\":\"agent-1\",\"actorSessionId\":\"session-a\"},\"roles\":[\"member\",\"reviewer\"],\"scopes\":[\"reviews:write\"],\"expiresAt\":1800000000000,\"attributes\":{\"source\":\"fixture\",\"nested\":{\"flag\":true,\"count\":3}}}}",
+      "decoded": {
+        "schemaVersion": 1,
+        "principal": {
+          "id": "principal:rich",
+          "kind": "agent",
+          "identity": {
+            "issuer": "issuer:agent",
+            "subject": "agent-1",
+            "method": "custom:agent-token"
+          },
+          "linkedIdentities": [
+            {
+              "issuer": "https://accounts.example",
+              "subject": "user-1",
+              "method": "oauth"
+            }
+          ],
+          "tenantId": "tenant-1",
+          "workspaceId": "workspace-1",
+          "delegation": {
+            "actorKind": "agent",
+            "actor": {
+              "issuer": "issuer:agent",
+              "subject": "delegate-1",
+              "method": "service-token"
+            },
+            "actorId": "agent-1",
+            "actorSessionId": "session-a"
+          },
+          "roles": [
+            "member",
+            "reviewer"
+          ],
+          "scopes": [
+            "reviews:write"
+          ],
+          "expiresAt": 1800000000000,
+          "attributes": {
+            "source": "fixture",
+            "nested": {
+              "flag": true,
+              "count": 3
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "execution",
+      "input": {
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        },
+        "execution": {
+          "personaId": "persona:example",
+          "executionSessionId": "session-1",
+          "resourceScopeRef": "resource-1"
+        }
+      },
+      "encoded": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]},\"execution\":{\"personaId\":\"persona:example\",\"executionSessionId\":\"session-1\",\"resourceScopeRef\":\"resource-1\"}}",
+      "decoded": {
+        "schemaVersion": 1,
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        },
+        "execution": {
+          "personaId": "persona:example",
+          "executionSessionId": "session-1",
+          "resourceScopeRef": "resource-1"
+        }
+      }
+    },
+    {
+      "name": "partial-execution",
+      "input": {
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        },
+        "execution": {
+          "personaId": "persona:example"
+        }
+      },
+      "encoded": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]},\"execution\":{\"personaId\":\"persona:example\"}}",
+      "decoded": {
+        "schemaVersion": 1,
+        "principal": {
+          "id": "principal:minimal",
+          "kind": "human",
+          "identity": {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          },
+          "roles": [],
+          "scopes": []
+        },
+        "execution": {
+          "personaId": "persona:example"
+        }
+      }
+    }
+  ],
+  "validationCases": [
+    {
+      "name": "minimal",
+      "value": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "oauth"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "valid": true
+    },
+    {
+      "name": "rich",
+      "value": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": "agent",
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": "session-a"
+        },
+        "roles": [
+          "member",
+          "reviewer"
+        ],
+        "scopes": [
+          "reviews:write"
+        ],
+        "expiresAt": 1800000000000,
+        "attributes": {
+          "source": "fixture",
+          "nested": {
+            "flag": true,
+            "count": 3
+          }
+        }
+      },
+      "valid": true
+    },
+    {
+      "name": "custom-method",
+      "value": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "custom:passkey"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "valid": true
+    },
+    {
+      "name": "empty-actor-session",
+      "value": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": "agent",
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": ""
+        },
+        "roles": [
+          "member",
+          "reviewer"
+        ],
+        "scopes": [
+          "reviews:write"
+        ],
+        "expiresAt": 1800000000000,
+        "attributes": {
+          "source": "fixture",
+          "nested": {
+            "flag": true,
+            "count": 3
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "unknown-method",
+      "value": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "unregistered"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "valid": false
+    },
+    {
+      "name": "unhashable-kind",
+      "value": {
+        "id": "principal:minimal",
+        "kind": [],
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "oauth"
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "valid": false
+    },
+    {
+      "name": "unhashable-method",
+      "value": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": {}
+        },
+        "roles": [],
+        "scopes": []
+      },
+      "valid": false
+    },
+    {
+      "name": "unhashable-actor-kind",
+      "value": {
+        "id": "principal:rich",
+        "kind": "agent",
+        "identity": {
+          "issuer": "issuer:agent",
+          "subject": "agent-1",
+          "method": "custom:agent-token"
+        },
+        "linkedIdentities": [
+          {
+            "issuer": "https://accounts.example",
+            "subject": "user-1",
+            "method": "oauth"
+          }
+        ],
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "delegation": {
+          "actorKind": [],
+          "actor": {
+            "issuer": "issuer:agent",
+            "subject": "delegate-1",
+            "method": "service-token"
+          },
+          "actorId": "agent-1",
+          "actorSessionId": "session-a"
+        },
+        "roles": [
+          "member",
+          "reviewer"
+        ],
+        "scopes": [
+          "reviews:write"
+        ],
+        "expiresAt": 1800000000000,
+        "attributes": {
+          "source": "fixture",
+          "nested": {
+            "flag": true,
+            "count": 3
+          }
+        }
+      },
+      "valid": false
+    },
+    {
+      "name": "non-plain-attribute",
+      "value": {
+        "id": "principal:minimal",
+        "kind": "human",
+        "identity": {
+          "issuer": "https://accounts.example",
+          "subject": "user-1",
+          "method": "oauth"
+        },
+        "roles": [],
+        "scopes": [],
+        "attributes": []
+      },
+      "valid": false
+    },
+    {
+      "name": "incomplete",
+      "value": {
+        "id": "incomplete"
+      },
+      "valid": false
+    }
+  ],
+  "validationRawCases": [
+    {
+      "name": "overflow-expiry",
+      "raw": "{\"id\":\"principal:overflow\",\"kind\":\"human\",\"identity\":{\"issuer\":\"issuer\",\"subject\":\"subject\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[],\"expiresAt\":1e400}",
+      "valid": false
+    },
+    {
+      "name": "overflow-claim",
+      "raw": "{\"id\":\"principal:overflow\",\"kind\":\"human\",\"identity\":{\"issuer\":\"issuer\",\"subject\":\"subject\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[],\"attributes\":{\"score\":-1e400}}",
+      "valid": false
+    },
+    {
+      "name": "overflow-integer-expiry",
+      "raw": "{\"id\":\"principal:overflow\",\"kind\":\"human\",\"identity\":{\"issuer\":\"issuer\",\"subject\":\"subject\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[],\"expiresAt\":10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000}",
+      "valid": false
+    },
+    {
+      "name": "overflow-integer-claim",
+      "raw": "{\"id\":\"principal:overflow\",\"kind\":\"human\",\"identity\":{\"issuer\":\"issuer\",\"subject\":\"subject\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[],\"attributes\":{\"scores\":[-10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000]}}",
+      "valid": false
+    }
+  ],
+  "redactionCases": [
+    {
+      "name": "drops-private-fields",
+      "resource": {
+        "kind": "tool",
+        "target": "review-1",
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1",
+        "scope": "project",
+        "metadata": {
+          "token": "secret",
+          "documentBody": "private"
+        }
+      },
+      "redacted": {
+        "kind": "tool",
+        "target": "review-1",
+        "tenantId": "tenant-1",
+        "workspaceId": "workspace-1"
+      }
+    },
+    {
+      "name": "kind-only",
+      "resource": {
+        "kind": "tool"
+      },
+      "redacted": {
+        "kind": "tool"
+      }
+    }
+  ],
+  "malformedEnvelopeCases": [
+    {
+      "name": "invalid-json",
+      "raw": "not json {",
+      "errorCode": "MALFORMED_PAYLOAD"
+    },
+    {
+      "name": "unsupported-version",
+      "raw": "{\"schemaVersion\":2,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]}}",
+      "errorCode": "UNSUPPORTED_VERSION"
+    },
+    {
+      "name": "boolean-version",
+      "raw": "{\"schemaVersion\":true,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]}}",
+      "errorCode": "UNSUPPORTED_VERSION"
+    },
+    {
+      "name": "unexpected-top-level-field",
+      "raw": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]},\"unexpectedField\":true}",
+      "errorCode": "MALFORMED_PAYLOAD"
+    },
+    {
+      "name": "invalid-execution",
+      "raw": "{\"schemaVersion\":1,\"principal\":{\"id\":\"principal:minimal\",\"kind\":\"human\",\"identity\":{\"issuer\":\"https://accounts.example\",\"subject\":\"user-1\",\"method\":\"oauth\"},\"roles\":[],\"scopes\":[]},\"execution\":{\"personaId\":42}}",
+      "errorCode": "MALFORMED_PAYLOAD"
+    }
+  ]
+}

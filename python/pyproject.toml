@@ -1,0 +1,10 @@
+[tool.uv]
+required-version = ">=0.13.5"
+
+[tool.uv.workspace]
+members = ["auth", "tool-registry", "mcp"]
+
+[tool.uv.sources]
+gonk-auth = { workspace = true }
+gonk-tool-registry = { workspace = true }
+gonk-tool-registry-mcp = { workspace = true }
