@@ -1,5 +1,15 @@
 # @gonk/tool-registry-mcp
 
+## 0.11.0
+
+### Patch Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`dd6f19f`](https://github.com/nightwork-dev/gonk/commit/dd6f19f5a6fcbf3c245be6be27fbf7a6e9489986) Thanks [@abrisene](https://github.com/abrisene)! - Require a Node release with the CVE-2026-111497 fix (22.23.4, 24.22.1 or 26.12.1 and later), and update the MCP SDK to 2.3.0 with patched transitive dependencies.
+- Updated dependencies []:
+  - @gonk/tool-registry@0.11.0
+  - @gonk/auth@0.11.0
+  - @gonk/tool-orchestrator@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

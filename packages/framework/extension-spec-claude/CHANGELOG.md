@@ -1,5 +1,18 @@
 # @gonk/extension-spec-claude
 
+## 0.11.0
+
+### Minor Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0) Thanks [@abrisene](https://github.com/abrisene)! - Map the portable tool_complete event to Claude Code PostToolUse and return advisory additionalContext without blocking the tool result.
+
+### Patch Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`ffee550`](https://github.com/nightwork-dev/gonk/commit/ffee550b1873d2de756501cc28b12a67d60c7766) Thanks [@abrisene](https://github.com/abrisene)! - Claude: reject spec ids that are not kebab-case and single-quote the spec id and event in generated hook commands, so spec data cannot run shell commands. Codex: a placed hook whose payload omits `hook_event_name` runs side-effect-only instead of being skipped. Pi: `tool_complete` fires only for model-issued tool calls, not for calls a tool makes through `ctx.executeTool()`.
+- Updated dependencies []:
+  - @gonk/extension-spec@0.11.0
+  - @gonk/utils@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

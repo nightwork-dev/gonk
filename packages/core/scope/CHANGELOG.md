@@ -1,5 +1,16 @@
 # @gonk/scope
 
+## 0.11.0
+
+### Minor Changes
+
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18) Thanks [@abrisene](https://github.com/abrisene)! - Add the host-owned Pi storage runtime and keep generated Pi runtime state from creating project boundaries. A `.agents` or `.gonk` namespace holding only host runtime directories (`gonk`, `pi-state`, `memory-state`, `autotune-claims`, `objective-watch`) no longer marks a project root. `findProjectRoot` takes an optional `ceiling` and `ScopeEnvironment` an optional `projectCeiling`, so a sandbox can stop the project walk at its own root.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/utils@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

@@ -1,5 +1,26 @@
 # @gonk/extension-spec-pi
 
+## 0.11.0
+
+### Minor Changes
+
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18) Thanks [@abrisene](https://github.com/abrisene)! - Add the host-owned Pi storage runtime and keep generated Pi runtime state from creating project boundaries. A `.agents` or `.gonk` namespace holding only host runtime directories (`gonk`, `pi-state`, `memory-state`, `autotune-claims`, `objective-watch`) no longer marks a project root. `findProjectRoot` takes an optional `ceiling` and `ScopeEnvironment` an optional `projectCeiling`, so a sandbox can stop the project walk at its own root.
+
+### Patch Changes
+
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`ffee550`](https://github.com/nightwork-dev/gonk/commit/ffee550b1873d2de756501cc28b12a67d60c7766) Thanks [@abrisene](https://github.com/abrisene)! - Claude: reject spec ids that are not kebab-case and single-quote the spec id and event in generated hook commands, so spec data cannot run shell commands. Codex: a placed hook whose payload omits `hook_event_name` runs side-effect-only instead of being skipped. Pi: `tool_complete` fires only for model-issued tool calls, not for calls a tool makes through `ctx.executeTool()`.
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0) Thanks [@abrisene](https://github.com/abrisene)! - Register portable `session_end` on Pi `session_shutdown` and `tool_complete` on `tool_execution_end`, and make the settings edit flow read, write and clear keyed settings through their keyed map.
+- Updated dependencies [[`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d), [`3dbb981`](https://github.com/nightwork-dev/gonk/commit/3dbb981d7f01f45ffa61a911221325dfe453586e), [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0), [`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18)]:
+  - @gonk/store@0.11.0
+  - @gonk/tool-registry-pi@0.11.0
+  - @gonk/scope@0.11.0
+  - @gonk/tool-registry@0.11.0
+  - @gonk/extension-spec@0.11.0
+  - @gonk/auth@0.11.0
+
 ## 0.8.0
 
 ### Minor Changes

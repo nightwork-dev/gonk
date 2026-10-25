@@ -1,5 +1,16 @@
 # @gonk/tool-registry-pi
 
+## 0.11.0
+
+### Patch Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0) Thanks [@abrisene](https://github.com/abrisene)! - Support Pi agent core 1.x (tested against 1.4.0) while retaining compatibility with the existing 0.x releases.
+- Updated dependencies [[`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18)]:
+  - @gonk/scope@0.11.0
+  - @gonk/tool-registry@0.11.0
+  - @gonk/auth@0.11.0
+  - @gonk/tool-orchestrator@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

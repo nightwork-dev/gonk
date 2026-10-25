@@ -1,5 +1,16 @@
 # @gonk/extension-spec-cli
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies [[`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d), [`ffee550`](https://github.com/nightwork-dev/gonk/commit/ffee550b1873d2de756501cc28b12a67d60c7766), [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0), [`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18), [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0)]:
+  - @gonk/extension-spec-pi@0.11.0
+  - @gonk/tool-registry-pi@0.11.0
+  - @gonk/scope@0.11.0
+  - @gonk/tool-registry@0.11.0
+  - @gonk/extension-spec@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

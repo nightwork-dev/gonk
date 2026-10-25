@@ -1,5 +1,22 @@
 # @gonk/extension-spec-codex
 
+## 0.11.0
+
+### Minor Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0) Thanks [@abrisene](https://github.com/abrisene)! - Add opt-in Codex action-context hook placements (PreToolUse, PostToolUse and UserPromptSubmit) bound to their materialized event, and recognize forked SessionStart events.
+
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+
+### Patch Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`ffee550`](https://github.com/nightwork-dev/gonk/commit/ffee550b1873d2de756501cc28b12a67d60c7766) Thanks [@abrisene](https://github.com/abrisene)! - Claude: reject spec ids that are not kebab-case and single-quote the spec id and event in generated hook commands, so spec data cannot run shell commands. Codex: a placed hook whose payload omits `hook_event_name` runs side-effect-only instead of being skipped. Pi: `tool_complete` fires only for model-issued tool calls, not for calls a tool makes through `ctx.executeTool()`.
+- Updated dependencies [[`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d), [`3dbb981`](https://github.com/nightwork-dev/gonk/commit/3dbb981d7f01f45ffa61a911221325dfe453586e), [`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18)]:
+  - @gonk/store@0.11.0
+  - @gonk/scope@0.11.0
+  - @gonk/extension-spec@0.11.0
+  - @gonk/utils@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

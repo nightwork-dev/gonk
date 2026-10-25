@@ -1,5 +1,13 @@
 # @gonk/extension-spec
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies [[`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18)]:
+  - @gonk/scope@0.11.0
+  - @gonk/tool-registry@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

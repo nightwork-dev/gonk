@@ -1,5 +1,20 @@
 # @gonk/store
 
+## 0.11.0
+
+### Minor Changes
+
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+
+- Host-owned storage exposes synchronous tier transactions, so a host can write a message and its delivery record atomically (used by durable comms delivery).
+
+### Patch Changes
+
+- [#10](https://github.com/nightwork-dev/gonk/pull/10) [`3dbb981`](https://github.com/nightwork-dev/gonk/commit/3dbb981d7f01f45ffa61a911221325dfe453586e) Thanks [@abrisene](https://github.com/abrisene)! - Depend on `@mirk/store` 0.13.0. `@gonk/store` accepts better-sqlite3 11, 12 or 13 and no longer passes the removed `forceJsCosine` option; exact cosine is now Mirk's only vector search path.
+- Updated dependencies [[`a50ba89`](https://github.com/nightwork-dev/gonk/commit/a50ba89c440e57851696b236c90822e2381ecc18)]:
+  - @gonk/scope@0.11.0
+  - @gonk/utils@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

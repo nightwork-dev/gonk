@@ -1,5 +1,12 @@
 # @gonk/tool-registry
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes

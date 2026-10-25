@@ -1,5 +1,9 @@
 # @gonk/auth
 
+## 0.11.0
+
+No changes in this release.
+
 ## 0.8.0
 
 ## 0.7.0

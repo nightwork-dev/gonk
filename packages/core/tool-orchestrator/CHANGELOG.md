@@ -1,5 +1,12 @@
 # @gonk/tool-orchestrator
 
+## 0.11.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/tool-registry@0.11.0
+
 ## 0.8.0
 
 ### Patch Changes
