@@ -125,9 +125,9 @@ export interface FindProjectRootOptions {
 /** Walk up from `start` looking for a recognized project root marker. */
 export function findProjectRoot(start: string, options: FindProjectRootOptions = {}): string | undefined {
   let current = resolve(start);
-  let ceiling = options.ceiling === undefined ? undefined : canonicalExisting(options.ceiling);
-  if (ceiling !== undefined && !isWithin(canonicalExisting(current), ceiling)) {
-    ceiling = canonicalExisting(current);
+  let ceiling = options.ceiling === undefined ? undefined : canonicalPath(options.ceiling);
+  if (ceiling !== undefined && !isWithin(canonicalPath(current), ceiling)) {
+    ceiling = canonicalPath(current);
   }
   while (true) {
     for (const m of PLAIN_PROJECT_MARKERS) {
@@ -139,12 +139,12 @@ export function findProjectRoot(start: string, options: FindProjectRootOptions =
     }
     let parent = dirname(current);
     if (ceiling !== undefined) {
-      const here = canonicalExisting(current);
+      const here = canonicalPath(current);
       if (here === ceiling) return undefined;
       // A lexical parent can leave the ceiling's subtree when `start` reached
       // it through a symlink. Continue from the real parent instead, which is
       // still inside the subtree because `here` is inside and not the ceiling.
-      if (!isWithin(canonicalExisting(parent), ceiling)) parent = dirname(here);
+      if (!isWithin(canonicalPath(parent), ceiling)) parent = dirname(here);
     }
     if (parent === current) return undefined;
     current = parent;
@@ -262,16 +262,6 @@ export function canonical(path: string): string {
  *  authoritative when (for example) cwd equals homeRoot. */
 export function scopeStateHome(scope: ScopeStore, tier: ScopeName = "global"): string {
   return scope.home(tier) ?? homedir();
-}
-
-/** Canonical spelling of a path whose tail may not exist yet: realpath the
- *  nearest existing ancestor and re-append the missing segments. */
-function canonicalExisting(path: string): string {
-  const absolute = resolve(path);
-  if (existsSync(absolute)) return canonicalPath(absolute);
-  const parent = dirname(absolute);
-  if (parent === absolute) return absolute;
-  return join(canonicalExisting(parent), basename(absolute));
 }
 
 function isDir(path: string): boolean {

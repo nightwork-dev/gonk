@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { FsScopeStore } from "@gonk/scope";
+import { FsScopeStore, canonicalPath } from "@gonk/scope";
 import { namespaceStore } from "@mirk/store";
 import { SqliteAdapter } from "@mirk/store/sqlite";
 
@@ -187,10 +187,10 @@ describe("Pi host storage", () => {
     const { homeRoot, env, scope } = fixture();
     const legacy = join(homeRoot, ".gonk", "autotune-claims");
     mkdirSync(legacy, { recursive: true });
-    expect(resolvePiAutotuneClaimsDir(scope, "global")).toBe(legacy);
+    expect(resolvePiAutotuneClaimsDir(scope, "global")).toBe(canonicalPath(legacy));
     rmSync(legacy, { recursive: true, force: true });
     expect(resolvePiAutotuneClaimsDir(scope, "global")).toBe(
-      join(homeRoot, ".agents", "gonk", "global", "autotune-claims"),
+      join(canonicalPath(homeRoot), ".agents", "gonk", "global", "autotune-claims"),
     );
   });
 

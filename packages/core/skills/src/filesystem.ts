@@ -32,6 +32,7 @@ import {
 } from "@gonk/auth";
 import type { ContextContributor } from "@gonk/context";
 import {
+  canonicalPath,
   createScope,
   SCOPE_RESOLUTION_ORDER,
   resolveTierHomes,
@@ -1978,7 +1979,8 @@ function verifiedRelativePath(
 function ensureTransactionHome(home: string, trustedBase?: string): string {
   const requestedHome = resolve(home);
   if (trustedBase !== undefined) {
-    const base = resolve(trustedBase);
+    // The scope resolver spells homes canonically, so the base must be too.
+    const base = canonicalPath(trustedBase);
     const suffix = relative(base, requestedHome);
     if (
       suffix === "" ||

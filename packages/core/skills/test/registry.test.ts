@@ -237,7 +237,7 @@ describe("authorized filesystem mutations", () => {
         description: "must stay inside",
         body: "must not be written",
       })
-    ).rejects.toThrow("Skill transaction home contains a symbolic link");
+    ).rejects.toThrow("Skill transaction home escapes its trusted base");
 
     expect(existsSync(join(outside, "test-session"))).toBe(false);
     expect(readdirSync(outside)).toEqual([]);

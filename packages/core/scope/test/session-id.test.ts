@@ -81,14 +81,25 @@ describe("resolveStableSessionId", () => {
     }
   });
 
-  it("canonicalPath falls back to path.resolve for non-existent paths without throwing", () => {
-    const cwd = join(tmpdir(), `gonk-session-id-missing-${process.pid}-${Date.now()}`);
-    expect(existsSync(cwd)).toBe(false);
+  it("canonicalPath spells a missing path the way it will be spelled once it exists", () => {
+    const parent = mkdtempSync(join(tmpdir(), "gonk-canonical-missing-"));
+    const link = `${parent}-link`;
+    try {
+      symlinkSync(parent, link);
+      const missing = join(link, "later", "leaf");
+      expect(existsSync(missing)).toBe(false);
+      const before = canonicalPath(missing);
 
-    expect(canonicalPath(cwd)).toBe(resolve(cwd));
+      mkdirSync(missing, { recursive: true });
+      expect(canonicalPath(missing)).toBe(before);
+      expect(before).toBe(join(canonicalPath(parent), "later", "leaf"));
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(parent, { recursive: true, force: true });
+    }
   });
 
-  it("falls back to path.resolve for non-existent paths without throwing", () => {
+  it("mints a stable id for a non-existent cwd without throwing", () => {
     const cwd = join(tmpdir(), `gonk-session-id-missing-${process.pid}-${Date.now()}`);
     expect(existsSync(cwd)).toBe(false);
 
@@ -98,7 +109,7 @@ describe("resolveStableSessionId", () => {
     expect(a).toMatch(/^pi-cwd-[0-9a-f]{12}$/);
     expect(a).toBe(b);
     expect(a).toBe(
-      `pi-cwd-${createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 12)}`,
+      `pi-cwd-${createHash("sha256").update(canonicalPath(cwd)).digest("hex").slice(0, 12)}`,
     );
   });
 

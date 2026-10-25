@@ -260,6 +260,17 @@ describe("resolveTierHomes", () => {
     expect(homes.get("session")).toBe(canonical(join(home, ".agents", "sessions", "s1")));
   });
 
+  it("keeps one session home spelling before and after the folder exists", () => {
+    const real = join(tmp, "real-home");
+    const home = join(tmp, "linked-home");
+    mkdirSync(real, { recursive: true });
+    symlinkSync(real, home);
+    const env = envWith({ homeRoot: home, sessionId: "s1" });
+    const before = resolveTierHomes(env).get("session");
+    mkdirSync(before!, { recursive: true });
+    expect(resolveTierHomes(env).get("session")).toBe(before);
+  });
+
   it("falls back to ~/.gonk/sessions/<id> when that legacy path already exists", () => {
     const home = join(tmp, "home");
     const legacy = join(home, ".gonk", "sessions", "s1");

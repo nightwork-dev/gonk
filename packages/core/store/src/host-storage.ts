@@ -177,9 +177,7 @@ function dynamicBoundState(scope: ScopeStore, source: HostStorageSource, default
 
 function physicalDbPath(requested: string): string {
   mkdirSync(dirname(requested), { recursive: true });
-  const parent = canonicalPath(dirname(requested));
-  const candidate = join(parent, basename(requested));
-  return existsSync(candidate) ? canonicalPath(candidate) : candidate;
+  return canonicalPath(requested);
 }
 
 function registry(): Map<string, PoolEntry> {
