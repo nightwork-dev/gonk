@@ -1,5 +1,13 @@
 # @gonk/scope
 
+## 0.11.1
+
+### Patch Changes
+
+- `canonicalPath` spells a path that does not exist yet through the canonical spelling of its nearest existing ancestor, so a session or global home keeps one spelling before and after its folder is created (on macOS, `/var` and `/private/var` no longer fork one endpoint into two). The resolver's private copy of that walk and host storage's hand-rolled variant are removed; skills compares a session home against the canonical global home.
+- Updated dependencies []:
+  - @gonk/utils@0.11.1
+
 ## 0.11.0
 
 ### Minor Changes
