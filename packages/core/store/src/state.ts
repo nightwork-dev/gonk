@@ -17,6 +17,9 @@ import type { ScopeName, ScopeStore } from "@gonk/scope";
 export interface GonkSyncStateSource {
   kv(tier: ScopeName): SyncStore;
   vector?(tier: ScopeName): VectorStore;
+  /** Run synchronous work atomically on one tier's owning store. The host must
+   * provide rollback and serialize competing writers; no cross-tier guarantee. */
+  transaction?<T>(tier: ScopeName, work: () => T): T;
 }
 
 export interface GonkStateBindingOptions {
@@ -29,6 +32,9 @@ export interface GonkSyncStateTier {
   readonly tier: ScopeName;
   kv(namespace: string): SyncStore;
   vector(namespace: string): VectorStore;
+  /** Atomic synchronous work across namespaces in this tier. Fails closed when
+   * the host has not configured a transaction boundary. */
+  transaction<T>(work: () => T): T;
 }
 
 /** Scope-bound synchronous capability state.
@@ -80,6 +86,19 @@ export function bindGonkSyncState(
     const vectorByNamespace = new Map<string, VectorStore>();
     const tierView: GonkSyncStateTier = {
       tier,
+      transaction<T>(work: () => T): T {
+        if (!source.transaction) {
+          throw new Error(`Gonk state transaction is not configured for tier '${tier}'; provide the host-owned transaction boundary`);
+        }
+        return source.transaction(tier, () => {
+          const result = work();
+          if (result !== null && (typeof result === "object" || typeof result === "function") &&
+              typeof (result as { then?: unknown }).then === "function") {
+            throw new Error("Gonk state transaction callback must be synchronous");
+          }
+          return result;
+        });
+      },
       kv(namespace: string): SyncStore {
         assertNamespace(namespace);
         const cached = kvByNamespace.get(namespace);
@@ -123,6 +142,7 @@ function makeSyncState(
     scope,
     tier: defaultView.tier,
     at: tierFor,
+    transaction: (work) => defaultView.transaction(work),
     kv(namespaceOrTier: string, namespace?: string): SyncStore {
       return namespace === undefined
         ? defaultView.kv(namespaceOrTier)

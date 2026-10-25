@@ -60,6 +60,14 @@ export function acquireHostStorage<Consumer extends string>(options: AcquireHost
   const source: HostStorageSource = {
     kv(tier) { return kvFor(tier); },
     vector(tier) { return vectorFor(tier); },
+    transaction(tier, work) {
+      if (closed) throw new Error("host storage lease is closed");
+      const home = resolveTierHomes(options.env).get(tier);
+      if (!home) {
+        throw new Error(`host ${options.consumer} storage has no transactional store for unbound tier '${tier}'`);
+      }
+      return adapterFor(tier, home).transaction(work, "immediate");
+    },
   };
   const state = options.scope ? dynamicBoundState(options.scope, source, options.defaultTier) : undefined;
 
@@ -149,6 +157,7 @@ function dynamicBoundState(scope: ScopeStore, source: HostStorageSource, default
     source.kv(name);
     return {
       tier: name,
+      transaction(work) { return bindGonkSyncState(scope, source, { defaultTier: name }).transaction(work); },
       kv(namespace) { return bindGonkSyncState(scope, source, { defaultTier: name }).kv(namespace); },
       vector(namespace) { return bindGonkSyncState(scope, source, { defaultTier: name }).vector(namespace); },
     };
@@ -156,6 +165,7 @@ function dynamicBoundState(scope: ScopeStore, source: HostStorageSource, default
   const defaultView = tier(resolvedDefault);
   return {
     scope, tier: resolvedDefault, at: tier,
+    transaction: (work) => defaultView.transaction(work),
     kv(tierOrNamespace: string, namespace?: string): SyncStore {
       return namespace === undefined ? defaultView.kv(tierOrNamespace) : tier(tierOrNamespace as ScopeName).kv(namespace);
     },
