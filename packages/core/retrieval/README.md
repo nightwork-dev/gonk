@@ -12,7 +12,7 @@ applies the same discovery, returned-hit, and content gates to both modes.
 The base entry point remains an in-process retrieval library. The optional
 `@gonk/retrieval/context` entry point imports `@gonk/context` only to project
 explicitly selected, authorized hits into context candidates. The package does
-not create embeddings, register remote sources, or provide Sigil-specific
+not create embeddings, register remote sources, or provide application-specific
 adapters.
 
 ## Install
@@ -197,7 +197,7 @@ metadata and are not supported release artifacts.
 
 - embeddings, vector search, and hybrid ranking;
 - remote source registration;
-- Sigil resource adapters and UI;
+- Application resource adapters and UI;
 - generic registry or receipt packages.
 
 ## License

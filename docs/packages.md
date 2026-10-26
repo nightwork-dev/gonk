@@ -27,5 +27,5 @@ runtime proof; release evidence is tracked separately.
 | `@gonk/extension-spec-codex` | `packages/framework/extension-spec-codex` | Codex materializer and host storage binding |
 | `@gonk/extension-spec-pi` | `packages/framework/extension-spec-pi` | Pi materializer and host storage binding (`./storage`; see [Pi storage](pi-storage.md)) |
 
-This index describes package ownership only. It does not adopt the proposed
-roadmap or imply publication, installation, or runtime proof.
+See the [Core roadmap](roadmap.md) for planned work and package changelogs for
+release changes.

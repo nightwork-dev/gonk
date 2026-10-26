@@ -288,14 +288,10 @@ export interface PresetField {
 // Host capability profile
 // =============================================================================
 
-/** Declares what a host binding actually provides along five fixed axes.
- *  Pure data: each host materializer/runtime package (`extension-spec-pi`,
- *  `extension-spec-claude`, `extension-spec-codex`, ...) exports one typed
- *  constant describing itself, so consumers (e.g. GR-56's cross-harness
- *  capability routing) can read a profile instead of relying on folklore.
- *  See `docs.local/gonk-core-roadmap.md` GR-85 (Half A). Capability
- *  requirements and refusal machinery built against these axes are GR-85
- *  Half B — deliberately deferred. */
+/** Declares what a host binding provides along five fixed axes.
+ *  Each host materializer or runtime exports a typed profile so consumers can
+ *  inspect its capabilities. Capability requirement matching and refusal
+ *  machinery remain deferred. */
 export interface HostCapabilityProfile {
   /** Host id this profile describes, e.g. `"pi"`, `"claude"`, `"codex"`. */
   host: string;

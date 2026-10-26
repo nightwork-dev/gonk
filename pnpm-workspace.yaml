@@ -28,7 +28,7 @@ minimumReleaseAge: 10080
 # 7-day cooldown; excluding the pi-provider surface lets the lockfile generate while
 # the cooldown still guards every dep core actually ships. @rollup/* are the build
 # chain's prebuilt native binaries (via vite/rollup), same daily-publish problem.
-# @mirk/store is pinned exactly and validated through local Verdaccio.
+# @mirk/store is pinned exactly and reviewed on each version bump.
 minimumReleaseAgeExclude:
   - "@earendil-works/*"
   - "@mariozechner/*"

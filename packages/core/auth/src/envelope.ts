@@ -5,8 +5,7 @@
 // AuthenticatedPrincipal plus its execution binding, for crossing a host seam
 // that only carries strings — an attribute bag (eve), an environment
 // variable, a hook's stdin payload. This IS the one trusted-envelope contract
-// gonk-core ships (reconciled with Sigil IDP.1, 2026-08-07): `@gonk/eve-host`
-// and other host bindings conform to this schema rather than defining their
+// gonk-core ships. Host bindings conform to this schema rather than defining their
 // own; do not fork a second envelope shape elsewhere.
 //
 // AUTHORITY BOUNDARY — read before wiring this into a host:

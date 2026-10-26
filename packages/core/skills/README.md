@@ -110,5 +110,5 @@ Future stores can import the runner-neutral
 adapt the named async cases to their test framework. The suite exercises the public registry contract;
 filesystem-specific security cases remain package tests.
 
-Still out of scope: host-installed skill discovery, Sigil UI state, semantic
+Still out of scope: host-installed skill discovery, application UI state, semantic
 skill search, and host-specific skill test execution.

@@ -18,3 +18,7 @@ dist/
 /packages/*/*/.agents/memory/
 /packages/*/*/.agents/store/
 /packages/*/*/traces/
+
+# Advisory monitor state and Python bytecode left by local tooling.
+.agents/objective-watch/
+__pycache__/

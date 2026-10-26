@@ -125,3 +125,12 @@ const provider = createStoreProvider(scope, { backendFactory: mirkBackendFactory
 - `@gonk/store/legacy-import` — explicit Node-only legacy filesystem inspector
   and importer. This is an operator action; ordinary store construction never
   imports data.
+
+## Release and consumer proof
+
+Before removing the deprecated facade, install the migration package outside
+the workspace and exercise the supported host bindings. Check maintained
+consumers for legacy imports and verify their migrations through their own
+integration paths. See the
+[Core roadmap](../../../docs/roadmap.md#r7--remove-the-store-compatibility-architecture)
+for the migration and removal sequence.

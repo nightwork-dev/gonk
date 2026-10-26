@@ -29,7 +29,7 @@ const principal: AuthenticatedPrincipal = {
   delegation: {
     actorKind: "agent",
     actor: {
-      issuer: "sigil:eve",
+      issuer: "https://identity.example",
       subject: "agent-1",
       method: "service-token",
     },
