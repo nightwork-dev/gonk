@@ -116,6 +116,37 @@ describe("principal binding keys", () => {
     expect(isAuthenticatedPrincipal({ id: "incomplete" })).toBe(false);
   });
 
+  it("rejects nonfinite expiry and claim numbers", () => {
+    expect(
+      isAuthenticatedPrincipal({
+        ...principal(),
+        expiresAt: Number.POSITIVE_INFINITY,
+      })
+    ).toBe(false);
+    expect(
+      isAuthenticatedPrincipal({
+        ...principal(),
+        attributes: { score: Number.NaN },
+      })
+    ).toBe(false);
+  });
+
+  it("returns false for unhashable validator fields", () => {
+    expect(isAuthenticatedPrincipal({ ...principal(), kind: [] as never })).toBe(false);
+    expect(
+      isAuthenticatedPrincipal({
+        ...principal(),
+        identity: { ...principal().identity, method: {} as never },
+      })
+    ).toBe(false);
+    expect(
+      isAuthenticatedPrincipal({
+        ...principal(),
+        delegation: { ...principal().delegation!, actorKind: [] as never },
+      })
+    ).toBe(false);
+  });
+
   it("is stable for the same authenticated principal", () => {
     expect(securityContextKey({ principal: principal() })).toBe(
       securityContextKey({ principal: principal() })

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gonk-tool-registry"
+version = "0.1.0"
+description = "Native Python tool definitions and secure asynchronous dispatch for Gonk"
+requires-python = ">=3.12"
+dependencies = ["gonk-auth>=0.1.0,<0.2"]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Nightwork" }]
+readme = "README.md"
+
+[project.optional-dependencies]
+jsonschema = ["jsonschema>=4.23"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0",
+  "pyright>=1.1",
+  "ruff>=0.8",
+  "jsonschema>=4.23",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gonk"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/gonk/tool_registry", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["src", "tests"]
+extraPaths = ["../auth/src", "src"]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100

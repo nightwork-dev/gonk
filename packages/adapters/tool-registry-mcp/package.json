@@ -60,5 +60,23 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
+  },
+  "nx": {
+    "targets": {
+      "test": {
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/python/*/src/**/*",
+          "{workspaceRoot}/python/mcp/tests/stdio_server.py",
+          "{workspaceRoot}/python/*/pyproject.toml",
+          "{workspaceRoot}/python/pyproject.toml",
+          "{workspaceRoot}/python/uv.lock",
+          {
+            "env": "GONK_PYTHON"
+          }
+        ]
+      }
+    }
   }
 }

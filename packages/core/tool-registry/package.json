@@ -101,5 +101,17 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org"
+  },
+  "nx": {
+    "targets": {
+      "test": {
+        "inputs": [
+          "default",
+          "^production",
+          "{workspaceRoot}/scripts/python-registry-conformance.ts",
+          "{workspaceRoot}/conformance/tool-registry/**/*"
+        ]
+      }
+    }
   }
 }
