@@ -6,7 +6,7 @@ import type {
   ToolEvent,
   ToolRegistry,
 } from "@gonk/tool-registry";
-import { formatToolDescription, makeBaseContext } from "@gonk/tool-registry";
+import { formatToolDescription, makeBaseContext, resolveInputJsonSchema } from "@gonk/tool-registry";
 import type { AuthContext } from "@gonk/auth";
 import type { Orchestrator } from "@gonk/tool-orchestrator";
 import type { ScopeStore } from "@gonk/scope";
@@ -278,7 +278,7 @@ function printToolHelp(
   out.write(`${tool.name} — ${formatToolDescription(tool)}\n\n`);
   out.write(`Usage: ${bin} ${tool.name} ${positionalStr} [flags]\n`);
 
-  const schema = tool.inputJsonSchema as Record<string, unknown> | undefined;
+  const schema = resolveInputJsonSchema(tool);
   const props = schema?.properties as Record<string, Record<string, unknown>> | undefined;
   if (props && Object.keys(props).length > 0) {
     const required = new Set(Array.isArray(schema?.required) ? (schema.required as string[]) : []);

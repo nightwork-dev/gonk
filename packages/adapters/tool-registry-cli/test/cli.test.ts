@@ -4,6 +4,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { ownerPrincipal, type AuthContext } from "@gonk/auth";
 import {
   ToolRegistry,
+  withJsonSchema,
   type ToolDefinition,
   type ToolEvent,
   type ToolRegistryOptions,
@@ -98,6 +99,19 @@ describe("createCli", () => {
     const code = await cli.run([], { stdout });
     expect(code).toBe(0);
     expect(stdout.text()).toContain("Usage: test-bin");
+  });
+
+  it("prints input flags from the annotated registry schema", async () => {
+    const { cli, stdout } = setup([{
+      ...echoTool,
+      input: withJsonSchema(passthrough(), {
+        type: "object",
+        properties: { query: { type: "string", description: "Search text" } },
+        required: ["query"],
+      }),
+    }]);
+    expect(await cli.run(["echo", "--help"], { stdout })).toBe(0);
+    expect(stdout.text()).toContain("--query <string> (required)  Search text");
   });
 
   it("lists tools by category", async () => {
