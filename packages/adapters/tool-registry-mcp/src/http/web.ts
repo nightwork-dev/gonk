@@ -1,25 +1,26 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   WebStandardStreamableHTTPServerTransport,
   isInitializeRequest,
 } from "@modelcontextprotocol/server";
 import type { AuthInfo, Transport } from "@modelcontextprotocol/server";
-import {
-  isAuthenticatedPrincipal,
-  securityContextKey,
-  type AuthAuditSink,
-  type AuthContext,
-  type AuthenticatedPrincipal,
-} from "@gonk/auth";
+import type { AuthAuditSink } from "@gonk/auth";
 
 import {
-  GONK_AUTH_INFO_PRINCIPAL,
   createMcpServer,
   type McpAdapterOptions,
 } from "../index.ts";
 
-const DEFAULT_MAX_BODY_BYTES = 4 * 1024 * 1024;
-const LOCAL_DEVELOPMENT_CLIENT_ID = "gonk-web-keyless-development";
+import { createJsonToolHandler, matchesJsonPath } from "./json.ts";
+import {
+  boundedJson, BodyTooLargeError, jsonError, protectRequest,
+} from "./web-request.ts";
+import {
+  createRequestAuthenticator,
+  createRequestAuthContext,
+  UnauthorizedError,
+  type AuthenticatedRequest,
+} from "./web-auth.ts";
 
 export interface WebMcpHandlerOptions
   extends Omit<McpAdapterOptions, "makeAuthContext"> {
@@ -52,17 +53,13 @@ export interface WebMcpHandlerOptions
   enableDnsRebindingProtection?: boolean;
   allowedHosts?: string[];
   allowedOrigins?: string[];
+  /** Opt in to GET discovery and POST /:name raw JSON invocation at this path. */
+  jsonPath?: string;
 }
 
 export interface WebMcpHandler {
   handle(request: Request): Promise<Response>;
   close(): Promise<void>;
-}
-
-interface AuthenticatedRequest {
-  authInfo: AuthInfo;
-  principal: AuthenticatedPrincipal;
-  securityContextKey: string;
 }
 
 interface AuthenticatedSession {
@@ -93,52 +90,17 @@ export function createWebMcpHandler(
     );
   }
   const sessions = new Map<string, AuthenticatedSession>();
-  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
-  const hostMakeAuthContext = options.makeAuthContext;
+  const maxBodyBytes = options.maxBodyBytes ?? 4 * 1024 * 1024;
 
-  async function authenticate(request: Request): Promise<AuthenticatedRequest> {
-    let authInfo: AuthInfo;
-    if (options.authenticate) {
-      const info = await options.authenticate(request);
-      if (!info) throw new UnauthorizedError();
-      authInfo = info;
-    } else if (options.apiKey) {
-      const token = bearerToken(request.headers.get("authorization"));
-      if (!token || !constantTimeEqual(token, options.apiKey)) {
-        throw new UnauthorizedError();
-      }
-      const principal = staticBearerPrincipal(
-        options.staticBearerClientId ?? "static-bearer"
-      );
-      authInfo = {
-        token,
-        clientId: principal.identity.subject,
-        scopes: [...principal.scopes],
-        extra: { [GONK_AUTH_INFO_PRINCIPAL]: principal },
-      };
-    } else {
-      const principal = localDevelopmentPrincipal();
-      authInfo = {
-        token: "",
-        clientId: LOCAL_DEVELOPMENT_CLIENT_ID,
-        scopes: [...principal.scopes],
-        extra: { [GONK_AUTH_INFO_PRINCIPAL]: principal },
-      };
-    }
-    const principal = principalFromAuthInfo(authInfo);
-    if (
-      !principal ||
-      isExpired(authInfo, principal) ||
-      !hasStatefulDelegationBinding(principal)
-    ) {
-      throw new UnauthorizedError();
-    }
-    return {
-      authInfo,
-      principal,
-      securityContextKey: securityContextKey({ principal }),
-    };
-  }
+  const authenticate = createRequestAuthenticator(options);
+  const makeAuthContext = createRequestAuthContext(options);
+  const json = options.jsonPath === undefined
+    ? undefined
+    : createJsonToolHandler({
+        ...options,
+        makeAuthContext,
+        writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
+      });
 
   async function handle(request: Request): Promise<Response> {
     let authenticated: AuthenticatedRequest;
@@ -151,6 +113,12 @@ export function createWebMcpHandler(
         });
       }
       throw error;
+    }
+
+    const protectionError = protectRequest(request, options);
+    if (protectionError) return protectionError;
+    if (json && matchesJsonPath(new URL(request.url).pathname, options.jsonPath!)) {
+      return json.handle(request, authenticated.authInfo);
     }
 
     const sessionId = request.headers.get("mcp-session-id") ?? undefined;
@@ -201,45 +169,11 @@ export function createWebMcpHandler(
           ...(options.enableJsonResponse === undefined
             ? {}
             : { enableJsonResponse: options.enableJsonResponse }),
-          ...(options.enableDnsRebindingProtection === undefined
-            ? {}
-            : {
-                enableDnsRebindingProtection:
-                  options.enableDnsRebindingProtection,
-              }),
-          ...(options.allowedHosts === undefined
-            ? {}
-            : { allowedHosts: options.allowedHosts }),
-          ...(options.allowedOrigins === undefined
-            ? {}
-            : { allowedOrigins: options.allowedOrigins }),
         });
       const adapter = createMcpServer({
         ...options,
         writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
-        makeAuthContext: async (ctx) => {
-          const principal = principalFromAuthInfo(ctx.http?.authInfo);
-          if (
-            !principal ||
-            isExpired(ctx.http?.authInfo, principal) ||
-            !hasStatefulDelegationBinding(principal)
-          ) {
-            throw new UnauthorizedError();
-          }
-          if (!hostMakeAuthContext) {
-            return allowAllAuthContext(principal);
-          }
-          const hostContext = await hostMakeAuthContext(ctx);
-          if (
-            securityContextKey({ principal: hostContext.principal }) !==
-            securityContextKey({ principal })
-          ) {
-            throw new Error(
-              "Web MCP authentication and authorization resolved different principals"
-            );
-          }
-          return hostContext;
-        },
+        makeAuthContext,
       });
       await adapter.connect(transport as Transport);
       const previousOnClose = transport.onclose;
@@ -273,6 +207,7 @@ export function createWebMcpHandler(
   return {
     handle,
     async close() {
+      json?.close();
       const active = new Set(
         [...sessions.values()].map((session) => session.transport)
       );
@@ -287,99 +222,6 @@ export function createWebMcpHandler(
         )
       );
     },
-  };
-}
-
-class BodyTooLargeError extends Error {}
-class UnauthorizedError extends Error {}
-
-async function boundedJson(
-  request: Request,
-  maxBytes: number
-): Promise<unknown> {
-  const contentLength = Number(request.headers.get("content-length"));
-  if (Number.isFinite(contentLength) && contentLength > maxBytes)
-    throw new BodyTooLargeError();
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > maxBytes) throw new BodyTooLargeError();
-  const text = new TextDecoder().decode(bytes);
-  return text ? JSON.parse(text) : undefined;
-}
-
-function bearerToken(header: string | null): string | undefined {
-  const match = /^Bearer\s+(.+)$/i.exec(header ?? "");
-  return match?.[1];
-}
-
-function constantTimeEqual(actual: string, expected: string): boolean {
-  const a = Buffer.from(actual);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
-function principalFromAuthInfo(
-  authInfo: AuthInfo | undefined
-): AuthenticatedPrincipal | undefined {
-  const principal = authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL];
-  return isAuthenticatedPrincipal(principal) ? principal : undefined;
-}
-
-function isExpired(
-  authInfo: AuthInfo | undefined,
-  principal: AuthenticatedPrincipal
-): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  return (
-    (authInfo?.expiresAt !== undefined && authInfo.expiresAt <= now) ||
-    (principal.expiresAt !== undefined && principal.expiresAt <= now)
-  );
-}
-
-function hasStatefulDelegationBinding(
-  principal: AuthenticatedPrincipal
-): boolean {
-  return (
-    principal.delegation === undefined ||
-    principal.delegation.actorSessionId !== undefined
-  );
-}
-
-function staticBearerPrincipal(clientId: string): AuthenticatedPrincipal {
-  return {
-    id: `service:static-bearer:${clientId}`,
-    kind: "service",
-    identity: {
-      issuer: "gonk:static-bearer",
-      subject: clientId,
-      method: "service-token",
-    },
-    roles: ["service"],
-    scopes: [],
-  };
-}
-
-function localDevelopmentPrincipal(): AuthenticatedPrincipal {
-  return {
-    id: `local:${LOCAL_DEVELOPMENT_CLIENT_ID}`,
-    kind: "local",
-    identity: {
-      issuer: "gonk:web-keyless-development",
-      subject: LOCAL_DEVELOPMENT_CLIENT_ID,
-      method: "local",
-    },
-    roles: ["local-development"],
-    scopes: [],
-    attributes: { developmentOnly: true },
-  };
-}
-
-function allowAllAuthContext(principal: AuthenticatedPrincipal): AuthContext {
-  return {
-    principal,
-    authorize: () => ({
-      outcome: "allow",
-      reason: "Authenticated transport allowed by default",
-    }),
   };
 }
 
@@ -438,16 +280,4 @@ async function boundSession(
     return undefined;
   }
   return session;
-}
-
-function jsonError(
-  status: number,
-  code: number,
-  message: string,
-  headers?: Record<string, string>
-): Response {
-  return Response.json(
-    { jsonrpc: "2.0", error: { code, message }, id: null },
-    { status, ...(headers ? { headers } : {}) }
-  );
 }

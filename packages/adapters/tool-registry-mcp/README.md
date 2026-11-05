@@ -177,6 +177,43 @@ Gonk does not synthesize an identity for an older callback shape:
 authenticated discovery and invocation must share a real principal and
 `AuthContext`.
 
+### Plain JSON discovery and invocation
+
+Set `jsonPath` to expose the same tools beside MCP. The default leaves these
+routes disabled. Both HTTP constructors accept this option:
+
+```ts
+const server = createHttpMcpServer({
+  source: registry,
+  serverName: "my-app",
+  serverVersion: "0.1.0",
+  jsonPath: "/tools",
+  apiKey: process.env.TOOL_API_KEY,
+  makeAuthContext: (request) => appPolicy.authContextFor(request.http?.authInfo),
+});
+await server.start();
+```
+
+- `GET /tools` returns `{ tools: [...] }` with advertised names, descriptions,
+  input schemas, and annotations. Input schemas retain the registry's raw type.
+- `POST /tools/:name` accepts raw JSON input with `Content-Type: application/json`.
+  Encode the advertised tool name as one URL segment. No MCP session is needed.
+- Invocation returns the registry's collected `ToolOutcome`: `{ ok: true, data,
+  display?, metadata?, receipt? }` or `{ ok: false, code, message, details? }`.
+  Dispatched outcomes use HTTP 200. Missing or hidden tools use HTTP 404.
+  Authentication, request protection, malformed input, and oversized bodies use
+  the existing HTTP error responses and their non-success status codes.
+
+JSON routes use the same authentication, authorization context, discovery filter,
+write policy, and registry invocation as MCP. A caller cannot select its identity
+through tool input. Request cancellation and handler shutdown abort invocation.
+`makeAuthContext` and `makeContext` receive the original request in `http.req`.
+MCP client callbacks such as sampling and elicitation are unavailable on JSON
+routes and fail explicitly if a host context callback tries to use them.
+
+For `createWebMcpHandler`, mount the configured JSON path and its `/:name` route
+alongside the MCP path, and pass each request to the same handler's `handle`.
+
 ## What it advertises
 
 - With an `Orchestrator`, only `activeSet()` tools (always + committed pins).

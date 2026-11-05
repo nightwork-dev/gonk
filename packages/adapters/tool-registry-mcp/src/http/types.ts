@@ -47,7 +47,9 @@ export interface HttpMcpServerOptions
   allowInsecure?: boolean;
   /** Endpoint path the MCP transport is mounted at. Default "/mcp". */
   path?: string;
-  /** Enable the SDK's DNS-rebinding protection (Host-header allow-listing).
+  /** Opt in to GET discovery and POST /:name raw JSON invocation at this path. */
+  jsonPath?: string;
+  /** Enable DNS-rebinding protection (Host-header allow-listing).
    *  Stops a drive-by browser request (a malicious page POSTing to a localhost
    *  endpoint) from rebinding onto this server. Default depends on the bind:
    *  - **loopback** → on, auto-allow-listing the bound host:port + loopback
@@ -69,7 +71,7 @@ export interface HttpMcpServerOptions
    *  so without it every request is rejected on the Host check. Set it to the
    *  name(s) clients will actually dial. */
   allowedHosts?: string[];
-  /** Allowed `Origin` header values when the SDK transport's origin protection
+  /** Allowed `Origin` header values when the handler's origin protection
    *  is enabled. */
   allowedOrigins?: string[];
 }

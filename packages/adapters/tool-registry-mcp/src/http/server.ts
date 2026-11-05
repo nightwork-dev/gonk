@@ -6,6 +6,8 @@ import {
 } from "node:http";
 import { Readable } from "node:stream";
 
+import { assertJsonPath, matchesJsonPath } from "./json.ts";
+
 import type { HttpMcpServer, HttpMcpServerOptions } from "./types.ts";
 import {
   createWebMcpHandler,
@@ -39,6 +41,12 @@ export function createHttpMcpServer(
   const host = options.host ?? "127.0.0.1";
   const requestedPort = options.port ?? 0;
   const path = options.path ?? "/mcp";
+  if (options.jsonPath !== undefined) {
+    assertJsonPath(options.jsonPath);
+    if (matchesJsonPath(path, options.jsonPath)) {
+      throw new Error("jsonPath must not contain the MCP endpoint path");
+    }
+  }
 
   if (
     !isLoopbackHost(host) &&
@@ -82,8 +90,11 @@ export function createHttpMcpServer(
     req: IncomingMessage,
     res: ServerResponse
   ): Promise<void> {
-    const requestPath = (req.url ?? "").split("?")[0];
-    if (requestPath !== path)
+    const requestPath = (req.url ?? "").split("?")[0] ?? "";
+    if (
+      requestPath !== path &&
+      !(options.jsonPath && matchesJsonPath(requestPath, options.jsonPath))
+    )
       return sendJsonError(
         res,
         404,
@@ -93,7 +104,12 @@ export function createHttpMcpServer(
     if (!webHandler)
       return sendJsonError(res, 503, -32000, "MCP server is starting");
 
-    const request = toWebRequest(req, host, boundPort);
+    const cancelled = new AbortController();
+    req.once("aborted", () => cancelled.abort());
+    res.once("close", () => {
+      if (!res.writableFinished) cancelled.abort();
+    });
+    const request = toWebRequest(req, host, boundPort, cancelled.signal);
     const response = await webHandler.handle(request);
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (!response.body) {
@@ -158,7 +174,8 @@ function toWebOptions(
 function toWebRequest(
   req: IncomingMessage,
   host: string,
-  port: number
+  port: number,
+  signal: AbortSignal
 ): Request {
   const headers = new Headers();
   for (let index = 0; index < req.rawHeaders.length; index += 2) {
@@ -167,7 +184,7 @@ function toWebRequest(
     if (name && value) headers.append(name, value);
   }
   const method = req.method ?? "GET";
-  const init: RequestInit & { duplex?: "half" } = { method, headers };
+  const init: RequestInit & { duplex?: "half" } = { method, headers, signal };
   if (method !== "GET" && method !== "HEAD") {
     init.body = Readable.toWeb(req) as unknown as NonNullable<
       RequestInit["body"]
