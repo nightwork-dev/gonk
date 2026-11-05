@@ -1,5 +1,17 @@
 # @gonk/skills
 
+## 0.12.0
+
+### Patch Changes
+
+- Expose opt-in JSON HTTP and application-bundled usage skills through the shared registry, resolve annotated CLI help schemas, and preserve the released shared-namespace symlink correction.
+- Updated dependencies []:
+  - @gonk/auth@0.12.0
+  - @gonk/context@0.12.0
+  - @gonk/scope@0.12.0
+  - @gonk/store@0.12.0
+  - @gonk/tool-registry@0.12.0
+
 ## 0.11.1
 
 ### Patch Changes

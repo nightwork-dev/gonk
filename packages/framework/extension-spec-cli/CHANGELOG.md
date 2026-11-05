@@ -1,5 +1,16 @@
 # @gonk/extension-spec-cli
 
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/tool-registry-pi@0.12.0
+  - @gonk/scope@0.12.0
+  - @gonk/tool-registry@0.12.0
+  - @gonk/extension-spec@0.12.0
+  - @gonk/extension-spec-pi@0.12.0
+
 ## 0.11.1
 
 ### Patch Changes

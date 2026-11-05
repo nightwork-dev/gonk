@@ -1,5 +1,18 @@
 # @gonk/tool-registry-mcp
 
+## 0.12.0
+
+### Minor Changes
+
+- Expose opt-in JSON HTTP and application-bundled usage skills through the shared registry, resolve annotated CLI help schemas, and preserve the released shared-namespace symlink correction.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.12.0
+  - @gonk/tool-orchestrator@0.12.0
+  - @gonk/tool-registry@0.12.0
+
 ## 0.11.1
 
 ### Patch Changes

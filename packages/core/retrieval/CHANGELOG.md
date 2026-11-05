@@ -1,5 +1,14 @@
 # @gonk/retrieval
 
+## 0.12.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.12.0
+  - @gonk/context@0.12.0
+  - @gonk/store@0.12.0
+
 ## 0.11.1
 
 ### Patch Changes
