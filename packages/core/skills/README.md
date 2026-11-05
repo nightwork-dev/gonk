@@ -77,6 +77,20 @@ have closed Standard Schema contracts and fail closed without `ctx.auth`.
 `projectSkillTools()` remains a lightweight capability descriptor. There is no
 generic invoke verb.
 
+## Packaged application skills
+
+`@gonk/skills/bundled` exposes application-owned `SKILL.md` trees through two read-only registry tools. Register the definitions once to make them available through Gonk MCP, HTTP, and CLI projections:
+
+```ts
+import { createBundledSkillToolDefinitions } from "@gonk/skills/bundled";
+
+for (const tool of createBundledSkillToolDefinitions({
+  root: new URL("../.agents/skills/", import.meta.url),
+})) registry.register(tool);
+```
+
+`skill_list` returns IDs and descriptions from YAML frontmatter. `skill_get({ id })` returns the complete skill file. The configured root contains `<id>/SKILL.md`; IDs cannot select paths outside it. Bundled skill reads require no lifecycle journal or database. Applications can set `listName` and `getName` when composing several catalogs into one registry. Normal registry authorization governs both tools.
+
 Freshness is an injected capability. Core performs no network access: without a
 probe it reports `unknown`, and a failed probe becomes `unprobeable` without
 hiding the skill.

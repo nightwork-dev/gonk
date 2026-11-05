@@ -3,6 +3,7 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
+    bundled: "src/bundled.ts",
     conformance: "src/conformance.ts",
   },
   format: ["esm"],
