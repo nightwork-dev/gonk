@@ -1198,6 +1198,42 @@ describe("filesystem safety and parsing", () => {
     );
   });
 
+  it("constructs and transacts when the substrate namespace root is a shared symlink", async () => {
+    const harness = make();
+    // Super-project layout: `.agents` under the project home is a symlink to
+    // a real shared substrate dir whose store already exists (the shape
+    // sibling substrates such as jobs and work-items already write through).
+    const shared = join(harness.root, "shared-agents");
+    mkdirSync(join(shared, "store"), { recursive: true });
+    symlinkSync(shared, join(harness.home("project"), ".agents"));
+
+    const registry = new FilesystemManagedSkillRegistry({
+      env: harness.env,
+      stateSource: harness.stateSource,
+    });
+    const created = await registry.create({
+      auth: authContext("allow", "agent:namespace-symlink"),
+      idempotencyKey: "namespace-symlink",
+      id: "through-shared-root",
+      scope: "project",
+      description: "namespace symlink",
+      body: "created through a symlinked substrate root",
+    });
+    expect(created.status).toBe("ok");
+    // The transaction namespace lives behind the link, under the shared store.
+    expect(
+      existsSync(join(shared, "store", "skills.lifecycle-transactions"))
+    ).toBe(true);
+    // A pending namespace behind the link is recovered, not fatal.
+    expect(
+      () =>
+        new FilesystemManagedSkillRegistry({
+          env: harness.env,
+          stateSource: harness.stateSource,
+        })
+    ).not.toThrow();
+  });
+
   it("rejects traversal, absolute paths, reserved IDs, and malformed IDs before I/O", async () => {
     const registry = make().registry;
     await expect(registry.get({ id: "../escape" })).rejects.toThrow("Invalid SkillGetRequest");

@@ -1967,6 +1967,17 @@ function verifiedRelativePath(
     const stat = lstatIfExists(cursor);
     if (!stat) return join(cursor, ...parts.slice(index + 1));
     if (stat.isSymbolicLink()) {
+      if (label === "namespace") {
+        // The operational namespace may sit behind a shared substrate root —
+        // for example a super-project `.agents` symlink that sibling
+        // substrates (jobs, work-items, memory) already write through.
+        // Resolve the link to its canonical location and keep verifying the
+        // remaining components. Mutation targets keep rejecting symlinks
+        // outright, so crafted markers still cannot restore backups through
+        // a link.
+        cursor = realpathSync(cursor);
+        continue;
+      }
       throw new Error(`Skill transaction ${label} contains a symbolic link`);
     }
     if (index < parts.length - 1 && !stat.isDirectory()) {
