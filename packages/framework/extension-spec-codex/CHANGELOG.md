@@ -46,7 +46,7 @@
 
 - [#10](https://github.com/nightwork-dev/gonk/pull/10) [`2b772e4`](https://github.com/nightwork-dev/gonk/commit/2b772e4216ca2ba09a2c2df099f63bbff7a2d7a0) Thanks [@abrisene](https://github.com/abrisene)! - Add opt-in Codex action-context hook placements (PreToolUse, PostToolUse and UserPromptSubmit) bound to their materialized event, and recognize forked SessionStart events.
 
-- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Add host-owned storage (`@gonk/store/host-storage`). Pi and Codex hosts share one SQLite lease and one way to resolve storage paths, and get scope-bound state stores from it.
 
 ### Patch Changes
 

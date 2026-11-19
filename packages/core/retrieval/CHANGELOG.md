@@ -58,19 +58,18 @@
 
 ### Minor Changes
 
-- 5c47c3e: Release the R1 Core migration slice. `@gonk/store` adds the caller-owned
-  Mirk-native state binding and explicit legacy importer (minor: new public
-  subpaths and replacement contract). Retrieval, temporal, and skills now
-  consume caller-provided Mirk state; the skills registry requires `stateSource`
-  unless a lifecycle journal is injected (minor: migration boundary). Tool
-  Registry publishes result evidence, freshness/cache, truncation, lifecycle,
-  composition, and redacted receipt projections (minor: public contract
-  additions). The orchestrator and host adapters receive corresponding
-  state/projection wiring (patch: additive projections).
+- 5c47c3e: `@gonk/store` adds `bindGonkSyncState`, which binds scope tiers and
+  namespaces to Mirk stores that the host provides, and an explicit legacy
+  importer at `@gonk/store/legacy-import`. `@gonk/retrieval`, `@gonk/temporal`
+  and `@gonk/skills` now keep their state in a host-provided Mirk store. The
+  skills registry needs a `stateSource` unless you inject a lifecycle journal.
+  `@gonk/tool-registry` adds result metadata (provenance, freshness, cache
+  policy and truncation), tool lifecycle and composition declarations, and
+  redacted receipt projections. The orchestrator and host adapters pass these
+  through.
 
-  The repository keeps all `@gonk/*` packages in one fixed Changesets group. With
-  the current highest package version at `0.6.0`, `changeset version` will align
-  the fixed group to `0.7.0`, including packages without a direct entry here.
+  All `@gonk/*` packages share one version number, so every package moves to
+  `0.7.0`, including packages with no change of their own.
 
 ### Patch Changes
 

@@ -56,7 +56,7 @@
 
 ### Patch Changes
 
-- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Add host-owned storage (`@gonk/store/host-storage`). Pi and Codex hosts share one SQLite lease and one way to resolve storage paths, and get scope-bound state stores from it.
 
 - [#10](https://github.com/nightwork-dev/gonk/pull/10) [`ffee550`](https://github.com/nightwork-dev/gonk/commit/ffee550b1873d2de756501cc28b12a67d60c7766) Thanks [@abrisene](https://github.com/abrisene)! - Claude: reject spec ids that are not kebab-case and single-quote the spec id and event in generated hook commands, so spec data cannot run shell commands. Codex: a placed hook whose payload omits `hook_event_name` runs side-effect-only instead of being skipped. Pi: `tool_complete` fires only for model-issued tool calls, not for calls a tool makes through `ctx.executeTool()`.
 
