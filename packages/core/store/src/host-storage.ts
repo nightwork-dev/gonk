@@ -122,6 +122,15 @@ export function acquireHostStorage<Consumer extends string>(options: AcquireHost
   return state === undefined ? lease : ({ ...lease, state } as HostBoundStorageLease);
 }
 
+/**
+ * An existing compatibility database always wins, per layout. A home with none
+ * gets `{runtime-root}/{tier}/state.db`, the same file for every layout.
+ * Consumers that share it keep their records apart by namespace, and two
+ * consumers on one file already shared an adapter before this helper existed
+ * (every memory-layout consumer used `memory-state/state.db`, every pi-flat
+ * consumer `pi-state/state.db`). The fresh path is not split by layout: homes
+ * created by 0.13.0 already hold data there, and a new subfolder would orphan it.
+ */
 export function resolveHostStoragePath(layout: LegacyStorageLayout, tier: ScopeName, home: string): string {
   for (const legacy of legacyPaths(layout, tier, home)) if (existsSync(legacy)) return legacy;
   return join(resolveHostRuntimeRoot(tier, home), tier, "state.db");

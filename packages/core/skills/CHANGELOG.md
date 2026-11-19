@@ -1,5 +1,16 @@
 # @gonk/skills
 
+## 0.13.1
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/store@0.13.1
+  - @gonk/auth@0.13.1
+  - @gonk/context@0.13.1
+  - @gonk/scope@0.13.1
+  - @gonk/tool-registry@0.13.1
+
 ## 0.13.0
 
 ### Minor Changes

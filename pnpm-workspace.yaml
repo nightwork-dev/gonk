@@ -65,7 +65,7 @@ catalog:
   "@inquirer/prompts": 7.10.1
   "@modelcontextprotocol/client": 2.4.0
   "@modelcontextprotocol/server": 2.4.0
-  "@mirk/store": 0.13.0
+  "@mirk/store": 0.14.0
   "@standard-schema/spec": 1.1.0
   "@types/better-sqlite3": 7.6.13
   "@types/node": 22.19.17

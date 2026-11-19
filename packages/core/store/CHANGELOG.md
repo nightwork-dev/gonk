@@ -1,5 +1,14 @@
 # @gonk/store
 
+## 0.13.1
+
+### Patch Changes
+
+- Build `@gonk/store` against `@mirk/store` 0.14.0, the version the plugins use, so the storage ports the host hands to capabilities come from one Mirk copy. Document the shared fresh-home database path in `resolveHostStoragePath`.
+- Updated dependencies []:
+  - @gonk/scope@0.13.1
+  - @gonk/utils@0.13.1
+
 ## 0.13.0
 
 ### Patch Changes
