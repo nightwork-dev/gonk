@@ -1,5 +1,21 @@
 # @gonk/tool-registry-mcp
 
+## 0.13.0
+
+### Minor Changes
+
+- Serve packaged skills through native MCP Skills and the existing portable tools using one verified catalog. Update the MCP TypeScript client and server to 2.4.0.
+
+- Share registry instructions across MCP, JSON HTTP, CLI help, and native Pi tools. Serve MCP 2026-07-28 over HTTP and stdio alongside initialization-based clients. Negotiate either revision when importing MCP tools.
+
+### Patch Changes
+
+- Enforce the body size limit while reading MCP and JSON HTTP requests. Return HTTP 413 as soon as the upload exceeds the limit.
+- Updated dependencies []:
+  - @gonk/tool-registry@0.13.0
+  - @gonk/tool-orchestrator@0.13.0
+  - @gonk/auth@0.13.0
+
 ## 0.12.0
 
 ### Minor Changes

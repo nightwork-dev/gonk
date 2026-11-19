@@ -1,5 +1,20 @@
 # @gonk/skills
 
+## 0.13.0
+
+### Minor Changes
+
+- Serve packaged skills through native MCP Skills and the existing portable tools using one verified catalog. Update the MCP TypeScript client and server to 2.4.0.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/tool-registry@0.13.0
+  - @gonk/auth@0.13.0
+  - @gonk/context@0.13.0
+  - @gonk/scope@0.13.0
+  - @gonk/store@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes

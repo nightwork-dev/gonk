@@ -1,5 +1,15 @@
 # @gonk/extension-spec-codex
 
+## 0.13.0
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/extension-spec@0.13.0
+  - @gonk/scope@0.13.0
+  - @gonk/store@0.13.0
+  - @gonk/utils@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes

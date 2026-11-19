@@ -1,5 +1,19 @@
 # @gonk/tool-registry-pi
 
+## 0.13.0
+
+### Minor Changes
+
+- Share registry instructions across MCP, JSON HTTP, CLI help, and native Pi tools. Serve MCP 2026-07-28 over HTTP and stdio alongside initialization-based clients. Negotiate either revision when importing MCP tools.
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/tool-registry@0.13.0
+  - @gonk/tool-orchestrator@0.13.0
+  - @gonk/auth@0.13.0
+  - @gonk/scope@0.13.0
+
 ## 0.12.0
 
 ### Patch Changes
