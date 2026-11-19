@@ -214,7 +214,9 @@ export const handle = (request: Request) => mcp.handle(request);
 
 Your app validates credentials and sessions. `authenticate` returns the
 normalized principal in `AuthInfo.extra`, and the principal that
-`makeAuthContext` returns must be the same one. Each stateful MCP session stays
+`makeAuthContext` returns must be the same one. If it is not, the server logs
+the mismatch and refuses the request: JSON routes answer 403, and MCP requests
+get an error that says why. Each stateful MCP session stays
 bound to the principal that opened it. A request from a different principal
 gets the same response as an unknown session.
 

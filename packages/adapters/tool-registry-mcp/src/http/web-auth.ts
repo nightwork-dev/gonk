@@ -17,6 +17,18 @@ export interface AuthenticatedRequest {
 }
 export class UnauthorizedError extends Error {}
 
+/** makeAuthContext returned a principal other than the one that the request
+ *  authenticated. The handler refuses the request with 403 and logs it. */
+export class PrincipalMismatchError extends Error {
+  constructor() {
+    super(
+      "makeAuthContext returned a different principal than the one this request authenticated. " +
+        "Return the principal from http.authInfo.extra[GONK_AUTH_INFO_PRINCIPAL]."
+    );
+    this.name = "PrincipalMismatchError";
+  }
+}
+
 export function createRequestAuthenticator(options: WebMcpHandlerOptions) {
   return async function authenticate(
     request: Request
@@ -85,9 +97,14 @@ export function createRequestAuthContext(
       securityContextKey({ principal: hostContext.principal }) !==
       securityContextKey({ principal })
     ) {
-      throw new Error(
-        "Web MCP authentication and authorization resolved different principals"
-      );
+      const error = new PrincipalMismatchError();
+      const fields = {
+        authenticatedPrincipalId: principal.id,
+        returnedPrincipalId: hostContext.principal.id,
+      };
+      if (options.log) options.log.error(error.message, fields);
+      else console.error(`[gonk-mcp] ${error.message}`, fields);
+      throw error;
     }
     return hostContext;
   };

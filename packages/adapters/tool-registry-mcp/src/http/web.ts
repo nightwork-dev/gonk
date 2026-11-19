@@ -20,6 +20,7 @@ import {
 import {
   createRequestAuthenticator,
   createRequestAuthContext,
+  PrincipalMismatchError,
   UnauthorizedError,
   type AuthenticatedRequest,
 } from "./web-auth.ts";
@@ -130,7 +131,14 @@ export function createWebMcpHandler(
     const protectionError = protectRequest(request, options);
     if (protectionError) return protectionError;
     if (json && matchesJsonPath(new URL(request.url).pathname, options.jsonPath!)) {
-      return json.handle(request, authenticated.authInfo);
+      try {
+        return await json.handle(request, authenticated.authInfo);
+      } catch (error) {
+        if (error instanceof PrincipalMismatchError) {
+          return jsonError(403, -32000, error.message);
+        }
+        throw error;
+      }
     }
 
     const method = request.method;
