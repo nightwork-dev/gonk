@@ -31,6 +31,8 @@ export interface PinStore {
 export interface OrchestratorOptions {
   registries: ToolRegistry[];
   scope: Scope;
+  /** Public guidance for the combined tool set. */
+  instructions?: string;
 
   /** Custom search ranker. Default: keyword + tag + name fuzzy match. */
   search?: (query: string, tools: ToolDefinition[]) => RankedTool[];
@@ -53,6 +55,7 @@ export interface PinDiff {
 }
 
 export interface Orchestrator {
+  readonly instructions?: string;
   /** All known tools across all registries (deterministic order: by name). */
   allTools(): ToolDefinition[];
 

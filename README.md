@@ -100,7 +100,7 @@ its config). `@gonk/core` is a convenience barrel over those packages.
 | `@gonk/tool-orchestrator` | Semantic tool selection / ranking over a registry, with principal-aware meta-tool discovery. |
 | `@gonk/core` | A barrel over `@gonk/auth` + `@gonk/scope` + `@gonk/tool-registry` — one import for the common surface. |
 | `@gonk/tool-registry-cli` | Expose a registry/orchestrator over a CLI. |
-| `@gonk/tool-registry-mcp` | Expose a registry/orchestrator over MCP (stdio + `./http`) with principal-filtered discovery, registry authorization, and stateful HTTP session binding. |
+| `@gonk/tool-registry-mcp` | Expose a registry/orchestrator over MCP (stdio + `./http`) with both MCP lifecycles, principal-filtered discovery, and registry authorization. |
 | `@gonk/tool-registry-pi` | Adapt registry tools to `@earendil-works/pi-agent-core` AgentTools. |
 | `@gonk/extension-spec` | Declarative, host-agnostic extension spec — slash commands, settings, presets, and tools as data. |
 | `@gonk/extension-spec-cli` | Materialize an ExtensionSpec into a CLI extension (subcommands, settings prompts, presets). |

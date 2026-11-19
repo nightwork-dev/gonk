@@ -25,7 +25,9 @@ and artifact storage belong to Mirk.
 
 Verify the supported Core entry points through packages installed outside the
 workspace. Cover CLI and MCP adapters and the Pi, Claude Code, and Codex host
-bindings.
+bindings. Exercise both MCP revisions over HTTP and stdio, including discovery
+instructions and authorization. Check the delivery of the same registry
+guidance through JSON HTTP, CLI help, and Pi tool registration.
 
 For each supported path:
 

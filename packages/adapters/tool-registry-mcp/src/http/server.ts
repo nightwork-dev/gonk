@@ -186,9 +186,19 @@ function toWebRequest(
   const method = req.method ?? "GET";
   const init: RequestInit & { duplex?: "half" } = { method, headers, signal };
   if (method !== "GET" && method !== "HEAD") {
-    init.body = Readable.toWeb(req) as unknown as NonNullable<
-      RequestInit["body"]
-    >;
+    // Stopping a Web body read must leave the socket open long enough to
+    // send the response. The HTTP server owns connection shutdown.
+    const chunks = req.iterator({ destroyOnReturn: false });
+    init.body = new ReadableStream<Uint8Array>({
+      async pull(controller) {
+        const { done, value } = await chunks.next();
+        if (done) controller.close();
+        else controller.enqueue(value);
+      },
+      async cancel() {
+        await chunks.return?.();
+      },
+    }, { highWaterMark: 0 });
     init.duplex = "half";
   }
   return new Request(

@@ -11,6 +11,10 @@
       "types": "./dist/http/index.d.ts",
       "import": "./dist/http/index.js"
     },
+    "./stdio": {
+      "types": "./dist/stdio.d.ts",
+      "import": "./dist/stdio.js"
+    },
     "./client": {
       "types": "./dist/client.d.ts",
       "import": "./dist/client.js"
@@ -44,6 +48,7 @@
     "@modelcontextprotocol/server": "catalog:"
   },
   "devDependencies": {
+    "@gonk/skills": "workspace:*",
     "@standard-schema/spec": "catalog:",
     "@types/node": "catalog:",
     "tsup": "catalog:",

@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     index: "src/index.ts",
     client: "src/client.ts",
+    stdio: "src/stdio.ts",
     "http/index": "src/http/index.ts",
     "http/cli": "src/http/cli.ts",
     "dev/index": "src/dev/index.ts",

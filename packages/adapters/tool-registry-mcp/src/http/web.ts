@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import {
   WebStandardStreamableHTTPServerTransport,
+  createMcpHandler,
   isInitializeRequest,
+  isLegacyRequest,
 } from "@modelcontextprotocol/server";
 import type { AuthInfo, Transport } from "@modelcontextprotocol/server";
 import type { AuthAuditSink } from "@gonk/auth";
@@ -94,12 +96,22 @@ export function createWebMcpHandler(
 
   const authenticate = createRequestAuthenticator(options);
   const makeAuthContext = createRequestAuthContext(options);
+  const adapterOptions: McpAdapterOptions = {
+    ...options,
+    makeAuthContext,
+    writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
+  };
+  const modern = createMcpHandler(() => createMcpServer(adapterOptions).server, {
+    legacy: "reject",
+    ...(options.enableJsonResponse === undefined
+      ? {}
+      : { responseMode: options.enableJsonResponse ? "json" : "sse" }),
+  });
   const json = options.jsonPath === undefined
     ? undefined
     : createJsonToolHandler({
-        ...options,
-        makeAuthContext,
-        writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
+        ...adapterOptions,
+        maxBodyBytes,
       });
 
   async function handle(request: Request): Promise<Response> {
@@ -121,93 +133,80 @@ export function createWebMcpHandler(
       return json.handle(request, authenticated.authInfo);
     }
 
-    const sessionId = request.headers.get("mcp-session-id") ?? undefined;
-    if (request.method === "POST") {
-      const session = sessionId
-        ? await boundSession(sessions, sessionId, authenticated, options)
-        : undefined;
-      if (sessionId && !session) {
-        return jsonError(404, -32001, "unknown session");
-      }
+    const method = request.method;
+    if (method !== "POST" && method !== "GET" && method !== "DELETE") {
+      return jsonError(405, -32600, `method ${method} not allowed`);
+    }
 
-      let parsedBody: unknown;
+    const sessionId = request.headers.get("mcp-session-id");
+    const session = sessionId
+      ? await boundSession(sessions, sessionId, authenticated, options)
+      : undefined;
+    if (sessionId && !session) {
+      return jsonError(404, -32001, "unknown session");
+    }
+
+    let parsedBody: unknown;
+    if (method === "POST") {
       try {
         parsedBody = await boundedJson(request, maxBodyBytes);
       } catch (error) {
-        if (error instanceof BodyTooLargeError)
+        if (error instanceof BodyTooLargeError) {
           return jsonError(413, -32600, "request body too large");
+        }
         return jsonError(400, -32700, "parse error");
       }
-
-      if (session) {
-        return session.transport.handleRequest(request, {
-          parsedBody,
-          authInfo: authenticated.authInfo,
-        });
-      }
-
-      if (!isInitializeRequest(parsedBody)) {
-        return jsonError(
-          400,
-          -32600,
-          "missing session id and not an initialize request"
-        );
-      }
-
-      const transport: WebStandardStreamableHTTPServerTransport =
-        new WebStandardStreamableHTTPServerTransport({
-          sessionIdGenerator: () => randomUUID(),
-          onsessioninitialized: (id): void => {
-            sessions.set(id, {
-              transport,
-              securityContextKey: authenticated.securityContextKey,
-            });
-          },
-          onsessionclosed: (id): void => {
-            sessions.delete(id);
-          },
-          ...(options.enableJsonResponse === undefined
-            ? {}
-            : { enableJsonResponse: options.enableJsonResponse }),
-        });
-      const adapter = createMcpServer({
-        ...options,
-        writeToolPolicy: options.writeToolPolicy ?? "require-allowlist",
-        makeAuthContext,
-      });
-      await adapter.connect(transport as Transport);
-      const previousOnClose = transport.onclose;
-      transport.onclose = () => {
-        previousOnClose?.();
-        if (transport.sessionId) sessions.delete(transport.sessionId);
-      };
-      return transport.handleRequest(request, {
-        parsedBody,
-        authInfo: authenticated.authInfo,
-      });
+      if (parsedBody === undefined) return jsonError(400, -32700, "parse error");
     }
 
-    if (request.method === "GET" || request.method === "DELETE") {
-      if (!sessionId) return jsonError(400, -32600, "missing Mcp-Session-Id");
-      const session = await boundSession(
-        sessions,
-        sessionId,
-        authenticated,
-        options
+    const requestOptions = { parsedBody, authInfo: authenticated.authInfo };
+    if (!(await isLegacyRequest(request, parsedBody))) {
+      return modern.fetch(request, requestOptions);
+    }
+    if (session) {
+      return session.transport.handleRequest(request, requestOptions);
+    }
+    if (method !== "POST") {
+      return jsonError(400, -32600, "missing Mcp-Session-Id");
+    }
+    if (!isInitializeRequest(parsedBody)) {
+      return jsonError(
+        400,
+        -32600,
+        "missing session id and not an initialize request"
       );
-      if (!session) return jsonError(404, -32001, "unknown session");
-      return session.transport.handleRequest(request, {
-        authInfo: authenticated.authInfo,
-      });
     }
 
-    return jsonError(405, -32600, `method ${request.method} not allowed`);
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id): void => {
+        sessions.set(id, {
+          transport,
+          securityContextKey: authenticated.securityContextKey,
+        });
+      },
+      onsessionclosed: (id): void => {
+        sessions.delete(id);
+      },
+      ...(options.enableJsonResponse === undefined
+        ? {}
+        : { enableJsonResponse: options.enableJsonResponse }),
+    });
+    const adapter = createMcpServer(adapterOptions);
+    await adapter.connect(transport as Transport);
+    const previousOnClose = transport.onclose;
+    transport.onclose = () => {
+      previousOnClose?.();
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+    };
+    return transport.handleRequest(request, requestOptions);
   }
 
   return {
     handle,
     async close() {
       json?.close();
+      await modern.close();
       const active = new Set(
         [...sessions.values()].map((session) => session.transport)
       );

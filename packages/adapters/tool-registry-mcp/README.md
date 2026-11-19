@@ -5,29 +5,71 @@ MCP adapter — exposes a `ToolRegistry` or `Orchestrator` over the Model Contex
 ## Usage
 
 ```ts
-import { createMcpServer } from "@gonk/tool-registry-mcp";
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { serveMcpStdio } from "@gonk/tool-registry-mcp/stdio";
 
-const adapter = createMcpServer({
+serveMcpStdio({
   serverName: "todo",
   serverVersion: "0.1.0",
   source: orchestrator,
+  instructions: "List open tasks before changing their status.",
   writeToolPolicy: "warn", // | "require-allowlist" | "permissive"
   allowlist: ["safe-write-tool"], // only used with require-allowlist
   makeAuthContext: (request) =>
     policy.authContextFor(request.http?.authInfo),
 });
 
-await adapter.connect(new StdioServerTransport());
 ```
 
-The adapter uses the split MCP TypeScript SDK v2 packages while retaining the
-SDK's default legacy-era negotiation. It does not opt into the distinct
-2026-07-28 protocol flow: Gonk's HTTP boundary is intentionally stateful and
-pins each authenticated session to a security context. Modern-era
-`server/discover`, stateless request state, and `subscriptions/listen` adoption
-need a separate lifecycle and authorization design rather than riding along
-with this dependency migration.
+`serveMcpStdio`, `createHttpMcpServer`, and `createWebMcpHandler` serve the
+stateless `2026-07-28` revision and the earlier `initialize` handshake on the
+same entry point. Legacy HTTP sessions stay bound to the caller's security
+context. In the newer revision, HTTP authenticates every request independently
+and serves principal-filtered tool discovery with private cache hints. Object
+outputs remain structured on both revisions. The newer revision also carries
+scalar and array outputs as structured content.
+
+Use `instructions` for short guidance shared by all callers. When the source
+defines instructions, MCP and JSON HTTP use that text by default. An explicit
+MCP adapter option overrides it for those routes. Clients read the guidance
+from `initialize`, `server/discover`, or the JSON discovery response. Keep
+longer workflows in bundled usage skills.
+
+The low-level adapter remains available for hosts that own their transport.
+Use `serveMcpStdio` to serve both revisions from a stdio process.
+
+## Serve packaged skills
+
+Load a trusted application bundle at startup and register the returned tools.
+Pass the same bundle to the MCP adapter to offer native MCP Skills alongside
+`skill_list` and `skill_get`.
+
+```ts
+import { ToolRegistry } from "@gonk/tool-registry";
+import { createBundledSkillToolDefinitions } from "@gonk/skills/bundled";
+import { loadMcpBundledSkills } from "@gonk/tool-registry-mcp";
+
+const source = new ToolRegistry({
+  instructions: "Use the bundled skills for multi-step workflows.",
+});
+const bundledSkills = await loadMcpBundledSkills({
+  root: new URL("./skills/", import.meta.url),
+  createTools: createBundledSkillToolDefinitions,
+});
+source.register(bundledSkills.tools);
+// Pass { source, bundledSkills, ... } to the MCP server options.
+```
+
+Each skill is an immediate child directory containing `SKILL.md` and any files
+it references. Native clients discover the bundle with `skills/list` and
+`skills/get`, then read the manifest and supporting files with `resources/read`.
+Native requests run through the registered tools' Gonk authorization. The
+catalog records file digests at startup and rejects reads of changed files.
+Reload the application after changing a bundle.
+
+The native extension works with both supported MCP lifecycles. Clients can
+continue to use the portable tools over MCP, JSON HTTP, CLI, and Pi.
+The [MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/)
+is in beta.
 
 ## Running it over HTTP (local vs. remote)
 
@@ -265,7 +307,8 @@ approval unless reviewed local configuration overrides them. Registry
 authorization runs before the proxy handler, so a denied caller produces no
 upstream `tools/call`.
 
-The importer supports paginated discovery, `tools/list_changed`, explicit
+The importer tries `2026-07-28` first and falls back to the initialization
+handshake with older servers. It supports paginated discovery, `tools/list_changed`, explicit
 refresh/reconnect/close, cancellation, and request timeouts. A failed schema
 compile or refresh retains the prior complete catalog. Its deliberately small
 JSON Schema 2020-12 subset supports object/array/scalar types, properties,
@@ -273,6 +316,10 @@ required fields, closed objects, items, enum/const, and basic length/range
 limits; unsupported keywords fail the whole candidate catalog closed.
 
 ## Development switchboard: one MCP registration, many worktrees
+
+The switchboard uses the initialization handshake to pin each client to one
+worktree. Clients that try the stateless revision first can fall back to this
+handshake.
 
 `@gonk/tool-registry-mcp/dev` adds a deliberately small **local** router for
 development. Point Codex, Claude Code, or another MCP client at the router once;
