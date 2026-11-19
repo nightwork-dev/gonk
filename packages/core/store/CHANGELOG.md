@@ -1,5 +1,13 @@
 # @gonk/store
 
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/scope@0.13.3
+  - @gonk/utils@0.13.3
+
 ## 0.13.2
 
 ### Patch Changes

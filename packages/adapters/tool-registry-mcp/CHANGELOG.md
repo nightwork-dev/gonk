@@ -1,5 +1,15 @@
 # @gonk/tool-registry-mcp
 
+## 0.13.3
+
+### Patch Changes
+
+- The README shows, as a diagram, how the `@gonk` packages and their hosts fit together.
+- Updated dependencies []:
+  - @gonk/tool-registry@0.13.3
+  - @gonk/tool-orchestrator@0.13.3
+  - @gonk/auth@0.13.3
+
 ## 0.13.2
 
 ### Patch Changes

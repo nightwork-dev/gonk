@@ -1,5 +1,14 @@
 # @gonk/core
 
+## 0.13.3
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/tool-registry@0.13.3
+  - @gonk/scope@0.13.3
+  - @gonk/auth@0.13.3
+
 ## 0.13.2
 
 ### Patch Changes

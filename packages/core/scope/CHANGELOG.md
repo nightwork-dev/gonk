@@ -1,5 +1,13 @@
 # @gonk/scope
 
+## 0.13.3
+
+### Patch Changes
+
+- The README shows, as a diagram, how a read walks the five tiers.
+- Updated dependencies []:
+  - @gonk/utils@0.13.3
+
 ## 0.13.2
 
 ### Patch Changes
