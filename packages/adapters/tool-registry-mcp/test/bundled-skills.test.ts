@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ownerPrincipal } from "@gonk/auth";
@@ -95,5 +95,24 @@ it.each(["legacy", "auto"] as const)("serves verified bundled skills with tool p
     }
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("refuses a bundle whose skill links outside its folder", async () => {
+  const root = await mkdtemp(join(tmpdir(), "gonk-bundled-link-"));
+  const outside = await mkdtemp(join(tmpdir(), "gonk-bundled-secret-"));
+  try {
+    await writeFile(join(outside, "secret.md"), "outside the bundle\n");
+    await mkdir(join(root, "linked", "references"), { recursive: true });
+    await writeFile(
+      join(root, "linked", "SKILL.md"),
+      "---\nname: linked\ndescription: Links out.\n---\nSee references/secret.md.\n"
+    );
+    await symlink(join(outside, "secret.md"), join(root, "linked", "references", "secret.md"));
+    await expect(loadMcpBundledSkills({ root, createTools: createBundledSkillToolDefinitions }))
+      .rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
