@@ -1,5 +1,15 @@
 # @gonk/scope
 
+## 0.13.2
+
+### Patch Changes
+
+- Rewrite the README for a developer who meets the package for the first time: what it is, how it fits with the other `@gonk/*` packages, how to install it, the shortest real first use, then the main features. Correct README claims that no longer matched the code. Remove internal notes from source comments, which ship in the sourcemaps. The README and comment changes do not change code behaviour.
+
+- `RUNTIME_STATE_KINDS` keeps `"autotune-claims"` and `"objective-watch"` unchanged. They are names of state folders that hosts already write on disk. A `.agents` or `.gonk` namespace that holds only these folders does not mark a project root. If the names were removed, those namespaces would count as project roots again.
+- Updated dependencies []:
+  - @gonk/utils@0.13.2
+
 ## 0.13.1
 
 ### Patch Changes

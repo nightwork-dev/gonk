@@ -1,5 +1,17 @@
 # @gonk/extension-spec-pi
 
+## 0.13.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.13.2
+  - @gonk/scope@0.13.2
+  - @gonk/tool-registry@0.13.2
+  - @gonk/store@0.13.2
+  - @gonk/tool-registry-pi@0.13.2
+  - @gonk/extension-spec@0.13.2
+
 ## 0.13.1
 
 ### Patch Changes

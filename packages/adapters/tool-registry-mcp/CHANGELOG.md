@@ -1,5 +1,17 @@
 # @gonk/tool-registry-mcp
 
+## 0.13.2
+
+### Patch Changes
+
+- When `makeAuthContext` returns a different principal than the one the request authenticated, the HTTP server now refuses the request and logs why. JSON routes answer 403 with the reason, in the same shape as the Host and Origin refusals. Before, they answered 500 "internal error" and the server logged nothing. The log line goes to `options.log`, or to `console.error` when no logger is set.
+
+- Rewrite the README for a developer who meets the package for the first time: what it is, how it fits with the other `@gonk/*` packages, how to install it, the shortest real first use, then the main features. Correct README claims that no longer matched the code. Remove internal notes from source comments, which ship in the sourcemaps. The README and comment changes do not change code behaviour.
+- Updated dependencies []:
+  - @gonk/auth@0.13.2
+  - @gonk/tool-registry@0.13.2
+  - @gonk/tool-orchestrator@0.13.2
+
 ## 0.13.1
 
 ### Patch Changes

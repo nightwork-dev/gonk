@@ -1,5 +1,11 @@
 # @gonk/auth
 
+## 0.13.2
+
+### Patch Changes
+
+- Rewrite the README for a developer who meets the package for the first time: what it is, how it fits with the other `@gonk/*` packages, how to install it, the shortest real first use, then the main features. Correct README claims that no longer matched the code. Remove internal notes from source comments, which ship in the sourcemaps. The README and comment changes do not change code behaviour.
+
 ## 0.13.1
 
 No changes in this release.
