@@ -20,4 +20,4 @@ Light files are for light backgrounds and dark files for dark ones. In a README,
 
 Only SVG is kept in git. A PNG at any size comes from `rsvg-convert -w 32 <file>.svg -o <file>.png`.
 
-The README banner (`assets/banner.png`) stays the header. `gonk-wordmark-*.svg` is that banner's wordmark traced to vector, without the metal texture; the mark is its g on the magenta line.
+The README banner (`assets/banner.png`) stays the header. `gonk-wordmark-*.svg` is that banner's wordmark traced to vector, without the metal texture; the mark is its g with the magenta line drawn clear below it.
