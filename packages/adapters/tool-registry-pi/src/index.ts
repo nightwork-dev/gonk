@@ -192,6 +192,7 @@ function toPiToolSpec(
       tool,
       formatToolDescription({ ...tool, description: resolvedDescription }),
     ),
+    ...(options.source.instructions ? { promptGuidelines: [options.source.instructions] } : {}),
     parameters: tool.inputJsonSchema ?? { type: "object", properties: {}, additionalProperties: true },
     async execute(_toolCallId, params, signal, onUpdate, piCtx) {
       const baseCtx = makeBaseContext({ signal, log, auth: options.auth });

@@ -15,13 +15,20 @@ export interface BundledSkillToolOptions {
 interface SkillSummary { id: string; name: string; description: string }
 interface SkillDetail extends SkillSummary { content: string }
 
-/** Project packaged instruction files through the ordinary registry policy and transports. */
-export function createBundledSkillToolDefinitions(options: BundledSkillToolOptions): ToolDefinition[] {
-  const configuredRoot = options.root instanceof URL ? fileURLToPath(options.root) : resolve(options.root);
-  const listName = options.listName ?? 'skill_list';
-  const getName = options.getName ?? 'skill_get';
+/** A read-only catalog shared by the tools and any native host projection. */
+export interface BundledSkillCatalog {
+  list(): Promise<readonly SkillSummary[]>;
+  read(id: string): Promise<SkillDetail | undefined>;
+}
 
-  async function read(id: string): Promise<SkillDetail> {
+interface CatalogToolOptions extends Omit<BundledSkillToolOptions, 'root'> {
+  catalog: BundledSkillCatalog;
+}
+
+function directoryCatalog(root: string | URL): BundledSkillCatalog {
+  const configuredRoot = root instanceof URL ? fileURLToPath(root) : resolve(root);
+
+  async function read(id: string): Promise<SkillDetail | undefined> {
     if (!isManagedSkillId(id)) throw new ToolError('INVALID_INPUT', 'Use a skill ID returned by skill_list.');
     const root = await realpath(configuredRoot);
     const directory = join(root, id);
@@ -44,6 +51,31 @@ export function createBundledSkillToolDefinitions(options: BundledSkillToolOptio
     }
   }
 
+  return {
+    read,
+    async list() {
+      const root = await realpath(configuredRoot);
+      const entries = (await readdir(root, { withFileTypes: true }))
+        .filter(entry => entry.isDirectory() && isManagedSkillId(entry.name))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      const skills: SkillSummary[] = [];
+      for (const entry of entries) {
+        const detail = await read(entry.name);
+        if (!detail) continue;
+        const { content: _, ...summary } = detail;
+        skills.push(summary);
+      }
+      return skills;
+    },
+  };
+}
+
+/** Project packaged instruction files through the ordinary registry policy and transports. */
+export function createBundledSkillToolDefinitions(options: BundledSkillToolOptions | CatalogToolOptions): ToolDefinition[] {
+  const catalog = 'catalog' in options ? options.catalog : directoryCatalog(options.root);
+  const listName = options.listName ?? 'skill_list';
+  const getName = options.getName ?? 'skill_get';
+
   const common = {
     approval: 'read' as const,
     capabilities: { readsFs: true, writesFs: false, network: false, idempotent: true },
@@ -59,16 +91,7 @@ export function createBundledSkillToolDefinitions(options: BundledSkillToolOptio
         (value): value is Record<string, never> => value !== null && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0,
         'expected an empty object', { type: 'object', properties: {}, additionalProperties: false },
       ),
-      handler: async () => {
-        const root = await realpath(configuredRoot);
-        const entries = (await readdir(root, { withFileTypes: true })).filter(entry => entry.isDirectory() && isManagedSkillId(entry.name)).sort((a, b) => a.name.localeCompare(b.name));
-        const skills: SkillSummary[] = [];
-        for (const entry of entries) {
-          const { content: _content, ...summary } = await read(entry.name);
-          skills.push(summary);
-        }
-        return { data: { skills } };
-      },
+      handler: async () => ({ data: { skills: await catalog.list() } }),
     },
     {
       ...common,
@@ -80,7 +103,12 @@ export function createBundledSkillToolDefinitions(options: BundledSkillToolOptio
         { type: 'object', properties: { id: { type: 'string', minLength: 1 } }, required: ['id'], additionalProperties: false },
       ),
       hints: { ...common.hints, cli: { positional: ['id'] } },
-      handler: async input => ({ data: await read((input as { id: string }).id) }),
+      handler: async input => {
+        const { id } = input as { id: string };
+        const skill = await catalog.read(id);
+        if (!skill) throw new ToolError('SKILL_NOT_FOUND', `Unknown bundled skill: ${id}`);
+        return { data: skill };
+      },
     },
   ];
 }

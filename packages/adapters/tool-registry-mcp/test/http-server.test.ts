@@ -44,8 +44,8 @@ import { createHttpMcpServer } from "../src/http/server.ts";
 import type { HttpMcpServer, HttpMcpServerOptions } from "../src/http/types.ts";
 
 // A REAL small ToolRegistry with two real tools whose handlers yield real results.
-function makeRegistry(): ToolRegistry {
-  const r = new ToolRegistry();
+function makeRegistry(instructions?: string): ToolRegistry {
+  const r = new ToolRegistry(instructions === undefined ? {} : { instructions });
   r.register({
     name: "echo",
     description: "echo input",
@@ -115,6 +115,31 @@ async function connect(
   clients.push(client);
   return client;
 }
+
+it.each(["legacy", "auto"] as const)("serves the same instructions and tools to %s clients", async (mode) => {
+  const instructions = "Use echo to return the original text.";
+  const { url } = await start({
+    source: makeRegistry("Original registry guidance."),
+    instructions,
+    apiKey: "caller",
+  });
+  const client = new Client(
+    { name: "protocol-test", version: "0" },
+    { versionNegotiation: { mode } }
+  );
+  clients.push(client);
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: { headers: { Authorization: "Bearer caller" } },
+  });
+  await client.connect(transport as Transport);
+  expect(client.getNegotiatedProtocolVersion()).toBe(
+    mode === "auto" ? "2026-07-28" : "2025-11-25"
+  );
+  expect(client.getInstructions()).toBe(instructions);
+  expect((await client.listTools()).tools.map(tool => tool.name)).toContain("echo");
+  expect((await client.callTool({ name: "echo", arguments: { text: "parity" } })).structuredContent)
+    .toEqual({ echoed: "parity" });
+});
 
 describe("HTTP-MCP server — real SDK client round-trip", () => {
   it("initialize + tools/list returns the real gonk tools", async () => {

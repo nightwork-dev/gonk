@@ -30,7 +30,11 @@ export function createJsonToolHandler(options: McpAdapterOptions & {
         AbortSignal.any([request.signal, shutdown.signal]));
       if (pathname === path) {
         if (request.method !== "GET") return jsonError(405, -32600, "use GET for tool discovery");
-        return Response.json({ tools: (await access.list(context)).map(describeTool) });
+        const instructions = options.instructions ?? options.source.instructions;
+        return Response.json({
+          ...(instructions === undefined ? {} : { instructions }),
+          tools: (await access.list(context)).map(describeTool),
+        });
       }
       if (request.method !== "POST") return jsonError(405, -32600, "use POST for tool invocation");
       if (request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "application/json") {

@@ -152,6 +152,27 @@ Use `merge` for coarse feature modules, `extract` for an allowlisted host
 surface, and `filter` when a deployment needs to project a policy-shaped subset.
 The handler definitions stay unchanged.
 
+## Share tool usage guidance across hosts
+
+Set `instructions` when creating the registry. Put guidance about when and how
+to use the tools in this string. Keep it short enough to show alongside discovery.
+The author provides the text for every caller, so use public guidance that
+applies to the whole tool set.
+
+```ts
+const registry = new ToolRegistry({
+  instructions: "List open tasks before changing their status.",
+});
+```
+
+MCP returns the same string during discovery. JSON HTTP includes it in the
+tool index, CLI displays it in main help, and native Pi attaches it as a
+guideline to tools from that source. A single-registry orchestrator inherits
+the string. For an orchestrator that combines registries, provide
+`instructions` on the orchestrator when the combined tool set needs guidance.
+Use [bundled skills](../packages/core/skills/README.md#packaged-application-skills)
+for detailed workflows.
+
 ## Mount MCP inside an application server
 
 If your app already owns HTTP, mount the Web handler instead of starting a

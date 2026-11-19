@@ -1,6 +1,7 @@
-import { Server } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
 import type {
   CallToolResult,
+  Server,
   ServerContext,
   Transport,
 } from "@modelcontextprotocol/server";
@@ -13,6 +14,9 @@ import {
   type ToolContext,
   type ToolRegistry,
 } from "@gonk/tool-registry";
+
+import type { McpBundledSkills } from "./bundled-skills.ts";
+export { loadMcpBundledSkills, type McpBundledSkillOptions, type McpBundledSkills } from "./bundled-skills.ts";
 
 import { createToolAccess, describeMcpTool } from "./tool-access.ts";
 
@@ -27,6 +31,10 @@ export type McpToolContext = Partial<
 export interface McpAdapterOptions {
   serverName: string;
   serverVersion: string;
+  /** Public, application-authored usage guidance shared by every caller. */
+  instructions?: string;
+  /** One application bundle, also registered as portable skill tools. */
+  bundledSkills?: McpBundledSkills;
   source: ToolRegistry | Orchestrator;
   /** Build the canonical request authorization context. Called for tools/list
    *  and tools/call. Raw credentials remain in MCP request extras.
@@ -58,11 +66,19 @@ export interface McpAdapter {
 }
 
 export function createMcpServer(options: McpAdapterOptions): McpAdapter {
-  const server = new Server(
+  const instructions = options.instructions ?? options.source.instructions;
+  const mcp = new McpServer(
     { name: options.serverName, version: options.serverVersion },
-    { capabilities: { tools: {} } }
+    {
+      capabilities: { tools: {} },
+      ...(instructions === undefined ? {} : { instructions }),
+    }
   );
+  const server = mcp.server;
   const access = createToolAccess(options, makeMcpLogger(server));
+  options.bundledSkills?.attach(mcp, (tool, input, ctx) =>
+    access.invoke(tool.hints?.mcp?.mcpName ?? tool.name, input, ctx, false, tool)
+  );
 
   server.setRequestHandler("tools/list", async (_request, ctx) => ({
     tools: (await access.list(ctx)).map(describeMcpTool),
@@ -85,9 +101,12 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
         outcome.display === undefined
           ? [{ type: "text" as const, text: stringifyValue(outcome.data) }]
           : renderDisplayToContent(outcome.display);
-      return {
+      const modern = ctx.mcpReq.envelope !== undefined;
+      const result: CallToolResult = {
         content,
-        ...(isRecord(outcome.data) ? { structuredContent: outcome.data } : {}),
+        ...(isRecord(outcome.data) || (modern && outcome.data !== undefined)
+          ? { structuredContent: outcome.data }
+          : {}),
         ...(outcome.metadata === undefined && outcome.receipt === undefined
           ? {}
           : {
@@ -99,6 +118,7 @@ export function createMcpServer(options: McpAdapterOptions): McpAdapter {
               },
             }),
       };
+      return modern ? server.projectCallToolResult(result, undefined) : result;
     }
   );
 

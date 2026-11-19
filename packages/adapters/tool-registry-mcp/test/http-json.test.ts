@@ -42,7 +42,8 @@ function invoke(base: string, name: string, input: unknown, extraHeaders = {}) {
 
 describe("opt-in JSON HTTP tools", () => {
   it("discovers and invokes the registry through JSON and keeps MCP working", async () => {
-    const registry = new ToolRegistry();
+    const instructions = "Use echo to return the original value.";
+    const registry = new ToolRegistry({ instructions });
     registry.register({
       name: "echo", description: "Echo a raw scalar", approval: "read", input: passthrough(),
       inputJsonSchema: { type: "string" }, hints: { mcp: { mcpName: "public.echo" } },
@@ -52,7 +53,10 @@ describe("opt-in JSON HTTP tools", () => {
     const base = await start(registry);
     const discovery = await fetch(`${base}/tools`, { headers });
     const body = await discovery.json();
-    expect(body).toMatchObject({ tools: [{ name: "public.echo", inputSchema: { type: "string" } }] });
+    expect(body).toMatchObject({
+      instructions,
+      tools: [{ name: "public.echo", inputSchema: { type: "string" } }],
+    });
     const response = await invoke(base, "public.echo", "hello");
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(expected);
@@ -62,10 +66,62 @@ describe("opt-in JSON HTTP tools", () => {
     await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`), {
       requestInit: { headers },
     }) as Transport);
+    expect(client.getInstructions()).toBe(instructions);
     const tools = (await client.listTools()).tools;
     expect(tools[0]?.name).toBe("public.echo");
     expect(tools[0]?.inputSchema).toMatchObject({ type: "object", properties: { value: { type: "string" } } });
     expect((await client.callTool({ name: "public.echo", arguments: { value: "hello" } })).structuredContent).toEqual({ value: "hello" });
+  });
+
+  it.each(["/mcp", "/tools/echo"])("rejects an oversized chunked upload before EOF on %s", async (path) => {
+    const defaultMaxBodyBytes = 4 * 1024 * 1024;
+    const base = await start(new ToolRegistry());
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const upload = request(`${base}${path}`, { method: "POST", headers }, response => {
+        response.resume();
+        response.once("end", () => {
+          resolve(response.statusCode);
+          upload.destroy();
+        });
+      });
+      upload.once("error", reject);
+      upload.setTimeout(2_000, () => upload.destroy(new Error("No response before upload ended")));
+      upload.write(Buffer.alloc(defaultMaxBodyBytes, 0x20));
+      upload.write("x");
+    });
+    expect(status).toBe(413);
+  });
+
+  it("accepts an exact-limit JSON body with UTF-8 split across chunks", async () => {
+    const value = "café";
+    const bytes = new TextEncoder().encode(JSON.stringify(value));
+    const split = bytes.byteLength - 2;
+    const source = new ToolRegistry();
+    source.register({
+      name: "echo", description: "Echo input", approval: "read", input: passthrough(),
+      handler: async input => ({ data: input }),
+    });
+    const handler = createWebMcpHandler({
+      serverName: "json-test", serverVersion: "0", source, jsonPath: "/tools",
+      apiKey: "test-token", allowUnrestrictedTools: true, maxBodyBytes: bytes.byteLength,
+    });
+    const init: RequestInit & { duplex: "half" } = {
+      method: "POST", headers, duplex: "half",
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(bytes.subarray(0, split));
+          controller.enqueue(bytes.subarray(split));
+          controller.close();
+        },
+      }),
+    };
+    try {
+      const response = await handler.handle(new Request("http://app.test/tools/echo", init));
+      expect(response.status).toBe(200);
+      expect(await response.json()).toMatchObject({ ok: true, data: value });
+    } finally {
+      await handler.close();
+    }
   });
 
   it("rejects credentials and policy without entering a tool handler", async () => {

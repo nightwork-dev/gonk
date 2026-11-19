@@ -1,3 +1,4 @@
+import { Client, StreamableHTTPClientTransport, type Transport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import type { AuthenticatedPrincipal } from "@gonk/auth";
@@ -269,6 +270,70 @@ describe("createWebMcpHandler", () => {
       401
     );
     await handler.close();
+  });
+
+  it("authorizes modern requests against each caller without creating a session", async () => {
+    const handler = createWebMcpHandler({
+      source: registry(),
+      serverName: "web-test",
+      serverVersion: "0",
+      enableJsonResponse: true,
+      authenticate: (request) => {
+        const token = request.headers.get("authorization")?.replace(/^Bearer /, "");
+        return token === "alice" || token === "bob" ? authInfo(principal(token), token) : null;
+      },
+      makeAuthContext: (ctx) => {
+        const caller = ctx.http!.authInfo!.extra![GONK_AUTH_INFO_PRINCIPAL] as AuthenticatedPrincipal;
+        return {
+          principal: caller,
+          authorize: () => ({
+            outcome: caller.identity.subject === "alice" ? "allow" : "deny",
+            reason: "test policy",
+          }),
+        };
+      },
+    });
+    const version = "2026-07-28";
+    const clients: Client[] = [];
+    const sessionHeaders: Array<string | null> = [];
+    async function connect(token: string): Promise<Client> {
+      const client = new Client(
+        { name: "web-auth-test", version: "1" },
+        { versionNegotiation: { mode: { pin: version } } }
+      );
+      clients.push(client);
+      const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
+        requestInit: { headers: { authorization: `Bearer ${token}` } },
+        fetch: async (url, init) => {
+          const response = await handler.handle(new Request(url, init));
+          sessionHeaders.push(response.headers.get("mcp-session-id"));
+          return response;
+        },
+      });
+      await client.connect(transport as Transport);
+      return client;
+    }
+
+    try {
+      const alice = await connect("alice");
+      const bob = await connect("bob");
+      expect(alice.getNegotiatedProtocolVersion()).toBe(version);
+      expect(await alice.listTools()).toMatchObject({
+        tools: [{ name: "echo" }], cacheScope: "private",
+      });
+      expect(await bob.listTools()).toMatchObject({ tools: [], cacheScope: "private" });
+      const args = { name: "echo", arguments: { text: "hello" } };
+      expect(await bob.callTool(args)).toMatchObject({
+        isError: true, content: [{ type: "text", text: "Unknown tool: echo" }],
+      });
+      expect(await alice.callTool(args)).toMatchObject({
+        structuredContent: { principal: { id: "principal:alice" } },
+      });
+      expect(sessionHeaders.every(header => header === null)).toBe(true);
+    } finally {
+      await Promise.all(clients.map(client => client.close()));
+      await handler.close();
+    }
   });
 
   it("pins sessions to the effective subject and delegated actor session", async () => {

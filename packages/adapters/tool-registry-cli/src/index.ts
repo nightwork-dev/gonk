@@ -240,6 +240,7 @@ function coerceArg(raw: string): unknown {
 
 function printHelp(out: { write(s: string): void }, options: CliAdapterOptions): void {
   out.write(`Usage: ${options.binaryName} <tool> [flags] [positional...]\n\n`);
+  if (options.source.instructions) out.write(`${options.source.instructions}\n\n`);
   out.write(`  ${options.binaryName} list                     List all tools\n`);
   out.write(`  ${options.binaryName} <tool> --help            Tool-specific help\n`);
   out.write(`  ${options.binaryName} <tool> --input '<json>'  Provide input as JSON\n`);

@@ -91,6 +91,9 @@ for (const tool of createBundledSkillToolDefinitions({
 
 `skill_list` returns IDs and descriptions from YAML frontmatter. `skill_get({ id })` returns the complete skill file. The configured root contains `<id>/SKILL.md`; IDs cannot select paths outside it. Bundled skill reads require no lifecycle journal or database. Applications can set `listName` and `getName` when composing several catalogs into one registry. Normal registry authorization governs both tools.
 
+
+For native MCP Skills, [load the application bundle through the MCP adapter](../../adapters/tool-registry-mcp/README.md#serve-packaged-skills). It uses the same portable tool definitions with one verified catalog.
+
 Freshness is an injected capability. Core performs no network access: without a
 probe it reports `unknown`, and a failed probe becomes `unprobeable` without
 hiding the skill.

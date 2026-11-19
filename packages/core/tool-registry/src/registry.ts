@@ -33,6 +33,8 @@ import type {
 } from "./types.ts";
 
 export interface ToolRegistryOptions {
+  /** Public application guidance for using this registry across hosts. */
+  instructions?: string;
   metrics?: MetricsSink;
   security?: ToolRegistrySecurityOptions;
 }
@@ -66,6 +68,7 @@ const DEFAULT_AUTHENTICATED_APPROVAL = Object.freeze({
 });
 
 export class ToolRegistry {
+  readonly instructions?: string;
   private readonly tools = new Map<string, ToolDefinition>();
   private sourceCatalogs = new Map<
     string,
@@ -75,6 +78,7 @@ export class ToolRegistry {
   private readonly security: ToolRegistrySecurityOptions;
 
   constructor(opts: ToolRegistryOptions = {}) {
+    if (opts.instructions !== undefined) this.instructions = opts.instructions;
     this.metrics = opts.metrics ?? noopSink;
     this.security = opts.security ?? {};
   }

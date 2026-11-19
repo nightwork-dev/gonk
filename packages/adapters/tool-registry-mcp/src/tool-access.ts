@@ -23,6 +23,10 @@ export function createToolAccess(
     return all.filter((tool) => !tool.capabilities?.duplex);
   }
 
+  function findActiveTool(name: string): ToolDefinition | undefined {
+    return activeTools().find(tool => (tool.hints?.mcp?.mcpName ?? tool.name) === name);
+  }
+
   function applyWritePolicy(tools: ToolDefinition[]): ToolDefinition[] {
     if (policy === "permissive") return tools;
     const allowed: ToolDefinition[] = [];
@@ -81,16 +85,19 @@ export function createToolAccess(
       name: string,
       input: unknown,
       extra: ServerContext,
-      projectedInput = true
+      projectedInput = true,
+      expectedTool?: ToolDefinition
     ): Promise<ToolOutcome> {
-      const tool = activeTools().find((candidate) =>
-        (candidate.hints?.mcp?.mcpName ?? candidate.name) === name
-      );
-      if (!tool || applyWritePolicy([tool]).length === 0) {
+      const tool = findActiveTool(name);
+      if (!tool || (expectedTool && tool !== expectedTool) ||
+          applyWritePolicy([tool]).length === 0) {
         return { ok: false, code: "TOOL_NOT_FOUND", message: `Unknown tool: ${name}` };
       }
       const invocationContext = await requestContext(extra);
       const auth = await requestAuth(extra);
+      if (expectedTool && findActiveTool(name) !== expectedTool) {
+        return { ok: false, code: "TOOL_NOT_FOUND", message: `Unknown tool: ${name}` };
+      }
       const context = {
         ...makeBaseContext({ signal: extra.mcpReq.signal, log: logger, auth }),
         ...(options.scope ? { scope: options.scope } : {}),

@@ -40,6 +40,8 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
 
   const scope: Scope = opts.scope;
   const registries = opts.registries;
+  const instructions = opts.instructions
+    ?? (registries.length === 1 ? registries[0]?.instructions : undefined);
   const searchRanker = opts.search ?? bm25Search;
   const recommender = opts.recommend ?? defaultRecommend;
 
@@ -91,6 +93,7 @@ export function createOrchestrator(opts: OrchestratorOptions): Orchestrator {
   }
 
   const orchestrator: Orchestrator = {
+    ...(instructions === undefined ? {} : { instructions }),
     allTools: allToolsList,
 
     activeSet() {

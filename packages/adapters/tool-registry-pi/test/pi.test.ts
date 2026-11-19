@@ -54,8 +54,9 @@ class FakePi implements PiExtensionAPI {
 }
 
 describe("registerGonkTools", () => {
-  it("registers each tool from a registry as a Pi tool", () => {
-    const r = ownerRegistry();
+  it("registers each tool from a registry with the shared Pi prompt guidance", () => {
+    const instructions = "Use echo to return the original text.";
+    const r = ownerRegistry({ instructions });
     r.register([
       {
         name: "echo",
@@ -77,14 +78,18 @@ describe("registerGonkTools", () => {
     expect(result.registered).toEqual(["echo", "compute"]);
     expect(pi.registered).toHaveLength(2);
     expect(pi.registered[0]?.name).toBe("echo");
+    expect(pi.registered.map(tool => tool.promptGuidelines)).toEqual([
+      [instructions], [instructions],
+    ]);
     expect(pi.registered[0]?.parameters).toMatchObject({
       type: "object",
       properties: { text: { type: "string" } },
     });
   });
 
-  it("uses the orchestrator's activeSet when given an Orchestrator", async () => {
-    const r = ownerRegistry();
+  it("uses the orchestrator's activeSet and inherited instructions", async () => {
+    const instructions = "Use the active tools for their advertised purpose.";
+    const r = ownerRegistry({ instructions });
     r.register([
       { name: "always", description: "a", visibility: "always", input: passthrough(), handler: async () => ({ data: 1 }) },
       { name: "ondemand", description: "o", visibility: "on-demand", input: passthrough(), handler: async () => ({ data: 2 }) },
@@ -93,6 +98,7 @@ describe("registerGonkTools", () => {
     const pi = new FakePi();
     registerGonkTools({ auth: OWNER_AUTH, pi, source: orch });
     expect(pi.registered.map((s) => s.name)).toEqual(["always"]);
+    expect(pi.registered[0]?.promptGuidelines).toEqual([instructions]);
 
     orch.pin("ondemand");
     await orch.commitPins();

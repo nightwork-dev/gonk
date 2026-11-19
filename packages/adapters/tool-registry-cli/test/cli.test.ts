@@ -87,6 +87,17 @@ const echoTool: ToolDefinition<{ text: string }, { echoed: string }> = {
 };
 
 describe("createCli", () => {
+  it("shows the registry instructions in command help", async () => {
+    const instructions = "Use echo to return the original text.";
+    const stdout = new CapturingStream();
+    const cli = createCli({
+      binaryName: "test-bin", source: ownerRegistry({ instructions }), auth: OWNER_AUTH,
+    });
+
+    expect(await cli.run(["--help"], { stdout })).toBe(0);
+    expect(stdout.text()).toContain(instructions);
+  });
+
   it("prints version", async () => {
     const { cli, stdout } = setup([echoTool]);
     const code = await cli.run(["--version"], { stdout });

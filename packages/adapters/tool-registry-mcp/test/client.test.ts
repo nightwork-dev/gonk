@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { ownerPrincipal, type AuthContext, type AuthenticatedPrincipal } from "@gonk/auth";
 import type { Tool as McpTool } from "@modelcontextprotocol/client";
 import {
@@ -15,6 +18,7 @@ import {
   type McpImporterConnection,
   type McpImporterConnectionFactoryOptions,
 } from "../src/client.ts";
+import { createDevMcpRouter, writeDevMcpConfig } from "../src/dev/index.ts";
 import { createHttpMcpServer } from "../src/http/server.ts";
 import type { HttpMcpServer } from "../src/http/types.ts";
 
@@ -428,7 +432,10 @@ describe("inbound MCP importer", () => {
     expect(inbound.connected).toBe(false);
   });
 
-  it("imports and invokes through a separately running authenticated Streamable HTTP server", async () => {
+  it.each([
+    { version: "2026-07-28", useSwitchboard: false },
+    { version: "2025-11-25", useSwitchboard: true },
+  ])("imports and invokes over an authenticated $version connection", async ({ version, useSwitchboard }) => {
     const upstreamRegistry = ownerRegistry();
     upstreamRegistry.register({
       name: "echo",
@@ -454,24 +461,56 @@ describe("inbound MCP importer", () => {
     await server.start();
     servers.push(server);
 
-    const localRegistry = ownerRegistry();
-    const inbound = createMcpToolImporter({
-      registry: localRegistry,
-      serverId: "live-upstream",
-      endpoint: `http://127.0.0.1:${server.port}/mcp`,
-      allowInsecureLoopback: true,
-      allowedOrigins: [`http://127.0.0.1:${server.port}`],
-      selection: { allow: ["echo"] },
-      authorization: { requiredRole: "operator" },
-      resolveHeaders: () => ({ Authorization: "Bearer test-secret" }),
-    });
-    await inbound.connect();
+    if (useSwitchboard) {
+      const directory = await mkdtemp(join(tmpdir(), "gonk-mcp-importer-"));
+      const configPath = join(directory, "targets.json");
+      try {
+        await writeDevMcpConfig({
+          version: 1,
+          active: "upstream",
+          environments: [{
+            id: "upstream", repo: directory, branch: "main",
+            endpoint: `http://127.0.0.1:${server.port}/mcp`,
+            headers: { Authorization: "Bearer test-secret" },
+          }],
+        }, configPath);
+        const router = createDevMcpRouter({ configPath, port: 0, apiKey: "test-secret" });
+        await router.start();
+        servers.unshift(router);
+        await exerciseImporter(router.port);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    } else {
+      await exerciseImporter(server.port);
+    }
 
-    expect(await invoke(localRegistry, "live-upstream.echo", { text: "round-trip" })).toMatchObject({
-      ok: true,
-      data: { structuredContent: { echoed: "round-trip" } },
-    });
-    await inbound.close();
+    async function exerciseImporter(port: number) {
+      const localRegistry = ownerRegistry();
+      const origin = `http://127.0.0.1:${port}`;
+      const inbound = createMcpToolImporter({
+        registry: localRegistry,
+        serverId: "live-upstream",
+        endpoint: `${origin}/mcp`,
+        allowInsecureLoopback: true,
+        allowedOrigins: [origin],
+        selection: { allow: ["echo"] },
+        authorization: { requiredRole: "operator" },
+        resolveHeaders: () => ({ Authorization: "Bearer test-secret" }),
+      });
+      try {
+        await inbound.connect();
+        expect(localRegistry.get("live-upstream.echo")).toMatchObject({
+          provenance: { protocolVersion: version },
+        });
+        expect(await invoke(localRegistry, "live-upstream.echo", { text: "round-trip" })).toMatchObject({
+          ok: true,
+          data: { structuredContent: { echoed: "round-trip" } },
+        });
+      } finally {
+        await inbound.close();
+      }
+    }
   });
 
   it("rejects unsafe endpoints before resolving credentials or connecting", async () => {

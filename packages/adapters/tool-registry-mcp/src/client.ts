@@ -96,7 +96,7 @@ export interface McpToolImporter {
 
 interface RemoteCallResult {
   content: unknown[];
-  structuredContent?: Record<string, unknown>;
+  structuredContent?: unknown;
   isError?: boolean;
   [key: string]: unknown;
 }
@@ -234,6 +234,7 @@ async function createSdkConnection(
     { name: "gonk-mcp-importer", version: "0.4.0" },
     {
       capabilities: {},
+      versionNegotiation: { mode: "auto" },
       listChanged: {
         tools: {
           autoRefresh: false,
@@ -253,7 +254,7 @@ async function createSdkConnection(
   });
   await client.connect(transport as Transport);
   return Object.assign(client, {
-    getProtocolVersion: () => transport.protocolVersion,
+    getProtocolVersion: () => client.getNegotiatedProtocolVersion(),
   }) as McpImporterConnection;
 }
 

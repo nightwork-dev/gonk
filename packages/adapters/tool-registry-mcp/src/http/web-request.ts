@@ -26,10 +26,30 @@ export async function boundedJson(
   const contentLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(contentLength) && contentLength > maxBytes)
     throw new BodyTooLargeError();
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > maxBytes) throw new BodyTooLargeError();
-  const text = new TextDecoder().decode(bytes);
-  return text ? JSON.parse(text) : undefined;
+  if (!request.body) return undefined;
+
+  const reader = request.body.getReader();
+  const decoder = new TextDecoder();
+  let bytesRead = 0;
+  let text = "";
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytesRead += value.byteLength;
+      if (bytesRead > maxBytes) {
+        // A mounted framework may supply one branch of a tee. Its cancellation
+        // can stay pending until the other branch finishes.
+        void reader.cancel().catch(() => {});
+        throw new BodyTooLargeError();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text ? JSON.parse(text) : undefined;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function jsonError(
