@@ -20,6 +20,11 @@ serveMcpStdio({
 
 ```
 
+`serveMcpStdio` and `createMcpServer` default `writeToolPolicy` to `"warn"`: a
+write tool is served and a warning is logged. `createHttpMcpServer` and
+`createWebMcpHandler` default to `"require-allowlist"`: a write tool is refused
+unless it is in `allowlist`. Set the policy yourself if one process serves both.
+
 `serveMcpStdio`, `createHttpMcpServer`, and `createWebMcpHandler` serve the
 stateless `2026-07-28` revision and the earlier `initialize` handshake on the
 same entry point. Legacy HTTP sessions stay bound to the caller's security
