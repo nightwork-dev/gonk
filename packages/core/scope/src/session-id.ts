@@ -75,7 +75,7 @@ export interface SessionMemoryDbPathOptions {
    *      which use `env.homeRoot ?? homedir()`.
    *   2. `os.homedir()` — the Node.js canonical user home, independent of the
    *      HOME env var. This is deliberately preferred over falling back to
-   *      `process.cwd()` (as pi-memory previously did), because
+   *      `process.cwd()`, because
    *      `<cwd>/.gonk/sessions/...` and `~/.gonk/sessions/...` are different
    *      trees and the latter is what the rest of the system (FsScopeStore,
    *      resolveTierHomes, SqliteSessionLayer) always uses.

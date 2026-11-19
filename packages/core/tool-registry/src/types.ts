@@ -82,12 +82,12 @@ export interface ToolContext {
    *  Canonical registry dispatch rechecks this context for root and composed
    *  invocations. Raw credentials never belong here.
    *
-   *  REQUIRED (GR-83): core refuses to invoke without one — there is no
+   *  REQUIRED: core refuses to invoke without one — there is no
    *  "assume owner" fallback inside gonk. A single-principal host binds once
    *  at startup (`registry.withPrincipal(ownerPrincipal(env))`,
    *  `@gonk/tool-registry` / `@gonk/auth`) and every downstream call flows
    *  through the bound invoker with zero per-call configuration. A host that
-   *  wants per-turn principals (reach ingress, a multi-tenant transport)
+   *  wants per-turn principals (a multi-tenant transport)
    *  rebinds per verified sender instead. A host that forgets to bind fails
    *  loudly (`AUTH_REQUIRED`) — it never silently acts as owner. */
   auth: AuthContext;
@@ -411,7 +411,7 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *
    *    - "instant": <100ms typical; in-memory or local sqlite.
    *    - "seconds": single network round-trip or sub-second LLM call.
-   *    - "minutes": long-running (RLM, multi-step pipelines, batch jobs). */
+   *    - "minutes": long-running (agent loops, multi-step pipelines, batch jobs). */
   latency?: ToolLatencyClass;
 
   hints?: ToolHints;
@@ -423,7 +423,7 @@ export interface ToolDefinition<I = unknown, O = unknown> {
    *  escalate a specific arg pattern — e.g. bash forcing `rm -rf /` to exec
    *  with `override: true`).
    *
-   *  Registry dispatch and approval gates such as `@gonk/pi-guard` treat NO
+   *  Registry dispatch and host approval gates treat NO
    *  or malformed declaration as the most-restrictive tier (`exec`) so
    *  unknown / MCP / custom tools fail safe. */
   approval?: ToolApproval;

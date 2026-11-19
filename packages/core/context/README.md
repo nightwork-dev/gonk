@@ -1,35 +1,34 @@
 # @gonk/context
 
-Authorized, deterministic context compilation for Gonk hosts.
+Build the context you send to a model from many sources, with authorization
+and a token budget. Sources register as contributors. For each request, the
+compiler asks every contributor what it could add, checks which items the
+caller may see and use, removes duplicates, fits the result into the budget,
+and returns the compiled text with a receipt of what it included and why.
 
-`@gonk/context` accepts a compile request, asks registered in-process
-contributors for serializable candidate descriptors, authorizes discovery
-before resolving hidden content, authorizes use against the authoritative
-resolved resource, deduplicates and budgets deterministically, and returns a
-compiled artifact plus a content-free domain receipt.
-
-Phase 0 is a pure library. It does not install host hooks, mutate prompts,
-search retrieval stores, manage skills, or implement a template language.
+The result is deterministic: the same inputs always give the same output, in
+the same order. Authorization uses an `AuthContext` from
+[`@gonk/auth`](https://www.npmjs.com/package/@gonk/auth).
+[`@gonk/skills`](https://www.npmjs.com/package/@gonk/skills) provides a
+contributor for activated skills.
 
 ## Install
 
 ```sh
-npm i @gonk/context @gonk/auth
+npm install @gonk/context @gonk/auth
 ```
 
-## Example
+## Quick start
 
 ```ts
-import type { AuthContext } from "@gonk/auth";
-import {
-  ContextCompiler,
-  ContextContributorRegistry,
-} from "@gonk/context";
+import { ownerPrincipal } from "@gonk/auth";
+import { ContextCompiler, ContextContributorRegistry } from "@gonk/context";
 
 const registry = new ContextContributorRegistry();
 
 registry.register({
   id: "project-notes",
+  // Step 1: describe what you could add, without the content.
   discover: () => [{
     candidateId: "architecture",
     contributorId: "project-notes",
@@ -40,6 +39,7 @@ registry.register({
     estimatedTokens: 80,
     estimateQuality: "fallback",
   }],
+  // Step 2: load the content of a candidate that passed discovery.
   resolve: ({ candidate }) => ({
     candidateId: candidate.candidateId,
     contributorId: candidate.contributorId,
@@ -48,7 +48,7 @@ registry.register({
     necessity: candidate.necessity,
     priority: candidate.priority,
     audience: "model",
-    content: "Use the shared authorization substrate.",
+    content: "Services talk to each other only through the message queue.",
     resource: {
       kind: "application:project-note",
       target: candidate.resourceKey,
@@ -57,109 +57,74 @@ registry.register({
   }),
 });
 
-const auth: AuthContext = {
-  principal,
-  authorize: ({ action, resource }) => policy.decide(action, resource),
-};
-
 const compiler = new ContextCompiler({ registry });
 const result = await compiler.compile({
   requestId: "turn-42",
-  auth,
+  auth: ownerPrincipal(process.env), // a real host builds this from its own login and policy
   audience: "model",
-  model: "provider/model-id",
   maxTokens: 500,
 });
 
 if (result.status === "blocked") {
-  // Never send a partial artifact from a blocked compile.
+  // A blocked compile has no sendable content. Never send a partial result.
   throw new Error("Required context could not be included");
 }
 
-sendToModel(result.content);
+console.log(result.content);
+// → "Services talk to each other only through the message queue."
 ```
 
-## Security boundary
+## How a compile works
 
-Compilation captures the request's canonical `AuthContext`, then uses it at
-two authorization gates:
+1. The compiler captures and freezes the request and its `AuthContext` before
+   it calls any contributor.
+2. Each contributor returns candidate descriptions. For each candidate, the
+   compiler checks for an explicit exclusion and authorizes `context.discover`.
+   A denied candidate is never resolved.
+3. The compiler resolves each allowed candidate, validates the result as
+   untrusted input, and authorizes `context.use` against the resolved
+   resource.
+4. It removes duplicates by `resourceKey`, orders the candidates, and selects
+   them within `maxTokens`.
 
-1. The request and authenticated principal are captured and frozen before the
-   first asynchronous contributor or policy call; `authorize` is bound once.
-2. Each untrusted descriptor's minimal redacted resource envelope is checked
-   for explicit exclusion, then `context.discover` runs before full descriptor
-   validation or cross-candidate duplicate detection. Denied candidates are
-   never resolved and cannot perturb visible validation or duplicate results.
-3. The contributor's resolved value is validated as untrusted input, then
-   `context.use` runs against its authoritative `AuthzResource` before content
-   reaches token accounting or the compiled artifact.
+Candidates are ordered pinned first, then required, then optional. Inside each
+group, higher `priority` comes first, then contributor and candidate IDs in
+lexical order. Registration order does not change the result.
 
-Optional discovery denials are absent from caller-visible receipts, so adding a
-hidden corpus cannot change visible ordering, budget allocation, counts, or
-receipt bytes. An explicitly excluded, denied, or failed required candidate—and
-any denied or failed pinned candidate—returns `blocked` with no sendable
-artifact.
+If a required or pinned candidate is excluded, denied or fails, the result is
+`blocked` and carries no content. Optional candidates that the caller may not
+discover do not appear in the receipt, so a hidden source cannot change what
+the caller sees, including counts and order.
 
-## Determinism
+## Token counting
 
-Contributor selection, candidate validation, authorization, canonical-resource
-deduplication, ordering, and budget selection use stable lexical and numeric
-tie-breaks. Registration order and contributor result order do not affect the
-result.
-
-Canonical `resourceKey` identity, not candidate ID or content equality, drives
-deduplication. Selection order is pinned, required, then optional; within those
-groups, higher priority wins before lexical contributor and candidate IDs.
-
-## Token accounting
-
-Inject a `ContextTokenCounter` for provider/model-aware or exact accounting.
-The optional opaque `model` from the compile request is forwarded only to that
-counter. The built-in fallback estimates `ceil(content.length / 4)` and marks
-its quality as `fallback`.
-
-The compiler counts both content and the rendered segment, including the
-canonical two-newline separator. It separately recounts the full combined
-artifact for the authoritative budget total.
-
-## Runtime schemas
-
-Every public request/result boundary exports a Standard Schema validator:
-
-- `contextCompileRequestSchema`
-- `contextCandidateSchema`
-- `resolvedContextCandidateSchema`
-- `contextDiscoveryRequestSchema`
-- `contextResolutionRequestSchema`
-- `contextTokenCountSchema`
-- `compiledContextBlockSchema`
-- `contextCompilationReceiptSchema`
-- `contextCompileResultSchema`
-
-Protocol discriminants are closed. Boundary validators reject unknown top-level
-fields, including free-form filter or policy bags. Result validation also
-checks the canonical content join, exact block-to-receipt selection projection,
-token total and budget agreement, and exact ready/blocked blocker invariants.
+Pass a `ContextTokenCounter` to count tokens exactly for your model. The
+optional `model` in the compile request goes only to that counter. Without a
+counter, the compiler estimates `ceil(content.length / 4)` tokens and marks the
+count as `fallback`. The budget includes the two newlines that separate
+blocks.
 
 ## Receipts
 
-`ContextCompilationReceipt` is a context-domain receipt, not a generic receipt
-or an extension of `SecurityReceiptBase`. It records request/config/compiler
-identity, selected resource keys and authoritative revisions, token counts and
-quality, structured drops, blockers, and outcome. It contains no candidate
-content, authorization metadata, or security-context keys. Authorization audit
-remains the auth substrate's separate responsibility.
+Every result has a `ContextCompilationReceipt`. It records the request and
+compiler versions, the selected resource keys and revisions, token counts,
+what was dropped and why, any blockers, and the outcome. It contains no
+content and no authorization details.
 
-## Deferred beyond Phase 0
+## Runtime schemas
 
-- template/Jinja rendering;
-- remote contributor registration;
-- tool, MCP, or HTTP projection;
-- prompt mutation and host lifecycle hooks;
-- persona/knowledge parity migration;
-- retrieval and skill contributor adapters;
-- generic registry or receipt packages.
+Every request and result type has a [Standard Schema](https://standardschema.dev)
+validator, for example `contextCompileRequestSchema`,
+`contextCandidateSchema`, `resolvedContextCandidateSchema` and
+`contextCompileResultSchema`. The validators reject unknown fields.
+
+## Entry points
+
+| Import | Contents |
+| --- | --- |
+| `@gonk/context` | `ContextCompiler`, `ContextContributorRegistry`, schemas and types. |
+| `@gonk/context/contracts` | Receipt types only, safe for browser code. |
 
 ## License
 
-Apache-2.0.
+Apache-2.0

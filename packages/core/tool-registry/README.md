@@ -1,301 +1,249 @@
 # @gonk/tool-registry
 
-Core tool definition shape, registry, and dispatch path. Harness-agnostic — the same `ToolDefinition` runs through CLI / MCP / Pi adapters without modification.
+Define an agent tool once and run it in any host. A tool is a typed handler
+with a validated input schema and a declared approval tier. The registry
+validates input, checks authorization and approval, and dispatches the call.
 
-## Short path
+The same registry is served by the host adapters:
+[`@gonk/tool-registry-mcp`](https://www.npmjs.com/package/@gonk/tool-registry-mcp)
+for MCP (stdio and HTTP),
+[`@gonk/tool-registry-cli`](https://www.npmjs.com/package/@gonk/tool-registry-cli)
+for a command line, and
+[`@gonk/tool-registry-pi`](https://www.npmjs.com/package/@gonk/tool-registry-pi)
+for Pi agents. Identity and policy types come from
+[`@gonk/auth`](https://www.npmjs.com/package/@gonk/auth).
 
-Use one Standard Schema value for runtime validation and attach the JSON Schema
-projection adapters advertise from that same value.
+## Install
 
-```ts
-import { ToolRegistry, shape } from "@gonk/tool-registry";
-
-const searchNotesInput = shape<{ query: string; limit?: number }>(
-  (value): value is { query: string; limit?: number } =>
-    Boolean(value) &&
-    typeof value === "object" &&
-    typeof (value as { query?: unknown }).query === "string",
-  "expected { query: string; limit?: number }",
-  {
-    type: "object",
-    properties: {
-      query: { type: "string", minLength: 1 },
-      limit: { type: "number", minimum: 1, maximum: 20 },
-    },
-    required: ["query"],
-    additionalProperties: false,
-  }
-);
-
-const registry = new ToolRegistry();
-registry.register({
-  name: "notes.search",
-  description: "Search notes visible to the authenticated principal.",
-  input: searchNotesInput,
-  approval: "read",
-  capabilities: { readsFs: true, idempotent: true },
-  hints: { mcp: { annotations: { readOnly: true, idempotent: true } } },
-  handler: async (input, ctx) => {
-    const workspaceId = ctx.auth?.principal.workspaceId;
-    return { data: await searchNotes(workspaceId, input.query, input.limit) };
-  },
-});
+```sh
+npm install @gonk/tool-registry @gonk/auth
 ```
 
-Use `withJsonSchema(schema, jsonSchema)` when your schema library already
-implements Standard Schema (Zod, Valibot, ArkType). Use
-`shape(check, message, jsonSchema)` only when a small hand-written guard is
-enough. Avoid maintaining `input` and `inputJsonSchema` as parallel sources
-unless you are intentionally overriding an adapter surface.
+## Quick start
 
-See [../../../docs/tool-authoring.md](../../../docs/tool-authoring.md) for registry
-composition, authenticated writes, and embedded MCP routes.
+```ts
+import { ownerPrincipal } from "@gonk/auth";
+import {
+  ToolRegistry,
+  collectToolOutcome,
+  makeBaseContext,
+  shape,
+} from "@gonk/tool-registry";
 
-## ToolDefinition
+const registry = new ToolRegistry();
+
+registry.register({
+  name: "greet",
+  description: "Say hello to someone.",
+  input: shape<{ name: string }>(
+    (value): value is { name: string } =>
+      typeof value === "object" && value !== null &&
+      typeof (value as { name?: unknown }).name === "string",
+    "expected { name: string }",
+    {
+      type: "object",
+      properties: { name: { type: "string", minLength: 1 } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  ),
+  approval: "read",
+  handler: async ({ name }) => ({ data: { message: `Hello, ${name}!` } }),
+});
+
+// A single-user host binds one local owner identity.
+const auth = ownerPrincipal(process.env);
+
+const outcome = await collectToolOutcome(
+  registry.invoke("greet", { name: "Ada" }, makeBaseContext({ auth })),
+);
+// → { ok: true, data: { message: "Hello, Ada!" } }
+
+await collectToolOutcome(
+  registry.invoke("greet", { nom: "Ada" }, makeBaseContext({ auth })),
+);
+// → { ok: false, code: "INVALID_INPUT", ... }
+```
+
+To serve this registry to an MCP client, pass it to `serveMcpStdio` from
+`@gonk/tool-registry-mcp/stdio`.
+
+## Defining a tool
 
 ```ts
 interface ToolDefinition<I, O> {
   name: string;
   description: string;
-  category?: string;
-  visibility?: "always" | "on-demand";
   input: StandardSchemaV1<unknown, I>;
   output?: StandardSchemaV1<unknown, O>;
-  inputJsonSchema?: Record<string, unknown>;     // adapter override; prefer an annotated input schema
-  validateOutput?: "off" | "lax" | "strict";
+  approval?: "read" | "write" | "exec" | { tier, override?, reason? } | ((input) => ...);
   handler: (input: I, ctx: ToolContext) => Promise<ToolResult<O>> | AsyncIterable<ToolEvent<O>>;
+  visibility?: "always" | "on-demand";
+  category?: string;
+  tags?: string[];
+  keywords?: string[];
   capabilities?: { readsFs?, writesFs?, network?, longRunning?, idempotent?, duplex? };
-  tags?, keywords?, relatedTo?;
-  relatedCapabilities?: readonly string[];
-  lifecycle?: ToolLifecycle;
-  composition?: ToolComposition;
-  hints?: { cli, mcp, pi };
+  hints?: { cli?, mcp?, pi? };
+  requires?: () => boolean;
+  // and more: inputJsonSchema, validateOutput, lifecycle, composition, cost, latency
 }
 ```
 
-## ToolContext
+- **Input schema.** `input` is any [Standard Schema](https://standardschema.dev)
+  value, so Zod, Valibot and ArkType schemas work directly. Adapters advertise a
+  JSON Schema to clients. Attach it to the same value with
+  `withJsonSchema(schema, jsonSchema)`, or use `shape(check, message,
+  jsonSchema)` for a small hand-written check. Without one, adapters advertise
+  an open object.
+- **Approval tier.** `read`, `write` or `exec` says how dangerous the tool is.
+  A missing or malformed declaration counts as `exec`, the most restrictive
+  tier. A function can pick the tier from the call's input.
+- **Visibility.** `always` tools are shown to the model at all times.
+  `on-demand` tools are found and loaded through
+  [`@gonk/tool-orchestrator`](https://www.npmjs.com/package/@gonk/tool-orchestrator).
+- **Host hints.** `hints.mcp`, `hints.cli` and `hints.pi` adjust names,
+  annotations and visibility for one host only.
+- **Conditional registration.** If `requires()` returns `false`,
+  `register()` skips the tool. Use it to gate a tool on configuration, for
+  example `requires: () => Boolean(process.env.SEARCH_API_KEY)`.
 
-What the handler gets:
+`register()` accepts one definition or an array.
 
-- `signal: AbortSignal` — cancellation, wired by the adapter
-- `log: Logger` — structured logger; tools should never write stdout/stderr directly
-- `cwd: string`, `env: Readonly<...>`
-- `scope?: ScopeStore` — five-tier scope (from `@gonk/scope`), bound by adapters that support it
-- `auth?: AuthContext` — trusted effective subject/delegation and the policy
-  callback enforced for discovery, root invocation, and every composed child
-- `invoke(name, input)` — cross-tool composition, cycle-detected, runs through the same dispatch path
-- `callStack: readonly string[]` — names of tools currently on the call stack
-- `input?: AsyncIterable<InputChunk>` — bidirectional stream for duplex tools (audio, interactive sessions)
+## The handler context
 
-## Streaming + non-streaming
+Every handler receives a `ToolContext`:
 
-A handler can return either `Promise<ToolResult>` (simple case) or `AsyncIterable<ToolEvent>` (streaming). Adapters consume the registry's invoke stream uniformly:
+| Field | What it is |
+| --- | --- |
+| `signal` | An `AbortSignal` that the adapter fires on cancellation. |
+| `log` | A structured logger. Tools log here, not to stdout or stderr. |
+| `cwd`, `env` | The working directory and environment of the call. |
+| `auth` | The caller's identity and authorization policy (`AuthContext`). |
+| `invoke(name, input)` | Calls another tool through the same checked dispatch path. |
+| `callStack` | The names of the tools on the current call stack. |
+| `scope` | Optional five-tier settings store from [`@gonk/scope`](https://www.npmjs.com/package/@gonk/scope). |
+| `input` | Optional input stream for duplex tools, such as audio. |
+
+`makeBaseContext({ auth, ...overrides })` fills in defaults for the rest.
+
+## Results and streaming
+
+A handler returns `{ data, display?, metadata? }`, or yields a stream of
+events:
 
 ```ts
 type ToolEvent =
-  | { type: "log"; level: ...; message: string; meta?: unknown }
-  | { type: "progress"; percent?, message? }
-  | { type: "data"; chunk: unknown }
-  | { type: "result"; data: T; display?: Display; metadata?: ToolResultMetadata }
-  | { type: "error"; code: string; message: string; details? };
+  | { type: "log"; level; message; meta? }
+  | { type: "progress"; percent?; message? }
+  | { type: "data"; chunk }
+  | { type: "result"; data; display?; metadata? }
+  | { type: "error"; code; message; details? };
 ```
 
-Terminal results may carry a host-neutral `metadata` envelope. It keeps
-provenance (`sourceKind`, `sourceId`, revision/version, evidence anchors),
-freshness (`state`, observation/check times, expiry), cache policy, size
-(`original`/`returned`), and truncation state together. Truncation records the
-limit and reason and must include either a bound continuation cursor or an
-artifact reference when data was omitted; adapters must not clip data silently.
-`projectToolResultReceipt(metadata)` produces a redaction-safe projection for
-receipts by omitting payloads, cache keys/validators, cursors, and authorization
-bindings.
+`registry.invoke()` always returns this event stream. `collectToolOutcome()`
+reduces it to `{ ok: true, data, ... }` or `{ ok: false, code, message, ... }`.
+`display` holds blocks that hosts render natively: text, markdown, code, JSON,
+images and links.
 
-Definitions can also declare lifecycle and composition metadata:
+## Authorization and approval
+
+Every call carries an `AuthContext`. There is no anonymous fallback: the
+registry refuses to run a tool without one. A single-user host, such as a local
+CLI or a personal MCP server, uses `ownerPrincipal(process.env)` from
+`@gonk/auth`. A host with several callers builds one `AuthContext` per verified
+caller.
+
+To avoid passing `auth` on every call, bind it once:
 
 ```ts
-{
-  lifecycle: {
-    status: "superseded",
-    reason: "The paged operation replaces this unbounded read.",
-    replacement: "notes.search-page",
-  },
-  composition: {
-    consumes: [{ id: "query", schema: "notes-query", version: "1" }],
-    produces: [{ id: "notes-page", mediaType: "application/json" }],
-  },
-}
+const bound = registry.withPrincipal(ownerPrincipal(process.env));
 ```
 
-Lifecycle state is surfaced in discovery and host descriptions. It is
-descriptive: deprecated tools remain callable, superseded tools are never
-silently redirected, and `ctx.invoke()` remains the one governed composition
-path.
+For each call, the registry does these steps in order:
 
-## Entry points
+1. It authorizes `tool.discover`, so a hidden tool and a missing tool give the
+   same result.
+2. It validates the input.
+3. It resolves the application resource that the tool declares, if any.
+4. It authorizes `tool.invoke`.
+5. It asks the configured `ApprovalProvider` about `write` and `exec` tools.
+6. It writes redacted authorization and approval receipts to the audit sink.
+7. It runs the handler only if every step allowed the call.
 
-```ts
-import { ToolRegistry } from "@gonk/tool-registry";
-import type { ToolDefinition } from "@gonk/tool-registry/types";   // types only
-import { ToolRegistry } from "@gonk/tool-registry/registry";
-import { ToolError } from "@gonk/tool-registry/errors";
-import { inMemorySink, consoleSink } from "@gonk/tool-registry/metrics";
-import { resolveApproval } from "@gonk/tool-registry/approval";
-import { withJsonSchema } from "@gonk/tool-registry/json-schema";
-import { dispatchDetachedWithWait } from "@gonk/tool-registry/async-dispatch";
-import { collectToolOutcome } from "@gonk/tool-registry/outcome";
-import type {
-  ToolResourceResolver,
-  ApprovalProvider,
-} from "@gonk/tool-registry/security";
-```
-
-## Authenticated dispatch
-
-Authentication stays outside the registry. A host or adapter validates its
-credential, builds an `AuthenticatedPrincipal` and `AuthContext`, then supplies
-that context to `makeBaseContext({ auth })`.
-
-When `ctx.auth` is present, dispatch:
-
-1. authorizes `tool.discover` before input validation, so hidden and missing
-   root tools have the same result;
-2. validates input;
-3. resolves any declared authoritative application resource through the
-   registry's `ToolResourceResolver`;
-4. authorizes `tool.invoke`;
-5. normalizes missing or malformed approval declarations to `exec`, then
-   resolves write/exec approval through the configured `ApprovalProvider`;
-6. emits separate redacted authorization and approval receipts;
-7. invokes the handler only after every required gate allows.
-
-Composed `ctx.invoke()` calls retain the original principal, request id, and
-call stack and are independently re-authorized. A required approval is a
-completed non-executing `APPROVAL_REQUIRED` error event with structured,
-redacted details; the registry never suspends a transport request while a human
-decides.
+Tools called through `ctx.invoke()` keep the original caller and are checked
+again. A call that needs approval ends with an `APPROVAL_REQUIRED` error that
+carries structured details. The registry never holds a request open while a
+person decides.
 
 ```ts
-import {
-  ToolRegistry,
-  makeBaseContext,
-} from "@gonk/tool-registry";
-
 const registry = new ToolRegistry({
   security: {
-    resourceResolver,
-    approvalProvider,
-    auditSink,
+    approvalProvider,      // decides write and exec calls
+    resourceResolver,      // resolves resources that tools declare
+    auditSink,             // receives redacted receipts
     mandatoryAudit: true,
   },
 });
-
-for await (const event of registry.invoke(
-  "review.annotate",
-  input,
-  makeBaseContext({ auth }),
-)) {
-  // ...
-}
 ```
 
-Trusted internal callers may deliberately omit `ctx.auth`; that legacy path
-remains distinguishable from an authenticated human and emits no human
-security receipts.
+With no `approvalProvider`, `write` and `exec` tools fail with
+`APPROVAL_DENIED`. A host that asks for consent in its own way sets
+`security.approvalMode: "bypass"`.
 
-Authenticated write and exec tools fail closed with `APPROVAL_DENIED` when no
-provider is configured. A trusted host that intentionally enforces consent
-outside Gonk may set `security.approvalMode: "bypass"`; the default is
-`"enforce"`. Read-tier tools need no provider unless one is installed and wants
-to make an explicit read decision.
+## Other ways to call a registry
 
-## Conditional registration
+- **Typed client.** `createClient(tools, transport)` builds a client whose
+  methods take their input and output types from the tool definitions, with no
+  code generation. Keep the tools in a `const` tuple with `defineTools()`. A
+  tool named `notes.search` becomes `client.notesSearch(input)`.
+- **WebSocket.** `makeWsHandler()` serves request and reply over a WebSocket
+  emitter that you provide, and can broadcast the results of writes. The host
+  supplies `authorize(tool, caller, input)` and builds the `ToolContext` for
+  each caller.
 
-`ToolDefinition` accepts an optional `requires?: () => boolean` predicate:
+## Result metadata, lifecycle and composition
 
-```ts
-r.register({
-  name: "speak",
-  requires: () => Boolean(scope.get("voice.tts.providers")),
-  // ...
-});
-```
+A result can carry a `metadata` envelope: where the data came from, how fresh
+it is, its cache policy, and whether it was truncated. A truncated result must
+include a continuation cursor or an artifact reference.
+`projectToolResultReceipt(metadata)` gives a copy that is safe for audit logs.
 
-When `requires` returns `false`, `ToolRegistry.register()` silently skips the tool — it is
-never stored, never advertised in the active set, and never invokable. Re-registration after
-conditions change requires a new `register()` call. Use this to gate tools on provider
-configuration, feature flags, or runtime capability checks.
+A definition can declare `lifecycle` (for example, `deprecated` or
+`superseded` with a replacement) and `composition` (what it consumes and
+produces). Hosts show this in tool descriptions. A deprecated tool stays
+callable, and calls to a superseded tool are never redirected.
 
-## Example
+## Long-running tools
 
-```ts
-import { ToolRegistry, makeBaseContext } from "@gonk/tool-registry";
+`dispatchDetachedWithWait()` from `@gonk/tool-registry/async-dispatch` helps
+with tools that take minutes. By default the tool starts a detached job and
+returns a job handle at once. The caller can pass `wait: true` to block for the
+result instead. You supply the functions that start the job, run it inline and
+render each result.
 
-const r = new ToolRegistry();
-r.register({
-  name: "echo",
-  description: "echo input",
-  input: someSchema,
-  handler: async (input) => ({ data: { echoed: input.text } }),
-});
+## Entry points
 
-for await (const event of r.invoke("echo", { text: "hi" }, makeBaseContext())) {
-  if (event.type === "result") console.log(event.data);
-}
-```
+| Import | Contents |
+| --- | --- |
+| `@gonk/tool-registry` | Everything below. |
+| `@gonk/tool-registry/types` | Types only. |
+| `@gonk/tool-registry/contracts` | Client-safe types and pure functions, for UI code. |
+| `@gonk/tool-registry/registry` | `ToolRegistry`, `makeBaseContext`. |
+| `@gonk/tool-registry/shape` | `shape`, `passthrough`. |
+| `@gonk/tool-registry/json-schema` | `withJsonSchema`, `resolveInputJsonSchema`. |
+| `@gonk/tool-registry/errors` | `ToolError`, `ERROR_CODES`. |
+| `@gonk/tool-registry/approval` | `resolveApproval` and tier helpers. |
+| `@gonk/tool-registry/security` | `ApprovalProvider`, `ToolResourceResolver` and related types. |
+| `@gonk/tool-registry/outcome` | `collectToolOutcome`. |
+| `@gonk/tool-registry/metrics` | Invocation metrics sinks. |
+| `@gonk/tool-registry/receipt` | `projectToolResultReceipt`. |
+| `@gonk/tool-registry/lifecycle` | Lifecycle description helpers. |
+| `@gonk/tool-registry/async-dispatch` | `dispatchDetachedWithWait`. |
 
-## Projections — one definition, many surfaces
+More examples, including authenticated writes and mounting MCP inside a web
+app, are in the
+[tool authoring guide](https://github.com/nightwork-dev/gonk/blob/main/docs/tool-authoring.md).
 
-Define an op once as a `ToolDefinition`; project it to whoever asks. All projections
-are zero-codegen and transport-agnostic.
+## License
 
-- **Typed client** (`createClient`, `mergeToolSets`, `defineTools`) — a client whose
-  methods infer input/output off the tool generics, no codegen and no hand-written
-  manifest. Requires the ops be carried as a statically-typed `const` tuple; a
-  duplicate name, a client-key collision, or a non-camelCase-dotted name throws at
-  construction (mirrors `register`).
-- **WebSocket** (`makeWsHandler`) — request/reply + mutation broadcast over an injected
-  emitter, no ws-library dependency.
-- **JSON Schema** (`resolveInputJsonSchema`, `withJsonSchema`) — resolves the schema a
-  machine surface advertises (override → attached annotation → `{}`; it is *trusted*,
-  not derived from the predicate).
-
-### WS authorization model
-
-`makeWsHandler` takes a host-injected `authorize(tool, caller, input)` policy checked
-**before dispatch** (declared-in-core / enforced-in-host, same split as `approval`).
-
-The WebSocket projection's legacy `authorize(tool, caller, input)` callback
-still gates only the requested entry operation. Hosts that need the stronger
-registry contract should normalize `caller` into an `AuthContext` and dispatch
-with `makeBaseContext({ auth })`; registry authorization then covers both the
-root tool and every composed `ctx.invoke()` child.
-
-Broadcast fans a succeeded op's result to **all** connected clients regardless of *their*
-authorization, so the default broadcasts only *unrestricted* writes; a host that
-broadcasts a restricted op must scope the audience at the socket layer.
-
-## Async dispatch — detach-by-default, wait opt-in
-
-`dispatchDetachedWithWait` (from `@gonk/tool-registry/async-dispatch`) is the tool-layer
-combinator for heavy (minutes-scale) tools: dispatch a **detached** worker and return a job
-handle immediately, unless the caller opts INTO blocking with `wait`/`sync`. It is a pure
-combinator over injected closures — it owns no dispatch mechanism (that's `@gonk/jobs`
-`dispatchDetached`) and no result shape (the consumer renders both branches):
-
-```ts
-handler: async (input, ctx) =>
-  dispatchDetachedWithWait({
-    input,                                   // { wait?, sync? } — caller's opt-in
-    kind: "subagent",
-    asyncDispatch: () => launchDetached(...), // → { jobId, ... }; omit ⇒ inline fallback
-    runInline: () => runNow(...),             // the blocking path
-    renderInline: (r) => ({ data: r }),
-    renderAsync: (d) => ({ data: { jobId: d.jobId, workItemId: d.workItemId } }),
-  });
-```
-
-Detached is the default so a heavy tool never silently blocks the parent; `wait: true` is the
-opt-out for a caller that genuinely needs the result inline (e.g. a review gate). When no
-`asyncDispatch` is wired the call degrades to inline and flags `ranSyncFallback` to
-`renderInline`. Used by the delegation cluster (`subagent`, `consult`) and the heavy-tool
-consumers (`image_generate`, `rlm_*`, `harness_dispatch`).
+Apache-2.0

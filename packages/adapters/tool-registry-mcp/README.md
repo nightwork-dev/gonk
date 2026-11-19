@@ -1,148 +1,186 @@
 # @gonk/tool-registry-mcp
 
-MCP adapter — exposes a `ToolRegistry` or `Orchestrator` over the Model Context Protocol via the official MCP TypeScript SDK v2 packages.
+Serve a [`@gonk/tool-registry`](https://www.npmjs.com/package/@gonk/tool-registry)
+registry as a [Model Context Protocol](https://modelcontextprotocol.io) (MCP)
+server, over stdio or HTTP. The tools you define once become MCP tools, with
+their schemas, authorization and approval rules intact. The package also works
+in the other direction: it can import tools from a remote MCP server into a
+registry.
 
-## Usage
+It is built on the official MCP TypeScript SDK (v2). You can serve a
+`ToolRegistry` directly, or an `Orchestrator` from
+[`@gonk/tool-orchestrator`](https://www.npmjs.com/package/@gonk/tool-orchestrator)
+when you want the model to see a smaller active set of tools.
+
+## Install
+
+```sh
+npm install @gonk/tool-registry-mcp @gonk/tool-registry @gonk/auth
+```
+
+## Quick start: a stdio server
 
 ```ts
+// server.ts
+import { ownerPrincipal } from "@gonk/auth";
+import { ToolRegistry, shape } from "@gonk/tool-registry";
 import { serveMcpStdio } from "@gonk/tool-registry-mcp/stdio";
 
+const registry = new ToolRegistry();
+registry.register({
+  name: "greet",
+  description: "Say hello to someone.",
+  input: shape<{ name: string }>(
+    (value): value is { name: string } =>
+      typeof value === "object" && value !== null &&
+      typeof (value as { name?: unknown }).name === "string",
+    "expected { name: string }",
+    {
+      type: "object",
+      properties: { name: { type: "string" } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  ),
+  approval: "read",
+  handler: async ({ name }) => ({ data: { message: `Hello, ${name}!` } }),
+});
+
 serveMcpStdio({
-  serverName: "todo",
-  serverVersion: "0.1.0",
-  source: orchestrator,
-  instructions: "List open tasks before changing their status.",
-  writeToolPolicy: "warn", // | "require-allowlist" | "permissive"
-  allowlist: ["safe-write-tool"], // only used with require-allowlist
-  makeAuthContext: (request) =>
-    policy.authContextFor(request.http?.authInfo),
+  serverName: "greeter",
+  serverVersion: "1.0.0",
+  source: registry,
+  instructions: "Use greet to welcome new users.",
+  // A local, single-user server: every request acts as the local owner.
+  makeAuthContext: () => ownerPrincipal(process.env),
 });
-
 ```
 
-`serveMcpStdio` and `createMcpServer` default `writeToolPolicy` to `"warn"`: a
-write tool is served and a warning is logged. `createHttpMcpServer` and
-`createWebMcpHandler` default to `"require-allowlist"`: a write tool is refused
-unless it is in `allowlist`. Set the policy yourself if one process serves both.
+Register `node server.ts` as a stdio server in any MCP client. The client sees
+one tool, `greet`, with the JSON Schema above, and a call returns
+`{ "message": "Hello, Ada!" }` as text and as structured content.
 
-`serveMcpStdio`, `createHttpMcpServer`, and `createWebMcpHandler` serve the
-stateless `2026-07-28` revision and the earlier `initialize` handshake on the
-same entry point. Legacy HTTP sessions stay bound to the caller's security
-context. In the newer revision, HTTP authenticates every request independently
-and serves principal-filtered tool discovery with private cache hints. Object
-outputs remain structured on both revisions. The newer revision also carries
-scalar and array outputs as structured content.
+`instructions` is short guidance that every client receives when it connects.
+If you leave it out, the registry's own `instructions` are used.
 
-Use `instructions` for short guidance shared by all callers. When the source
-defines instructions, MCP and JSON HTTP use that text by default. An explicit
-MCP adapter option overrides it for those routes. Clients read the guidance
-from `initialize`, `server/discover`, or the JSON discovery response. Keep
-longer workflows in bundled usage skills.
+## Authorization
 
-The low-level adapter remains available for hosts that own their transport.
-Use `serveMcpStdio` to serve both revisions from a stdio process.
+`makeAuthContext` is required. The server calls it for every `tools/list` and
+`tools/call` request and uses the returned `AuthContext` from `@gonk/auth`:
 
-## Serve packaged skills
+- `tools/list` shows only the tools that the caller may discover.
+- A call to a hidden tool looks the same as a call to a missing tool.
+- The registry checks authorization and approval before the handler runs.
 
-Load a trusted application bundle at startup and register the returned tools.
-Pass the same bundle to the MCP adapter to offer native MCP Skills alongside
-`skill_list` and `skill_get`.
+A local server for one user returns `ownerPrincipal(process.env)`. A server
+with several callers builds the `AuthContext` from the authenticated request.
+Never take the caller's identity from tool input.
 
-```ts
-import { ToolRegistry } from "@gonk/tool-registry";
-import { createBundledSkillToolDefinitions } from "@gonk/skills/bundled";
-import { loadMcpBundledSkills } from "@gonk/tool-registry-mcp";
+## Write-tool policy
 
-const source = new ToolRegistry({
-  instructions: "Use the bundled skills for multi-step workflows.",
-});
-const bundledSkills = await loadMcpBundledSkills({
-  root: new URL("./skills/", import.meta.url),
-  createTools: createBundledSkillToolDefinitions,
-});
-source.register(bundledSkills.tools);
-// Pass { source, bundledSkills, ... } to the MCP server options.
-```
+`writeToolPolicy` decides what happens to tools that can write: tools with
+`writesFs` or `network` capabilities, or a `write` or `exec` approval tier.
 
-Each skill is an immediate child directory containing `SKILL.md` and any files
-it references. Native clients discover the bundle with `skills/list` and
-`skills/get`, then read the manifest and supporting files with `resources/read`.
-Native requests run through the registered tools' Gonk authorization. The
-catalog records file digests at startup and rejects reads of changed files.
-Reload the application after changing a bundle.
+| Policy | Effect |
+| --- | --- |
+| `"warn"` | Serve the tool and log a warning at startup. |
+| `"require-allowlist"` | Refuse the tool unless its name is in `allowlist`. |
+| `"permissive"` | Serve the tool without a warning. |
 
-The native extension works with both supported MCP lifecycles. Clients can
-continue to use the portable tools over MCP, JSON HTTP, CLI, and Pi.
-The [MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/)
-is in beta.
+The default depends on the transport. `serveMcpStdio` and `createMcpServer`
+default to `"warn"`. `createHttpMcpServer` and `createWebMcpHandler` default to
+`"require-allowlist"`. If one process serves both, set the policy yourself.
 
-## Running it over HTTP (local vs. remote)
+## Serving over HTTP
 
-The same registry can be served over HTTP — `createHttpMcpServer(...)`, or the
-`gonk-mcp-http` command. **How you run it depends on who needs to reach it.**
+`createHttpMcpServer()` serves the registry over Streamable HTTP. The
+`gonk-mcp-http` command starts the same server with a built-in `gonk_health`
+tool, which is useful to test a client connection.
 
-### Just this computer — the default, no setup
+### On this computer only (the default)
 
-Out of the box it listens on `127.0.0.1` (also called _loopback_ or
-_localhost_) — an address that **only programs on this same computer** can reach.
-Nothing else on your network or the internet can see it, so no password is
-needed.
+By default the server listens on `127.0.0.1`. Only programs on the same
+computer can reach it, so it needs no key.
 
 ```bash
 gonk-mcp-http                      # → http://127.0.0.1:8808/mcp
 ```
 
-### From somewhere else — remote (another laptop, your phone, a server, a Tailscale network)
+### From other machines
 
-To reach the server from anything other than this computer, you have to bind it
-to a _network address_ (commonly `0.0.0.0`, meaning "every address this machine
-has"). The moment you do that, **anyone who can reach the port could run your
-tools** — so the server will not start that way silently. You make two choices:
+To accept connections from other machines, bind a network address such as
+`0.0.0.0`. Then anyone who can reach the port can try to run your tools, so the
+server refuses to start until you choose how callers prove access:
 
-**1. How do callers prove they're allowed in?** Pick one:
-
-- **Set a key (recommended).** Callers must send `Authorization: Bearer <key>`.
+- **Set a key.** This is the recommended choice. Callers must send
+  `Authorization: Bearer <key>`. Also list the host names that callers dial
+  with `--allowed-hosts`. The server needs them for DNS-rebinding protection,
+  which stops a web page from driving your server through the browser.
 
   ```bash
   gonk-mcp-http --host 0.0.0.0 --api-key "$(openssl rand -hex 32)" \
-    --allowed-hosts "my-box.tailnet.ts.net:8808"
+    --allowed-hosts "my-machine.local:8808"
   ```
 
-- **Or declare the network itself trusted** with `--allow-insecure` — e.g. a
-  private Tailscale network where you trust everyone on it. No key; anyone who
-  can reach the port can run tools. Use it deliberately.
+- **Trust the network.** `--allow-insecure` starts the server with no key, for
+  a private network where you trust every device. Anyone who can reach the port
+  can run tools, and DNS-rebinding protection is off.
 
   ```bash
   gonk-mcp-http --host 0.0.0.0 --allow-insecure
   ```
 
-If you bind to a network address with **neither**, the server refuses to start
-instead of exposing your tools to the world unauthenticated.
+| You want | Run |
+| --- | --- |
+| Local only | `gonk-mcp-http` |
+| Remote, with a key | `gonk-mcp-http --host 0.0.0.0 --api-key <key> --allowed-hosts <name:port>` |
+| Remote, on a trusted private network | `gonk-mcp-http --host 0.0.0.0 --allow-insecure` |
 
-**2. What address will callers dial?** When a key is set, a safety check
-(_DNS-rebinding protection_ — it stops a malicious web page from quietly driving
-a server on your machine) stays on. It can't guess your machine's public name,
-and `0.0.0.0` is never what a caller actually types, so you must list the
-name(s) callers use with `--allowed-hosts` (e.g. the machine's hostname and
-port). Omit it on a remote, keyed bind and the server refuses to start — because
-otherwise it would accept connections but reject every request, looking alive
-while answering nothing. The `--allow-insecure` trusted-network mode turns this
-check off, so you don't pass `--allowed-hosts` there.
+The library takes the same choices as options: `host`, `port`, `apiKey`,
+`allowedHosts`, `allowInsecure` and `path`.
 
-### The whole thing in three lines
+### Plain JSON routes
 
-| You want…                            | Run                                                                        |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| Local only                           | `gonk-mcp-http`                                                            |
-| Remote, with a password              | `gonk-mcp-http --host 0.0.0.0 --api-key <key> --allowed-hosts <name:port>` |
-| Remote, on a trusted private network | `gonk-mcp-http --host 0.0.0.0 --allow-insecure`                            |
+Set `jsonPath` to serve the same tools as plain JSON beside MCP. These routes
+are off by default.
 
-### Mount inside an existing web application
+```ts
+import type { AuthenticatedPrincipal } from "@gonk/auth";
+import { GONK_AUTH_INFO_PRINCIPAL } from "@gonk/tool-registry-mcp";
+import { createHttpMcpServer } from "@gonk/tool-registry-mcp/http";
 
-Applications that already own their HTTP server should mount MCP in that
-framework instead of starting a second listener. `createWebMcpHandler` accepts
-and returns Web-standard request objects, so it works directly in TanStack
-Start, Hono, Bun, and similar Node-compatible routers:
+const server = createHttpMcpServer({
+  source: registry,
+  serverName: "my-app",
+  serverVersion: "1.0.0",
+  jsonPath: "/tools",
+  apiKey: process.env.TOOL_API_KEY,
+  // The server checks the key and attaches the caller's principal to the request.
+  // Your policy decides what that principal may do.
+  makeAuthContext: (request) => ({
+    principal: request.http?.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL] as AuthenticatedPrincipal,
+    authorize: () => ({ outcome: "allow", reason: "any holder of the key" }),
+  }),
+});
+await server.start();
+```
+
+- `GET /tools` returns `{ tools: [...] }` with names, descriptions, input
+  schemas and annotations.
+- `POST /tools/:name` takes the raw JSON input and returns
+  `{ ok: true, data, ... }` or `{ ok: false, code, message, ... }`. Missing and
+  hidden tools return HTTP 404.
+
+JSON routes use the same authentication, authorization, write policy and
+dispatch as MCP. MCP-only features such as sampling and elicitation are not
+available on them.
+
+## Mounting inside an existing web app
+
+An app that already has an HTTP server can mount MCP on its own routes with
+`createWebMcpHandler()`. It takes and returns Web-standard `Request` and
+`Response` objects, so it works in TanStack Start, Hono, Bun and similar
+frameworks.
 
 ```ts
 import { GONK_AUTH_INFO_PRINCIPAL } from "@gonk/tool-registry-mcp";
@@ -151,141 +189,75 @@ import { createWebMcpHandler } from "@gonk/tool-registry-mcp/http";
 const mcp = createWebMcpHandler({
   source: registry,
   serverName: "my-app",
-  serverVersion: "0.1.0",
+  serverVersion: "1.0.0",
   authenticate: async (request) => {
     const session = await appAuth.verify(request);
     if (!session) return null;
-    const principal = principalForSession(session);
+    const principal = principalForSession(session); // an AuthenticatedPrincipal
     return {
       token: session.accessToken,
       clientId: session.clientId,
       scopes: [...principal.scopes],
       expiresAt: principal.expiresAt,
-      extra: {
-        [GONK_AUTH_INFO_PRINCIPAL]: principal,
-      },
+      extra: { [GONK_AUTH_INFO_PRINCIPAL]: principal },
     };
   },
   makeAuthContext: (request) =>
     appPolicy.authContextFor(
-      request.http?.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL]
+      request.http?.authInfo?.extra?.[GONK_AUTH_INFO_PRINCIPAL],
     ),
-  makeContext: () => ({
-    host: { invoker: "agent", profileId: "automation" },
-  }),
 });
 
-// TanStack Start server route
-export const Route = createFileRoute("/mcp")({
-  server: {
-    handlers: {
-      GET: ({ request }) => mcp.handle(request),
-      POST: ({ request }) => mcp.handle(request),
-      DELETE: ({ request }) => mcp.handle(request),
-    },
-  },
-});
+// In any framework route:
+export const handle = (request: Request) => mcp.handle(request);
 ```
 
-The host owns credential/session/JWT validation. Its SDK `AuthInfo.extra`
-carries the already-normalized `AuthenticatedPrincipal`; the adapter validates
-that shape, builds the registry auth context, filters discovery, and pins each
-stateful MCP session to `securityContextKey(principal)`. Refreshed roles, scopes,
-or expiry may continue on the same session, while a changed effective subject,
-delegated actor, tenant/workspace, or delegated actor session gets the same
-unknown-session response as a missing session and cannot disturb the legitimate
-session.
+Your app validates credentials and sessions. `authenticate` returns the
+normalized principal in `AuthInfo.extra`, and the principal that
+`makeAuthContext` returns must be the same one. Each stateful MCP session stays
+bound to the principal that opened it. A request from a different principal
+gets the same response as an unknown session.
 
-Do not authenticate an agent-only MCP route with an ambient browser cookie.
-Use an Eve/audience-bound bearer or equivalent credential that browser
-JavaScript cannot silently reuse. Direct browser chat routes and agent MCP
-routes are separate security audiences.
+Points to keep in mind:
 
-Set `sessionAuditSink` to receive a redacted `session-binding` security receipt
-when a valid credential attempts to reuse a session under a different security
-context. The receipt identifies only the attempted principal and opaque key; it
-does not expose the MCP session id or the legitimate session owner.
+- Do not authenticate an agent-only MCP route with a browser cookie. Use a
+  bearer token for the right audience, which browser scripts cannot reuse by
+  accident.
+- `makeContext` can add non-security host data to each call. It must not
+  return `auth`.
+- Without credentials the handler refuses to start unless you pass
+  `allowInsecure: true`. Without `makeAuthContext` it needs
+  `allowUnrestrictedTools: true`. Both are for trusted development only.
+- `sessionAuditSink` receives a redacted receipt when a valid credential tries
+  to reuse another principal's session.
 
-`makeAuthContext` is the sole authorization seam. `makeContext` remains the
-invocation-only place for non-security host data such as an invoker profile;
-returning `auth` from it is rejected before discovery. Caller identity must
-never be accepted from tool input.
+To serve JSON routes from this handler too, set `jsonPath` and send both
+`<jsonPath>` and `<jsonPath>/:name` to `mcp.handle`.
 
-For simple deployments, `apiKey` remains supported and synthesizes a stable
-service principal. A custom `authenticate` callback must return a structurally
-valid Gonk principal in `AuthInfo.extra`. Delegated principals must carry
-`actorSessionId` before they can initialize or reuse a stateful MCP session.
+## What clients see
 
-The mountable handler does not infer listener safety: credential-free use
-requires explicit `allowInsecure: true`. `makeAuthContext` is the authenticated
-policy seam; omitting it requires explicit `allowUnrestrictedTools: true`.
-Those two flags are deliberate trusted-development/service modes, not defaults.
-Gonk does not synthesize an identity for an older callback shape:
-authenticated discovery and invocation must share a real principal and
-`AuthContext`.
+- With an `Orchestrator`, clients see only its active set: `always` tools and
+  committed pins. With a `ToolRegistry`, they see every tool.
+- Duplex tools are not served, because MCP is request and response.
+- `hints.mcp.mcpName` changes the advertised name. `hints.mcp.annotations`
+  become MCP hints, for example `readOnly` becomes `readOnlyHint`.
+- The input schema comes from `tool.inputJsonSchema`, or from the JSON Schema
+  attached with `withJsonSchema()` or `shape()`. Without one, the server
+  advertises `{ "type": "object", "additionalProperties": true }`.
+- `display` blocks become MCP content. Text and markdown become text, code
+  becomes a fenced block, JSON is pretty-printed, images become image content,
+  and links become text with the title and URL.
 
-### Plain JSON discovery and invocation
+## Importing tools from a remote MCP server
 
-Set `jsonPath` to expose the same tools beside MCP. The default leaves these
-routes disabled. Both HTTP constructors accept this option:
-
-```ts
-const server = createHttpMcpServer({
-  source: registry,
-  serverName: "my-app",
-  serverVersion: "0.1.0",
-  jsonPath: "/tools",
-  apiKey: process.env.TOOL_API_KEY,
-  makeAuthContext: (request) => appPolicy.authContextFor(request.http?.authInfo),
-});
-await server.start();
-```
-
-- `GET /tools` returns `{ tools: [...] }` with advertised names, descriptions,
-  input schemas, and annotations. Input schemas retain the registry's raw type.
-- `POST /tools/:name` accepts raw JSON input with `Content-Type: application/json`.
-  Encode the advertised tool name as one URL segment. No MCP session is needed.
-- Invocation returns the registry's collected `ToolOutcome`: `{ ok: true, data,
-  display?, metadata?, receipt? }` or `{ ok: false, code, message, details? }`.
-  Dispatched outcomes use HTTP 200. Missing or hidden tools use HTTP 404.
-  Authentication, request protection, malformed input, and oversized bodies use
-  the existing HTTP error responses and their non-success status codes.
-
-JSON routes use the same authentication, authorization context, discovery filter,
-write policy, and registry invocation as MCP. A caller cannot select its identity
-through tool input. Request cancellation and handler shutdown abort invocation.
-`makeAuthContext` and `makeContext` receive the original request in `http.req`.
-MCP client callbacks such as sampling and elicitation are unavailable on JSON
-routes and fail explicitly if a host context callback tries to use them.
-
-For `createWebMcpHandler`, mount the configured JSON path and its `/:name` route
-alongside the MCP path, and pass each request to the same handler's `handle`.
-
-## What it advertises
-
-- With an `Orchestrator`, only `activeSet()` tools (always + committed pins).
-- With a raw `ToolRegistry`, all tools.
-- Either way, **duplex tools are filtered** — MCP is request/response.
-- With an auth context, `tools/list` includes only tools allowed by
-  `tool.discover`; direct calls to hidden tools look like missing tools.
-- Write policy recognizes write/network capabilities and `write`/`exec`
-  approval declarations. Input-dependent approval functions are treated
-  conservatively as writes for allowlisting.
-
-`hints.mcp.mcpName` overrides the advertised name. `hints.mcp.annotations` are mapped to MCP's `*Hint` fields (`readOnly` → `readOnlyHint`, etc.).
-
-## Import a remote MCP server
-
-The client direction lives in this same adapter. It connects with the official
-SDK, discovers a reviewed subset of remote tools, and atomically replaces that
-server's source-owned catalog in a `ToolRegistry`. The coordinator-owned package
-metadata must expose the `./client` subpath before this import works from a
-published package.
+`createMcpToolImporter()` connects to a remote MCP server and copies a reviewed
+subset of its tools into your registry. Every call to an imported tool goes
+through your registry's authorization first.
 
 ```ts
 import { createMcpToolImporter } from "@gonk/tool-registry-mcp/client";
 
-const inbound = createMcpToolImporter({
+const importer = createMcpToolImporter({
   registry,
   serverId: "docs",
   endpoint: "https://mcp.example.com/mcp",
@@ -294,132 +266,115 @@ const inbound = createMcpToolImporter({
   authorization: { requiredRole: "docs-reader" },
   approval: "read",
   resolveHeaders: async () => ({
-    Authorization: `Bearer ${await hostSecrets.require("docs-mcp-token")}`,
+    Authorization: `Bearer ${await secrets.get("docs-token")}`,
   }),
   overrides: {
-    search: { description: "Search the reviewed documentation source" },
+    search: { description: "Search the product documentation." },
   },
 });
 
-await inbound.connect();
+await importer.connect();
 ```
 
-The endpoint and selection are configuration-owned authority. Credentials are
-resolved by the host at connect/reconnect time and never appear in tool input or
-provenance. Remote descriptions, annotations, and instructions are untrusted:
-the importer uses a local description, `on-demand` visibility, and `exec`
-approval unless reviewed local configuration overrides them. Registry
-authorization runs before the proxy handler, so a denied caller produces no
-upstream `tools/call`.
+The importer treats remote descriptions, annotations and instructions as
+untrusted. Unless your configuration overrides them, imported tools get a
+local description, `on-demand` visibility and the `exec` approval tier.
+Credentials come from `resolveHeaders` at connect time and never appear in tool
+input.
 
-The importer tries `2026-07-28` first and falls back to the initialization
-handshake with older servers. It supports paginated discovery, `tools/list_changed`, explicit
-refresh/reconnect/close, cancellation, and request timeouts. A failed schema
-compile or refresh retains the prior complete catalog. Its deliberately small
-JSON Schema 2020-12 subset supports object/array/scalar types, properties,
-required fields, closed objects, items, enum/const, and basic length/range
-limits; unsupported keywords fail the whole candidate catalog closed.
+It handles paginated discovery, `tools/list_changed`, refresh, reconnect,
+cancellation and timeouts. If a refresh fails, the previous complete set of
+tools stays in place. It understands a small subset of JSON Schema 2020-12. A
+schema that uses anything outside that subset is refused.
 
-## Development switchboard: one MCP registration, many worktrees
+## Serving packaged skills
 
-The switchboard uses the initialization handshake to pin each client to one
-worktree. Clients that try the stateless revision first can fall back to this
-handshake.
+An application can ship skill folders, each with a `SKILL.md`, and serve them
+through two read-only tools, `skill_list` and `skill_get`. Pass the same bundle
+to this adapter to also offer them through the
+[MCP Skills extension](https://skills.extensions.modelcontextprotocol.io/),
+which is in beta.
 
-`@gonk/tool-registry-mcp/dev` adds a deliberately small **local** router for
-development. Point Codex, Claude Code, or another MCP client at the router once;
-then change which worktree answers _new_ MCP sessions without reinstalling a
-plugin or editing host configuration.
+```ts
+import { ToolRegistry } from "@gonk/tool-registry";
+import { createBundledSkillToolDefinitions } from "@gonk/skills/bundled";
+import { loadMcpBundledSkills } from "@gonk/tool-registry-mcp";
+
+const source = new ToolRegistry();
+const bundledSkills = await loadMcpBundledSkills({
+  root: new URL("./skills/", import.meta.url),
+  createTools: createBundledSkillToolDefinitions,
+});
+source.register(bundledSkills.tools);
+// Then pass { source, bundledSkills, ... } to serveMcpStdio or createHttpMcpServer.
+```
+
+The adapter records a digest of each file at startup and refuses to serve a
+file that changed afterwards. Restart the server after you change a skill.
+
+## Development router for many checkouts
+
+`gonk-mcp-dev` is a small local router for development. Register its one URL
+with your MCP client, then choose which checkout of your app answers new
+sessions, with no change to the client's configuration. Each checkout serves
+its own registry with `createHttpMcpServer`.
 
 ```json
 {
   "version": 1,
-  "active": "app-review",
+  "active": "main",
   "environments": [
     {
-      "id": "app-main",
+      "id": "main",
       "repo": "./apps/example",
       "branch": "main",
       "endpoint": "http://127.0.0.1:4173/mcp",
       "database": "./.data/example.db"
     },
     {
-      "id": "app-review",
-      "repo": "./worktrees/example-review",
-      "branch": "feat/story-review",
+      "id": "feature",
+      "repo": "./worktrees/example-feature",
+      "branch": "feature/search",
       "endpoint": "http://127.0.0.1:4179/mcp",
-      "database": "./.data/example-review.db"
+      "database": "./.data/example-feature.db"
     }
   ]
 }
 ```
 
-Run the switchboard and register this one stable URL with a host:
-
 ```bash
-gonk-mcp-dev serve --config ~/.config/gonk/dev-mcp.json --port 8810
-# host configuration: http://127.0.0.1:8810/mcp
+gonk-mcp-dev serve --config ./dev-mcp.json --port 8810
+# register http://127.0.0.1:8810/mcp with the client
 
 gonk-mcp-dev list
 gonk-mcp-dev current
-gonk-mcp-dev use app-main
+gonk-mcp-dev use feature
 ```
 
-The router reads the manifest at every **new** MCP initialization. Existing MCP
-sessions stay pinned to their original target, even after `use`, so a reconnect
-is explicit and safe rather than silently moving a live agent across code or
-data. Every proxied response carries `X-Gonk-Dev-*` identity headers. Tool
-descriptions and results for anything not declared `readOnlyHint` also include
-the active code checkout, branch, and database target. This is intentionally
-conservative: a tool with no read-only declaration is treated as potentially
-write-capable.
+The router reads the file at each new MCP session. Open sessions stay on their
+original checkout. Responses carry `X-Gonk-Dev-*` headers that name the active
+checkout, and tools that are not marked read-only show the checkout, branch and
+database in their descriptions and results.
 
-The switchboard does not run app code itself. Each environment must first expose
-its own Gonk `ToolRegistry` through `createHttpMcpServer`; this keeps the
-transport reusable across applications while
-keeping code target and data target separate in the manifest.
+## Protocol versions
 
-## Tool input schema
+The stdio and HTTP servers accept both the stateless `2026-07-28` MCP revision
+and the earlier `initialize` handshake on the same endpoint. On the newer
+revision, HTTP authenticates every request on its own. The importer tries
+`2026-07-28` first and falls back to the handshake for older servers.
 
-Pulled from `resolveInputJsonSchema(tool)`: an explicit
-`tool.inputJsonSchema` override wins, otherwise the adapter reads the JSON
-Schema annotation attached by `withJsonSchema(schema, jsonSchema)` or
-`shape(check, message, jsonSchema)`. When no projection is present, the adapter
-advertises `{ type: "object", additionalProperties: true }`.
+## Entry points
 
-Prefer an annotated Standard Schema input so the runtime validator and MCP
-advertisement stay next to each other:
+| Import | Contents |
+| --- | --- |
+| `@gonk/tool-registry-mcp` | `createMcpServer`, `loadMcpBundledSkills`, `GONK_AUTH_INFO_PRINCIPAL`. |
+| `@gonk/tool-registry-mcp/stdio` | `serveMcpStdio`. |
+| `@gonk/tool-registry-mcp/http` | `createHttpMcpServer`, `createWebMcpHandler`. |
+| `@gonk/tool-registry-mcp/client` | `createMcpToolImporter`. |
+| `@gonk/tool-registry-mcp/dev` | The development router. |
 
-```ts
-import { shape } from "@gonk/tool-registry";
+Commands: `gonk-mcp-http` and `gonk-mcp-dev`.
 
-const input = shape<{ query: string }>(
-  (value): value is { query: string } =>
-    Boolean(value) &&
-    typeof value === "object" &&
-    typeof (value as { query?: unknown }).query === "string",
-  "expected { query: string }",
-  {
-    type: "object",
-    properties: { query: { type: "string", minLength: 1 } },
-    required: ["query"],
-    additionalProperties: false,
-  }
-);
-```
+## License
 
-## Display rendering
-
-- `text` / `markdown` blocks → MCP text content
-- `code` → fenced markdown text
-- `json` → `JSON.stringify(value, null, 2)`
-- `image` → MCP image content (mimeType + base64 data)
-- `link` → text content with title + URL
-
-## Write-tool policy
-
-`writeToolPolicy` (default `"warn"`):
-
-- `warn` — log a warning at startup for each tool with `capabilities.writesFs` or `network`; advertise anyway
-- `require-allowlist` — refuse to advertise unless the tool's name is in `allowlist`
-- `permissive` — silent passthrough
+Apache-2.0

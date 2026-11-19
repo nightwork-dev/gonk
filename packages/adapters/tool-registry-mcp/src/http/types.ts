@@ -11,13 +11,13 @@ import type { McpAdapterOptions } from "../index.ts";
 export interface HttpMcpServerOptions
   extends Omit<McpAdapterOptions, "makeAuthContext"> {
   /** Host-owned per-request authorization policy. Optional HERE (unlike the
-   *  stdio `McpAdapterOptions.makeAuthContext`, which GR-83 makes required)
+   *  stdio `McpAdapterOptions.makeAuthContext`, which is required)
    *  because this HTTP boundary has its own explicit, guarded escape hatch:
    *  construction throws unless either this is set or `allowUnrestrictedTools`
    *  is `true`. `createWebMcpHandler` always resolves a concrete `AuthContext`
    *  before it ever reaches the registry — see `http/web.ts`. */
   makeAuthContext?: McpAdapterOptions["makeAuthContext"];
-  /** Bind address. Default "127.0.0.1"; "0.0.0.0" for tailnet-wide. */
+  /** Bind address. Default "127.0.0.1"; "0.0.0.0" for every interface. */
   host?: string;
   /** TCP port. Default 0 (ephemeral — pick a real port for a long-running server). */
   port?: number;
@@ -43,7 +43,7 @@ export interface HttpMcpServerOptions
    *  unauthenticated tool execution to the network. Without this, binding a
    *  non-loopback host (e.g. `0.0.0.0`) with no key throws at construction
    *  rather than silently standing up an open endpoint. Set it deliberately for
-   *  a genuinely trusted-network deployment (e.g. a firewalled tailnet). */
+   *  a genuinely trusted-network deployment (e.g. a firewalled private network). */
   allowInsecure?: boolean;
   /** Endpoint path the MCP transport is mounted at. Default "/mcp". */
   path?: string;
@@ -55,7 +55,7 @@ export interface HttpMcpServerOptions
    *  - **loopback** → on, auto-allow-listing the bound host:port + loopback
    *    aliases (the client's Host is exactly that).
    *  - **non-loopback with `allowedHosts` set** → on, using those.
-   *  - **non-loopback, keyless trusted-tailnet (`allowInsecure`)** → off; the
+   *  - **non-loopback, keyless trusted-network (`allowInsecure`)** → off; the
    *    network perimeter is the boundary and Host-checking would only break
    *    legitimate access.
    *  - **non-loopback otherwise** → would be on but has no sound allowlist, so

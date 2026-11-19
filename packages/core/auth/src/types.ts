@@ -1,7 +1,7 @@
 // =============================================================================
 // Pure contract types + validators for @gonk/auth.
 //
-// This file is the client-safe foundation (GR-84): no Node built-ins, no
+// This file is the client-safe foundation: no Node built-ins, no
 // runtime environment assumptions — plain data shapes and pure functions
 // over them. `./contracts.ts` re-exports from here (and from `./envelope.ts`)
 // so a browser/UI consumer can depend on the SHAPE of a principal, an

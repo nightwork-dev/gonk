@@ -3,22 +3,18 @@ import type { ToolResult } from "./types.ts";
 // =============================================================================
 // dispatchDetachedWithWait — the tool-layer detach-by-default / wait-opt-in combinator.
 //
-// gonk's house pattern for heavy (minutes-scale) tools is: dispatch a DETACHED
-// worker, return a job handle immediately, and let the caller opt INTO blocking with
-// `wait: true` / `sync: true`. That branch was hand-rolled in pi-image, pi-rlm, and
-// claude-dispatch, and MISSING from the delegation cluster (subagent / consult /
-// self-model-reflect / autotune), which blocked the parent by default. This extracts
-// the branch into one combinator so every heavy tool is detach-by-default correctly.
+// The pattern for heavy (minutes-scale) tools is: dispatch a DETACHED worker,
+// return a job handle immediately, and let the caller opt INTO blocking with
+// `wait: true` / `sync: true`. This combinator holds that branch once, so every
+// heavy tool is detach-by-default in the same way.
 //
-// It lives HERE (not @gonk/jobs) because it constructs `ToolResult` and reads
-// `input.wait` — those are tool-layer concerns and `ToolResult` is defined in this
-// package; @gonk/jobs is transport-free and must not gain a tool-registry dep. It is
-// harness-agnostic (pi AND Claude plugins use it), so it does not belong in a
-// pi-specific adapter either.
+// It lives in this package because it constructs `ToolResult` and reads
+// `input.wait`, which are tool-layer concerns. It is harness-agnostic, so it does
+// not belong in a host-specific adapter.
 //
 // It is a PURE COMBINATOR over injected closures: it owns no dispatch mechanism and no
-// job store. `asyncDispatch` (a thunk that ultimately calls @gonk/jobs' dispatchDetached
-// and returns at least a `jobId`) and `runInline` (the blocking runner) are supplied by
+// job store. `asyncDispatch` (a thunk that starts the detached job and returns at
+// least a `jobId`) and `runInline` (the blocking runner) are supplied by
 // the consumer; the consumer also owns both render functions, so no result shape is
 // hardcoded onto it.
 // =============================================================================
@@ -37,7 +33,7 @@ export interface DispatchDetachedWithWaitOptions<TResult, TAsyncResult> {
   runInline: () => Promise<TResult>;
   /** Render the inline result. `meta.ranSyncFallback` is true only when the inline path
    *  was taken because NO `asyncDispatch` was wired (a degraded fallback), not because
-   *  the caller asked — so a consumer can stamp/telemeter the difference (pi-image does). */
+   *  the caller asked — so a consumer can record the difference. */
   renderInline: (result: TResult, meta: { ranSyncFallback: boolean }) => ToolResult;
   /** Render the detached handle. The consumer OWNS the async result shape (subagent
    *  returns workItemId/resultPath/pid, not just jobId). Omit ⇒ a generic

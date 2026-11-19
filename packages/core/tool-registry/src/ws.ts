@@ -16,7 +16,7 @@ import { ToolRegistry } from "./registry.ts";
 //
 // AUTHORIZATION MODEL — read before trusting this as a boundary:
 //   Authorization is HOST-ENFORCED (declared-in-core / enforced-in-host, the same
-//   split as `approval` → `@gonk/pi-guard`). The host injects `authorize(tool,
+//   split as tool `approval` tiers). The host injects `authorize(tool,
 //   caller, input)` and the projection checks it BEFORE dispatching the
 //   **top-level** op. `caller` is an opaque, TRANSPORT-authenticated identity: the
 //   socket layer establishes who the caller is; this projection trusts that field.
@@ -88,11 +88,11 @@ export interface WsProjectionConfig<Caller> {
    *  op broadcast reaches clients that could not invoke it (see header). */
   shouldBroadcast?(tool: ToolDefinition, caller: Caller): boolean;
   /** Build the per-invocation ToolContext (signal, cwd, scope, auth, …).
-   *  REQUIRED (GR-83): `ToolContext.auth` is a required field with no
+   *  REQUIRED: `ToolContext.auth` is a required field with no
    *  ambient fallback, and a WS `Caller` is host-defined — core cannot
    *  derive a principal from it. Construct the `AuthContext` here from the
    *  same verified `caller` `authorize` above trusts (a per-request bind,
-   *  the "per-turn principal" shape GR-83 names for reach-ingress-style
+   *  the "per-turn principal" shape for multi-caller
    *  hosts — do not collapse every caller onto one bound owner). */
   makeContext(caller: Caller): Omit<ToolContext, "invoke" | "callStack">;
   /** Broadcast sink. Omit to disable broadcasts (request/reply only). */

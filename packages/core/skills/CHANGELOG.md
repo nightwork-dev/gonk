@@ -30,7 +30,7 @@
 
 ### Patch Changes
 
-- Expose opt-in JSON HTTP and application-bundled usage skills through the shared registry, resolve annotated CLI help schemas, and preserve the released shared-namespace symlink correction.
+- Add opt-in JSON HTTP routes (`jsonPath`) beside MCP, and read-only tools that serve skills bundled with an application (`@gonk/skills/bundled`). CLI help reads the JSON Schema attached to a tool's input. The earlier fix for symlinks in shared namespaces is kept.
 - Updated dependencies []:
   - @gonk/auth@0.12.0
   - @gonk/context@0.12.0
@@ -42,7 +42,7 @@
 
 ### Patch Changes
 
-- `canonicalPath` spells a path that does not exist yet through the canonical spelling of its nearest existing ancestor, so a session or global home keeps one spelling before and after its folder is created (on macOS, `/var` and `/private/var` no longer fork one endpoint into two). The resolver's private copy of that walk and host storage's hand-rolled variant are removed; skills compares a session home against the canonical global home.
+- `canonicalPath` now resolves a path that does not exist yet through its nearest existing parent folder. A session or global home keeps one spelling before and after its folder is created, so on macOS `/var` and `/private/var` no longer resolve to two different homes. `@gonk/scope`, `@gonk/store` and `@gonk/skills` now use this one function.
 - Updated dependencies []:
   - @gonk/scope@0.11.1
   - @gonk/store@0.11.1
@@ -76,19 +76,18 @@
 
 ### Minor Changes
 
-- 5c47c3e: Release the R1 Core migration slice. `@gonk/store` adds the caller-owned
-  Mirk-native state binding and explicit legacy importer (minor: new public
-  subpaths and replacement contract). Retrieval, temporal, and skills now
-  consume caller-provided Mirk state; the skills registry requires `stateSource`
-  unless a lifecycle journal is injected (minor: migration boundary). Tool
-  Registry publishes result evidence, freshness/cache, truncation, lifecycle,
-  composition, and redacted receipt projections (minor: public contract
-  additions). The orchestrator and host adapters receive corresponding
-  state/projection wiring (patch: additive projections).
+- 5c47c3e: `@gonk/store` adds `bindGonkSyncState`, which binds scope tiers and
+  namespaces to Mirk stores that the host provides, and an explicit legacy
+  importer at `@gonk/store/legacy-import`. `@gonk/retrieval`, `@gonk/temporal`
+  and `@gonk/skills` now keep their state in a host-provided Mirk store. The
+  skills registry needs a `stateSource` unless you inject a lifecycle journal.
+  `@gonk/tool-registry` adds result metadata (provenance, freshness, cache
+  policy and truncation), tool lifecycle and composition declarations, and
+  redacted receipt projections. The orchestrator and host adapters pass these
+  through.
 
-  The repository keeps all `@gonk/*` packages in one fixed Changesets group. With
-  the current highest package version at `0.6.0`, `changeset version` will align
-  the fixed group to `0.7.0`, including packages without a direct entry here.
+  All `@gonk/*` packages share one version number, so every package moves to
+  `0.7.0`, including packages with no change of their own.
 
 ### Patch Changes
 

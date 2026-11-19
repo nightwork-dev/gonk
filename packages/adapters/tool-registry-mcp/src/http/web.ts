@@ -27,7 +27,7 @@ import {
 export interface WebMcpHandlerOptions
   extends Omit<McpAdapterOptions, "makeAuthContext"> {
   /** Host-owned per-request authorization policy. Optional HERE (unlike the
-   *  stdio `McpAdapterOptions.makeAuthContext`, which GR-83 makes required)
+   *  stdio `McpAdapterOptions.makeAuthContext`, which is required)
    *  because this handler has its own explicit, guarded escape hatch:
    *  construction throws below unless either this is set or
    *  `allowUnrestrictedTools` is `true`. The internal `makeAuthContext`

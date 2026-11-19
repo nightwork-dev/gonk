@@ -1,18 +1,49 @@
 # @gonk/auth
 
-Transport-independent security contracts for Gonk hosts, registries, and
-adapters. Hosts authenticate callers using their native mechanism and normalize
-the result into an `AuthenticatedPrincipal`; Gonk carries that principal through
-an `AuthContext` and records redacted authorization and approval receipts.
+Identity and authorization types for agent tools. Your host authenticates a
+caller in its own way: a login session, an API key, a service token. It then
+describes the result as an `AuthenticatedPrincipal`. Gonk carries that
+principal with every tool call in an `AuthContext`, together with your
+authorization policy, and writes redacted audit receipts.
 
-This package does not verify JWTs, host login UI, store credentials, depend on
-MCP, or implement a policy engine.
+The other `@gonk/*` packages take an `AuthContext`:
+[`@gonk/tool-registry`](https://www.npmjs.com/package/@gonk/tool-registry)
+checks it before every tool call,
+[`@gonk/tool-registry-mcp`](https://www.npmjs.com/package/@gonk/tool-registry-mcp)
+builds one per request, and
+[`@gonk/context`](https://www.npmjs.com/package/@gonk/context) and
+[`@gonk/skills`](https://www.npmjs.com/package/@gonk/skills) use it to decide
+what a caller may see or change.
 
-## Principal and delegation
+This package does not verify tokens, show a login screen, store credentials or
+include a policy engine. Those stay in your host.
 
-`identity` is the effective subject whose authority is being exercised.
-`delegation` records the verified immediate agent or service acting for that
-subject.
+## Install
+
+```sh
+npm install @gonk/auth
+```
+
+## Quick start: a single-user host
+
+A local CLI or a personal MCP server has one user. `ownerPrincipal()` builds a
+local principal for that user and a policy that allows everything:
+
+```ts
+import { ownerPrincipal } from "@gonk/auth";
+
+const auth = ownerPrincipal(process.env);
+// auth.principal → { id: "local:gonk:local:<host>:<user>", kind: "local", roles: ["owner"], ... }
+```
+
+The same environment always gives the same principal ID, so keys and receipts
+stay stable across restarts. Use it only when there is exactly one caller.
+
+## Principals and delegation
+
+A host with real users builds the principal from its own authentication.
+`identity` is the subject whose authority is used. `delegation` records the
+agent or service that acts for that subject.
 
 ```ts
 import type { AuthenticatedPrincipal } from "@gonk/auth";
@@ -33,13 +64,39 @@ const principal: AuthenticatedPrincipal = {
       subject: "agent-1",
       method: "service-token",
     },
-    actorId: "eve-agent-1",
+    actorId: "review-agent",
     actorSessionId: "session-a",
   },
   roles: ["member"],
   scopes: ["reviews:write"],
 };
 ```
+
+## Authorization
+
+An `AuthContext` pairs the principal with your policy:
+
+```ts
+import type { AuthContext } from "@gonk/auth";
+
+const auth: AuthContext = {
+  principal,
+  authorize: ({ action, resource }) =>
+    policy.allows(principal, action, resource)
+      ? { outcome: "allow", reason: "member of workspace" }
+      : { outcome: "deny", reason: "not a member" },
+};
+```
+
+`action` names what is being attempted, for example `tool.discover`,
+`tool.invoke`, `context.use` or `skill.read`. `resource` describes what it is
+attempted on. `AuthContext` imports no transport or tool types, so you can
+build it anywhere.
+
+When an `AuthContext` enters an asynchronous request, wrap it with
+`captureAuthContext(auth)`. This validates the principal, makes a frozen copy,
+and binds `authorize` once. Later changes to the host's objects cannot change
+the identity or policy used for that request.
 
 ## Binding keys
 
@@ -50,52 +107,41 @@ const sessionKey = securityContextKey({ principal });
 const alwaysAllowKey = persistentGrantKey({ principal });
 ```
 
-Both opaque keys bind subject, actor identity/id, tenant, and workspace.
-`securityContextKey` also binds the delegated actor session and is used for
-stateful transports, one-call assertions, and session grants.
-`persistentGrantKey` deliberately survives an agent-session restart and is used
-for tightly constrained persistent grants.
+Both return opaque keys built from the subject, the acting agent, the tenant
+and the workspace.
 
-Roles, scopes, token expiry, and host attributes are revalidated policy inputs;
-they are not key material. Attributes use the exported recursive
-`AuthClaimRecord` plain-data contract—no functions, class instances, `Set`,
-`Map`, or mutable date objects cross the authorization boundary.
+- `securityContextKey` also includes the agent's session. Use it for stateful
+  connections and grants that last one session.
+- `persistentGrantKey` stays the same when the agent session restarts. Use it
+  for narrow grants that must persist.
 
-## Authorization
+Roles, scopes, token expiry and attributes are not part of either key. They
+are checked again on every decision. Attributes must be plain data
+(`AuthClaimRecord`): no functions, class instances, `Set`, `Map` or `Date`
+objects.
 
-```ts
-import type { AuthContext } from "@gonk/auth";
+## Passing a principal across a boundary
 
-const auth: AuthContext = {
-  principal,
-  authorize: ({ action, resource }) =>
-    policy.authorize(principal, action, resource),
-};
-```
-
-`AuthContext` is generic and imports no tool-registry or transport types.
-
-### Request-bound capture
-
-Use `captureAuthContext(auth)` when an authorization context crosses into an
-asynchronous request lifecycle. It validates, clones, and deeply freezes the
-principal, then binds `authorize` once. Later mutation of the host's principal
-object or replacement of its policy method cannot change the identity or
-policy function captured for that request. Class-based policy receivers remain
-supported.
+`encodeTrustedEnvelope()` and `decodeTrustedEnvelope()` turn a principal into
+a versioned JSON string and back. Use them to pass a principal through a
+channel that carries only strings, such as an environment variable or a hook's
+input. Decoding does not authenticate anyone. Trust the decoded principal only
+if you already trust the channel it arrived on. A malformed string or an
+unknown version throws a `TrustedEnvelopeError`.
 
 ## Audit redaction
 
-`redactAuthzResource()` removes resource metadata and returns the small
-attributable projection accepted by security receipts. Credentials,
-complete tool inputs, prompts, and document bodies do not belong in receipts.
+`redactAuthzResource()` strips a resource down to the small, attributable
+summary that audit receipts accept. Credentials, full tool inputs, prompts and
+document bodies never belong in receipts.
 
-## Install
+## Entry points
 
-```sh
-npm i @gonk/auth
-```
+| Import | Contents |
+| --- | --- |
+| `@gonk/auth` | Everything, including Node-only helpers such as `ownerPrincipal` and the binding keys. |
+| `@gonk/auth/contracts` | Types, validators and the envelope codec only, with no Node built-ins. Safe for browser code. |
 
 ## License
 
-Apache-2.0.
+Apache-2.0

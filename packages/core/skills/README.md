@@ -1,24 +1,64 @@
 # @gonk/skills
 
-Canonical, host-neutral discovery, lifecycle mutation, activation, and reads for
-Gonk-managed skills.
+Find, read and manage agent skills: folders that hold a `SKILL.md` file and the
+files it refers to. `@gonk/skills` looks for skills across the five
+[`@gonk/scope`](https://www.npmjs.com/package/@gonk/scope) tiers (session,
+directory, project, persona and global) and picks the most specific definition
+of each one. Changes to skills go through
+[`@gonk/auth`](https://www.npmjs.com/package/@gonk/auth) authorization and are
+recorded so that they survive a restart.
 
-`@gonk/skills` finds active `SKILL.md` trees through the five `@gonk/scope`
-tiers, resolves definitions deterministically, mutates managed skills through
-canonical `@gonk/auth` checks, and returns closed Standard Schema records with
-typed provenance, optional freshness, stable revisions, and a normalized
-supporting-file tree.
+It also serves skills that ship inside an application through two read-only
+tools for a [`@gonk/tool-registry`](https://www.npmjs.com/package/@gonk/tool-registry)
+registry.
 
-```bash
+## Install
+
+```sh
 npm install @gonk/skills @gonk/scope @gonk/store @mirk/store
 ```
 
-```ts
-import { FilesystemManagedSkillRegistry } from "@gonk/skills";
-import type { GonkSyncStateSource } from "@gonk/store";
+## Quick start: read skills
 
-// The host selects and owns the Mirk adapter and its lifecycle.
-declare const stateSource: GonkSyncStateSource;
+A skill lives at `<tier home>/skills/<id>/SKILL.md`. For a project, the tier
+home is the project folder:
+
+```text
+my-project/
+  skills/
+    release-check/
+      SKILL.md
+      references/checklist.md
+```
+
+```markdown
+---
+name: release-check
+description: Steps to check a release before it ships.
+---
+
+# Release check
+
+Read references/checklist.md, then do each step.
+```
+
+```ts
+import { InMemoryKv } from "@mirk/store";
+import type { SyncStore } from "@mirk/store";
+import type { ScopeName } from "@gonk/scope/types";
+import type { GonkSyncStateSource } from "@gonk/store";
+import { FilesystemManagedSkillRegistry } from "@gonk/skills";
+
+// Lifecycle records go to a Mirk store that the host chooses and owns.
+// InMemoryKv keeps this example short; use a persistent adapter in a real host.
+const stores = new Map<ScopeName, SyncStore>();
+const stateSource: GonkSyncStateSource = {
+  kv(tier) {
+    let store = stores.get(tier);
+    if (!store) stores.set(tier, (store = new InMemoryKv()));
+    return store;
+  },
+};
 
 const skills = new FilesystemManagedSkillRegistry({
   env: { cwd: process.cwd(), sessionId: "session-123" },
@@ -26,106 +66,137 @@ const skills = new FilesystemManagedSkillRegistry({
 });
 
 const listed = await skills.list();
+// → { status: "ok", skills: [{ id: "release-check", description: "...", scope: "directory", ... }] }
+
 const detail = await skills.get({ id: "release-check" });
-const reference = await skills.read({
+const checklist = await skills.read({
   id: "release-check",
   path: "references/checklist.md",
 });
+// → { status: "found", content: "...", contentHash: "sha256:...", ... }
 ```
 
-Managed active skills live at `<tier-home>/skills/<id>/SKILL.md`. Manifests are
-parsed with the same `yaml` implementation used by the legacy writer, including
-wrapped scalars, then validated against Core's typed fields. The normal
-registry cannot reach `.staging` or `.archive`; malformed manifests, reserved
-IDs, traversal paths, and symbolic links fail closed. The narrowest definition
-wins (`session > directory > project > persona > global`). `resolve()` always
-returns that real winner and every definition in order; `get({ scope })`
-inspects an exact definition and labels the others neutrally.
+Every result is a plain record with a fixed schema. It includes the skill's
+scope, a stable `revision`, content hashes, and the tree of supporting files.
 
-Mutations live on the separate `WritableManagedSkillRegistry` contract. Create
-can write active skills or structurally invisible staged skills while preserving
-typed tags and provenance. Patch supports
-body find/replace plus supporting-file writes/removals and compares
-`expectedRevision`; patch, pin, usage, and archive return structured conflicts
-with the current revision and affected paths. `idempotencyKey` is replayed from a
-restart-durable lifecycle journal namespaced by operation, canonical auth security
-context, and a hashed request fingerprint; authorization is rechecked before every
-replay. `getMutationReceipt()` makes the durable result observable without exposing
-it across principals. Filesystem mutations keep a scope-local pending pre-image
-until the receipt commits; registry construction restores a pending mutation
-without a receipt and discards the pre-image when the receipt exists. Pinned
-skills reject edits and archive until an authorized `pin({ pinned: false })`
-explicitly unpins them.
+## How skills resolve
 
-Staged promotion is never implicit. `promote()` requires normal Gonk
-authorization and an injected `@gonk/tool-registry` approval provider; without
-that provider, or when approval is required/denied, the staged directory is left
-untouched.
+- **Most specific wins.** If the same skill ID exists in several tiers, the
+  narrowest one wins: session, then directory, project, persona and global.
+  `resolve({ id })` returns the winner and every other definition in order.
+- **Strict paths.** Malformed manifests, reserved IDs, paths that leave the
+  skill folder and symbolic links are refused.
+- **Hidden lifecycle folders.** Staged and archived skills live in `.staging`
+  and `.archive` folders that `list`, `get` and `read` never show.
+- **Freshness.** You can inject a `freshnessProbe` that checks whether a skill
+  is out of date. Without one, freshness is reported as `unknown`. The package
+  makes no network calls itself.
 
-Activation is model-visible only through `@gonk/context`. `activate()` returns
-`ready` only after its usage metadata update and activation receipt are durable.
-The usage rewrite is covered by the same pending pre-image protocol, so receipt
-failure or process interruption cannot leave an unreceipted use count committed.
-`getActivationReceipt()` and `listActivationReceipts()` recover security-bound
-receipts after restart; `createSkillActivationContributor()` projects recovered
-receipts as required model-context candidates. Tool
-projection is distinct (`read`, `attach`, `activate`, `test`).
-`createSkillToolDefinitions()` binds real `skill-read` and `skill-activate`
-handlers to a writable registry; it emits `skill-attach` or `skill-test` only
-when the host injects the corresponding executable callback. All definitions
-have closed Standard Schema contracts and fail closed without `ctx.auth`.
-`projectSkillTools()` remains a lightweight capability descriptor. There is no
-generic invoke verb.
+The read methods do not check authorization. Before you show results to a
+caller, check that the caller may see them.
 
-## Packaged application skills
+## Changing skills
 
-`@gonk/skills/bundled` exposes application-owned `SKILL.md` trees through two read-only registry tools. Register the definitions once to make them available through Gonk MCP, HTTP, and CLI projections:
+`FilesystemManagedSkillRegistry` also implements the writable contract. Every
+change takes an `AuthContext` and an `idempotencyKey`:
+
+```ts
+import { ownerPrincipal } from "@gonk/auth";
+
+const auth = ownerPrincipal(process.env);
+
+const created = await skills.create({
+  auth,
+  idempotencyKey: "create-deploy-notes-1",
+  id: "deploy-notes",
+  scope: "directory",
+  description: "How to deploy this service.",
+  body: "# Deploy\n\nRun the release script.\n",
+});
+
+if (created.status === "ok") {
+  await skills.patch({
+    auth,
+    idempotencyKey: "patch-deploy-notes-1",
+    expectedRevision: created.revision,
+    id: "deploy-notes",
+    find: "Run the release script.",
+    replace: "Run the release script with --dry-run first.",
+  });
+}
+```
+
+| Method | What it does |
+| --- | --- |
+| `create` | Writes a new active skill, or a staged one with `staged: true`. |
+| `patch` | Finds and replaces text in the body, and writes or removes supporting files. |
+| `pin` | Locks a skill against edits and archiving until it is unpinned. |
+| `archive`, `restore` | Moves a skill out of and back into the active set. |
+| `promote` | Makes a staged skill active. It needs an injected approval provider. |
+| `recordUsage` | Updates a skill's usage metadata. |
+| `activate` | Marks a skill as used by the model and records an activation receipt. |
+
+Changes that take an `expectedRevision` return a structured conflict when the
+skill changed in the meantime. Repeating a request with the same
+`idempotencyKey` returns the recorded result, after authorization is checked
+again. If a crash interrupts a change before it is recorded, the registry rolls
+the change back when it next starts. `getMutationReceipt()`, `getActivationReceipt()` and
+`listActivationReceipts()` return the recorded results.
+
+Lifecycle records go to the Mirk store that you pass as `stateSource`. The
+package never chooses an adapter or a path for it and never closes it. It does
+not store credentials, policy functions, request bodies or idempotency keys.
+
+## Skills in the model's context and as tools
+
+- `createSkillActivationContributor()` feeds activated skills to a
+  [`@gonk/context`](https://www.npmjs.com/package/@gonk/context) compiler as
+  required context.
+- `createSkillToolDefinitions()` returns registry tools bound to a writable
+  registry: `skill-read` and `skill-activate`, plus `skill-attach` and
+  `skill-test` when the host supplies those callbacks. Every tool fails
+  without `ctx.auth`.
+
+## Skills packaged with an application
+
+`@gonk/skills/bundled` serves skill folders that ship inside your application,
+through two read-only tools. Register them once and they are available in every
+host that serves the registry: MCP, HTTP and the CLI.
 
 ```ts
 import { createBundledSkillToolDefinitions } from "@gonk/skills/bundled";
 
-for (const tool of createBundledSkillToolDefinitions({
-  root: new URL("../.agents/skills/", import.meta.url),
-})) registry.register(tool);
+registry.register(
+  createBundledSkillToolDefinitions({
+    root: new URL("./skills/", import.meta.url),
+  }),
+);
 ```
 
-`skill_list` returns IDs and descriptions from YAML frontmatter. `skill_get({ id })` returns the complete skill file. The configured root contains `<id>/SKILL.md`; IDs cannot select paths outside it. Bundled skill reads require no lifecycle journal or database. Applications can set `listName` and `getName` when composing several catalogs into one registry. Normal registry authorization governs both tools.
+- `skill_list` returns each skill's ID, name and description from its
+  frontmatter.
+- `skill_get({ id })` returns the full `SKILL.md`.
 
+The root holds one folder per skill, each with a `SKILL.md`. An ID cannot
+reach a path outside the root. Bundled skills need no state store. Set
+`listName` and `getName` to rename the tools when you combine several bundles.
+To also offer the bundle through native MCP Skills, see
+[`@gonk/tool-registry-mcp`](https://www.npmjs.com/package/@gonk/tool-registry-mcp).
 
-For native MCP Skills, [load the application bundle through the MCP adapter](../../adapters/tool-registry-mcp/README.md#serve-packaged-skills). It uses the same portable tool definitions with one verified catalog.
+## Testing your own registry
 
-Freshness is an injected capability. Core performs no network access: without a
-probe it reports `unknown`, and a failed probe becomes `unprobeable` without
-hiding the skill.
+`@gonk/skills/conformance` exports `managedSkillRegistryConformanceCases()`, a
+set of named async test cases for the registry contract. Adapt them to your
+test framework to check another implementation.
 
-Read APIs remain a discovery/read substrate, not an authorization boundary.
-Applications and host adapters must authorize list visibility, detail and
-definition disclosure, and body/supporting-file reads before exposing results to
-a principal. Writable APIs take canonical `AuthContext` and fail closed.
+## Entry points
 
-Lifecycle records use a host-owned Mirk `SyncStore` supplied through
-`FilesystemManagedSkillRegistryOptions.stateSource`. Gonk binds that source to
-the scope and the `skills.lifecycle` namespace; it does not select an adapter,
-assemble a path, or own `close()`. Records use closed schemas and capability
-policy; raw auth contexts, policy functions, request bodies, and idempotency keys
-are not stored. The journal inherits the source's single-writer semantics.
-Pending pre-images live in the scope's existing operational filesystem
-substrate (`store/skills.lifecycle-transactions`, under the canonical `.agents`
-namespace or its read-old `.gonk` fallback) with atomic markers containing only
-relative paths and opaque receipt identifiers. Recovery resolves scope homes
-live, rejects symlinked target components, and validates every backup before any
-rollback write. A scope lock is held from pending
-snapshot creation through receipt commit and cleanup; live-owner locks prevent a
-second registry from constructing over an in-flight mutation, while dead-owner
-locks are reclaimed on reconstruction. If a journal write throws after
-persisting the exact receipt, Core keeps the matching filesystem result instead
-of rolling it back. A registry without either `stateSource` or an explicit
-`lifecycleJournal` fails at construction.
+| Import | Contents |
+| --- | --- |
+| `@gonk/skills` | `FilesystemManagedSkillRegistry`, tool and context helpers, schemas and types. |
+| `@gonk/skills/bundled` | `createBundledSkillToolDefinitions`. |
+| `@gonk/skills/conformance` | `managedSkillRegistryConformanceCases`. |
 
-Future stores can import the runner-neutral
-`managedSkillRegistryConformanceCases()` from `@gonk/skills/conformance` and
-adapt the named async cases to their test framework. The suite exercises the public registry contract;
-filesystem-specific security cases remain package tests.
+## License
 
-Still out of scope: host-installed skill discovery, application UI state, semantic
-skill search, and host-specific skill test execution.
+Apache-2.0

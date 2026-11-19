@@ -13,7 +13,7 @@
  *  Robustness: fs.watch is the primary (event-driven) trigger. Each event
  *  re-reads `[offset, EOF)` and parses every complete line, so coalesced or
  *  batched appends all deliver. The tail is robust to the single-writer offset
- *  race (GR-09) because it reads forward by line, not by stored offset. An
+ *  race because it reads forward by line, not by stored offset. An
  *  optional `pollMs` safety net (default 250ms) re-scans on a timer to bound
  *  delivery latency; the primary path is event-driven, not a busy poller. */
 

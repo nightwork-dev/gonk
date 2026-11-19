@@ -1,5 +1,5 @@
 // =============================================================================
-// @gonk/auth/contracts — the client-safe subset (GR-84 part b).
+// @gonk/auth/contracts — the client-safe subset.
 //
 // Types and pure functions only, re-exported from the same source files the
 // full `.` entry uses (`./types.ts`, `./envelope.ts`) — never copied

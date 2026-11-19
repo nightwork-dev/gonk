@@ -1,5 +1,5 @@
 // =============================================================================
-// The trusted envelope codec (GR-84 part a).
+// The trusted envelope codec.
 //
 // The portable, versioned, string-shaped representation of an
 // AuthenticatedPrincipal plus its execution binding, for crossing a host seam
@@ -18,10 +18,10 @@
 // transport, a same-process handoff, a host-verified hook payload) before it
 // treats the decoded principal as real. A decoded envelope handed to
 // `registry.withPrincipal(...)` (`@gonk/tool-registry`) without that
-// upstream trust check is exactly the "ambient owner" failure mode GR-83
-// eliminated, reintroduced one layer up.
+// upstream trust check brings back the "ambient owner" failure mode that a
+// required `ToolContext.auth` removed, one layer up.
 //
-// Node-free by design (client-safe, GR-84 part b): only imports from
+// Node-free by design (client-safe): only imports from
 // `./types.ts`, which has no Node built-ins either. Do not add a Node import
 // to this file or to `./types.ts` — see `scripts/check-client-safe-contracts.mjs`.
 // =============================================================================

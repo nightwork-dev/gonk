@@ -29,7 +29,7 @@
 
 ### Patch Changes
 
-- `canonicalPath` spells a path that does not exist yet through the canonical spelling of its nearest existing ancestor, so a session or global home keeps one spelling before and after its folder is created (on macOS, `/var` and `/private/var` no longer fork one endpoint into two). The resolver's private copy of that walk and host storage's hand-rolled variant are removed; skills compares a session home against the canonical global home.
+- `canonicalPath` now resolves a path that does not exist yet through its nearest existing parent folder. A session or global home keeps one spelling before and after its folder is created, so on macOS `/var` and `/private/var` no longer resolve to two different homes. `@gonk/scope`, `@gonk/store` and `@gonk/skills` now use this one function.
 - Updated dependencies []:
   - @gonk/scope@0.11.1
   - @gonk/utils@0.11.1
@@ -38,9 +38,9 @@
 
 ### Minor Changes
 
-- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Share host-owned SQLite leasing and canonical storage resolution across Pi and Codex. Keep host policy in thin adapter frontdoors and reuse the same physical-path pool and scoped state ports.
+- [#11](https://github.com/nightwork-dev/gonk/pull/11) [`85e4729`](https://github.com/nightwork-dev/gonk/commit/85e472961d209b5fa1aeb0dad352bf7607b9636d) Thanks [@abrisene](https://github.com/abrisene)! - Add host-owned storage (`@gonk/store/host-storage`). Pi and Codex hosts share one SQLite lease and one way to resolve storage paths, and get scope-bound state stores from it.
 
-- Host-owned storage exposes synchronous tier transactions, so a host can write a message and its delivery record atomically (used by durable comms delivery).
+- Host-owned storage exposes synchronous tier transactions, so a host can write two related records atomically, for example a message and its delivery record.
 
 ### Patch Changes
 
@@ -60,19 +60,18 @@
 
 ### Minor Changes
 
-- 5c47c3e: Release the R1 Core migration slice. `@gonk/store` adds the caller-owned
-  Mirk-native state binding and explicit legacy importer (minor: new public
-  subpaths and replacement contract). Retrieval, temporal, and skills now
-  consume caller-provided Mirk state; the skills registry requires `stateSource`
-  unless a lifecycle journal is injected (minor: migration boundary). Tool
-  Registry publishes result evidence, freshness/cache, truncation, lifecycle,
-  composition, and redacted receipt projections (minor: public contract
-  additions). The orchestrator and host adapters receive corresponding
-  state/projection wiring (patch: additive projections).
+- 5c47c3e: `@gonk/store` adds `bindGonkSyncState`, which binds scope tiers and
+  namespaces to Mirk stores that the host provides, and an explicit legacy
+  importer at `@gonk/store/legacy-import`. `@gonk/retrieval`, `@gonk/temporal`
+  and `@gonk/skills` now keep their state in a host-provided Mirk store. The
+  skills registry needs a `stateSource` unless you inject a lifecycle journal.
+  `@gonk/tool-registry` adds result metadata (provenance, freshness, cache
+  policy and truncation), tool lifecycle and composition declarations, and
+  redacted receipt projections. The orchestrator and host adapters pass these
+  through.
 
-  The repository keeps all `@gonk/*` packages in one fixed Changesets group. With
-  the current highest package version at `0.6.0`, `changeset version` will align
-  the fixed group to `0.7.0`, including packages without a direct entry here.
+  All `@gonk/*` packages share one version number, so every package moves to
+  `0.7.0`, including packages with no change of their own.
 
 ### Patch Changes
 

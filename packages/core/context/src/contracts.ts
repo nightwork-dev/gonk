@@ -1,5 +1,5 @@
 // =============================================================================
-// @gonk/context/contracts — the client-safe subset (GR-84 part b).
+// @gonk/context/contracts — the client-safe subset.
 //
 // Receipt types only, re-exported from `./types.ts` — never copied
 // declarations. A UI showing "what context did the compiler include/exclude

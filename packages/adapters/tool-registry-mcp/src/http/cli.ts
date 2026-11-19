@@ -1,21 +1,19 @@
 #!/usr/bin/env node
-// Thin CLI launcher for createHttpMcpServer — the real consumer that makes the
-// exported factory non-orphan. Serves a built-in `gonk_health` tool so the
-// endpoint advertises something live; production deployments wire their full
-// capability suite (memory, knowledge, RLM, …) by calling createHttpMcpServer
-// from the library with their own ToolRegistry/Orchestrator.
+// Thin CLI launcher for createHttpMcpServer. Serves a built-in `gonk_health`
+// tool so the endpoint advertises something live; production deployments wire
+// their own tools by calling createHttpMcpServer from the library with their
+// own ToolRegistry/Orchestrator.
 //
 //   gonk-mcp-http [--host 0.0.0.0] [--port 8808] [--api-key <key>]
 //                 [--allowed-hosts a:1,b:2] [--allow-insecure]
 //
-// Defaults to 127.0.0.1 (loopback). To expose it on a network — e.g. a
-// Tailscale node — set --api-key so callers must present a bearer token. A
-// non-loopback bind with no key is refused unless you pass --allow-insecure to
-// deliberately accept that anyone who can reach the port can run tools. With
-// DNS-rebinding protection on (the default), a non-loopback bind also needs
-// --allowed-hosts set to the name(s) clients will dial (e.g. the MagicDNS name
-// + port) — the bound address can't be auto-allow-listed. Point an MCP client
-// (an Eve `connection`, curl, any MCP client) at http://<host>:<port>/mcp.
+// Defaults to 127.0.0.1 (loopback). To expose it on a network, set --api-key
+// so callers must present a bearer token. A non-loopback bind with no key is
+// refused unless you pass --allow-insecure to deliberately accept that anyone
+// who can reach the port can run tools. With DNS-rebinding protection on (the
+// default), a non-loopback bind also needs --allowed-hosts set to the name(s)
+// clients will dial (host name + port) — the bound address can't be
+// auto-allow-listed. Point any MCP client at http://<host>:<port>/mcp.
 
 import { ToolRegistry, passthrough } from "@gonk/tool-registry";
 

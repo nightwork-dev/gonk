@@ -4,7 +4,7 @@
 // `./envelope.ts` (the trusted envelope codec, also pure), and
 // `./security.ts` (Node-touching: hashing, request-boundary capture, the
 // single-owner constructor). See `./contracts.ts` for the client-safe subset
-// of this surface (types.ts + envelope.ts only, GR-84).
+// of this surface (types.ts + envelope.ts only).
 // =============================================================================
 
 export type {

@@ -34,7 +34,7 @@ type ToolOutput<T> = T extends ToolDefinition<any, infer O> ? O : never;
 /** Type-level camelCase of a dotted op name. Provably equal to the runtime
  *  `dotToCamel` BECAUSE `assertValidNames` rejects any name whose every dot is
  *  not followed by `[a-z]` (see `NAME_PATTERN`) — so `Capitalize<Tail>` and the
- *  runtime `/\.([a-z])/` transform can never diverge (closes GLM Finding 4). */
+ *  runtime `/\.([a-z])/` transform can never diverge. */
 type DotToCamel<S extends string> = S extends `${infer Head}.${infer Tail}`
   ? `${Head}${Capitalize<DotToCamel<Tail>>}`
   : S;
@@ -55,7 +55,7 @@ export type ClientFor<Tools extends readonly AnyNamedTool[]> = {
  *  identical: every dot is followed by a lowercase letter, so `Capitalize<Tail>`
  *  and the runtime `/\.([a-z])/` transform cannot diverge — this rules out the
  *  empty-segment (`a..b`), dot-then-uppercase (`a.B`), dot-then-symbol (`a._x`),
- *  and dot-then-digit (`a.1b`) classes GLM flagged. Hyphenated/kebab op names
+ *  and dot-then-digit (`a.1b`) classes. Hyphenated/kebab op names
  *  aren't supported by the client projection yet (they'd leave a non-identifier
  *  `-` in the key); add multi-separator handling when a real consumer needs it. */
 const NAME_PATTERN = /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/;

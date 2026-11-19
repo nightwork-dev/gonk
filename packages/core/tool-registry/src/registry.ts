@@ -221,12 +221,12 @@ export class ToolRegistry {
     return this.runInvocation(name, input, ctx, callStack, undefined);
   }
 
-  /** Bind a principal once (GR-83 ergonomics: "explicit once, ambient
+  /** Bind a principal once ("explicit once, ambient
    *  never"). Returns an invoker whose `ctx` no longer accepts `auth` —
    *  every call through it carries the bound principal, so downstream call
    *  sites never thread auth per call. A single-principal host binds at
    *  startup: `registry.withPrincipal(ownerPrincipal(env))`. A host that
-   *  wants per-turn principals (reach ingress, a multi-tenant transport)
+   *  wants per-turn principals (a multi-tenant transport)
    *  calls `withPrincipal` again per verified sender instead of reusing one
    *  bound invoker across callers. */
   withPrincipal(auth: AuthContext): BoundToolRegistry {
@@ -269,7 +269,7 @@ export class ToolRegistry {
 
     const start = performance.now();
 
-    // GR-83: ToolContext.auth is a required field, so every well-typed
+    // ToolContext.auth is a required field, so every well-typed
     // caller already supplies one. This is the runtime backstop for an
     // untyped (plain JS) caller that bypasses the type system — core still
     // refuses to invoke without a principal rather than silently acting as
@@ -1017,7 +1017,7 @@ function isAsyncIterable(x: unknown): x is AsyncIterable<unknown> {
   );
 }
 
-// Convenience for adapters: build a base context. `auth` is required (GR-83)
+// Convenience for adapters: build a base context. `auth` is required
 // — there is no ambient owner fallback, so a caller that omits it gets a
 // compile-time error here, the same way it would constructing ToolContext
 // directly.

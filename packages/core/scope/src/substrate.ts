@@ -33,8 +33,8 @@ export const SUBSTRATE_KINDS = ["memory", "knowledge", "sessions", "store"] as c
 
 /** Directories that host runtimes create under a tier's `.agents`/`.gonk`
  *  namespace for generated state: the host-owned storage root (`gonk`), the
- *  compatibility database roots (`pi-state`, `memory-state`), autotune's
- *  cross-process claims, and the Objective Watch session store. Like
+ *  compatibility database roots (`pi-state`, `memory-state`), and two
+ *  extension state directories (`autotune-claims`, `objective-watch`). Like
  *  {@link SUBSTRATE_KINDS}, a namespace holding only these is storage, not a
  *  project marker.
  *

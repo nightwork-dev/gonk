@@ -63,8 +63,7 @@ export function resolveTierHomes(env: ScopeEnvironment): Map<ScopeName, string> 
 
 /** Resolve the session-tier scope home for a cwd, minting the stable per-cwd
  *  session id on the way. This is the directory under which per-session
- *  substrates (memory sqlite, the supervised-compose run registry, the
- *  background-job store) all live, so cross-process readers and writers that
+ *  substrates (memory sqlite, run registries, the background-job store) all live, so cross-process readers and writers that
  *  share a cwd agree on one root across `pi --print` invocations.
  *
  *  Single helper so consumers that previously open-coded

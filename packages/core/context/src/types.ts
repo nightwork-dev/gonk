@@ -1,5 +1,5 @@
 // Sourced from @gonk/auth's client-safe subpath (not the bare package
-// entry): this file backs @gonk/context/contracts (GR-84), which must never
+// entry): this file backs @gonk/context/contracts, which must never
 // transitively resolve @gonk/auth's Node-touching security.ts.
 import type {
   AuthContext,

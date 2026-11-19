@@ -1,45 +1,57 @@
 # @gonk/utils
 
-Zero-dependency utility primitives shared across the gonk foundation and the
-extension ecosystem. Code-split per concern **and per platform**, so a consumer
-imports exactly the silo it needs.
+Small file-safety helpers with no dependencies: path containment and atomic
+writes. The other `@gonk/*` packages use them, and you can use them directly.
 
-**Import the subpath, not the barrel.** Extensions run as unbundled Node ESM,
-where tree-shaking does not apply: a named subpath import only evaluates the file
-it points at. The split is also a platform boundary — see below.
+Each concern has its own subpath, so you load only the file you import. The
+split also separates browser-safe code from Node-only code.
 
-## `@gonk/utils/path` — pure, browser-safe
+## Install
 
-Path-containment logic with **no `node:*` in its import graph** (no `node:fs`,
-no `node:path`, no `process`). It bundles for a browser/edge target as-is, no
-shim or aliasing. POSIX-oriented: both `/` and `\` are treated as separators and
-results join with `/`.
+```sh
+npm install @gonk/utils
+```
+
+## `@gonk/utils/path`: browser-safe path containment
 
 ```ts
 import { safeJoin, safeKeyPath } from "@gonk/utils/path";
+
+safeJoin("/data", "reports/q1.json");   // → "/data/reports/q1.json"
+safeJoin("/data", "../etc/passwd");     // throws: the path leaves the root
+safeKeyPath("/data", "kv", "prefs");    // → "/data/kv/prefs"
 ```
 
-| Export | Purpose |
+| Export | What it does |
 | --- | --- |
-| `safeJoin(root, rel)` | Resolve `rel` under `root`; throw if it escapes (via `..`, an absolute segment). Internal `..` that stays inside is normalized. |
-| `safeKeyPath(root, subDir, key)` | Stricter variant for stable storage keys: rejects absolute/`..` keys outright so a key round-trips to exactly the path it names. |
+| `safeJoin(root, rel)` | Resolves `rel` under `root` and throws if the result leaves `root`. A `..` that stays inside is allowed. |
+| `safeKeyPath(root, subDir, key)` | A stricter version for storage keys. It refuses any absolute key or `..`, so a key maps to exactly one path. |
 
-## `@gonk/utils/fs` — Node-only
+This entry imports no `node:*` modules and does not use `process`, so it
+bundles for browsers and edge runtimes as it is. It treats both `/` and `\` as
+separators and joins with `/`.
 
-Atomic writes (temp-file + rename). Uses `node:fs` and `process`, so this entry
-is fundamentally non-browser; it is kept apart from `./path` precisely so a
-browser bundle importing `@gonk/utils/path` can never transitively reach
-`node:fs`.
+## `@gonk/utils/fs`: atomic writes (Node only)
 
 ```ts
-import { atomicWriteText, atomicWriteBytes, atomicWriteJson } from "@gonk/utils/fs";
+import { atomicWriteJson, atomicWriteText, atomicWriteBytes } from "@gonk/utils/fs";
+
+atomicWriteJson("/data/settings.json", { theme: "dark" });
 ```
 
-| Export | Purpose |
+| Export | What it does |
 | --- | --- |
-| `atomicWriteText(path, text)` | Atomic UTF-8 text write. A reader never sees a torn file. |
-| `atomicWriteBytes(path, bytes)` | Atomic raw-bytes write. |
-| `atomicWriteJson(path, value)` | Atomic pretty-JSON write with a trailing newline. |
+| `atomicWriteText(path, text)` | Writes UTF-8 text atomically. A reader never sees a partly written file. |
+| `atomicWriteBytes(path, bytes)` | Writes raw bytes atomically. |
+| `atomicWriteJson(path, value)` | Writes formatted JSON with a trailing newline, atomically. |
 
-> The default barrel (`@gonk/utils`) re-exports both and is therefore Node-only.
-> Browser/edge code must import `@gonk/utils/path` directly.
+Each write goes to a temporary file that is then renamed into place.
+
+## The main entry
+
+`@gonk/utils` re-exports both subpaths, so it is Node only. Browser and edge
+code must import `@gonk/utils/path` directly.
+
+## License
+
+Apache-2.0

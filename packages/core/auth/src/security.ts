@@ -65,7 +65,7 @@ export interface OwnerPrincipalOptions {
  * — never per call. It is for single-human hosts only: pi, a CLI invocation,
  * a plugin MCP server with no external callers.
  *
- * NOT for a host with more than one caller (reach ingress, a multi-tenant MCP
+ * NOT for a host with more than one caller (a multi-tenant MCP
  * server). Those verify a real sender per turn and construct a distinct
  * `AuthContext` for it instead of reaching for this.
  *
