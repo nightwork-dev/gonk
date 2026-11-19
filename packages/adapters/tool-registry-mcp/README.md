@@ -12,6 +12,8 @@ It is built on the official MCP TypeScript SDK (v2). You can serve a
 [`@gonk/tool-orchestrator`](https://www.npmjs.com/package/@gonk/tool-orchestrator)
 when you want the model to see a smaller active set of tools.
 
+<p align="center"><img src="https://raw.githubusercontent.com/nightwork-dev/gonk/main/assets/architecture.svg" alt="Hosts (a command line, MCP clients over stdio or HTTP, Pi, Claude Code, Codex) reach tools through the registry adapters and the extension-spec materializers. These sit on the foundation packages: tool-registry, tool-orchestrator, auth and utils for tools, and scope, store, skills, context and retrieval for state and context." width="880"></p>
+
 ## Install
 
 ```sh

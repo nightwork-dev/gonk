@@ -47,6 +47,8 @@ scope.resolve("editor.theme");       // → every tier where the key is set, mos
 A read with no tier walks from the most specific tier to the least specific
 and returns the first match. A write always names its tier.
 
+<p align="center"><img src="https://raw.githubusercontent.com/nightwork-dev/gonk/main/assets/scope-resolution.svg" alt="A read walks the five tiers session, directory, project, persona and global, from most to least specific, and returns the first match. A write always names its tier." width="880"></p>
+
 ## Tiers and their homes
 
 Each tier has a home folder:

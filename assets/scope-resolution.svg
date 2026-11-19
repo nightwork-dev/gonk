@@ -1,33 +1,49 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 248" font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" role="img" aria-label="scope resolution: a read walks the five tiers from session (most specific) to global (least specific) and returns the first match.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 248" font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" role="img" aria-label="scope resolution: a read walks the five tiers from session (most specific) to global (least specific) and returns the first match. A write always names its tier.">
   <defs>
     <marker id="sa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M0,0 L10,5 L0,10 z" fill="#c3bbb0"/>
+      <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
     </marker>
     <style>
+      .frame  { fill:#faf8f5; stroke:#e7e1d9; }
+      .card   { fill:#ffffff; stroke:#dcd5cc; }
+      .hit    { fill:#8a2d3b; stroke:#8a2d3b; }
       .q      { font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; font-size:13px; fill:#3a342e; }
       .tier   { font-size:13.5px; font-weight:600; fill:#3a342e; }
       .tierw  { font-size:13.5px; font-weight:700; fill:#ffffff; }
       .cap    { font-size:11px; fill:#a39a8e; letter-spacing:1px; }
       .note   { font-size:12px; fill:#8c8378; }
       .win    { font-size:11px; font-weight:600; fill:#8a2d3b; }
+      .walk   { stroke:#c3bbb0; stroke-width:1.6; }
+      .arrowhead { fill:#c3bbb0; }
+      @media (prefers-color-scheme: dark) {
+        .frame  { fill:#1d1b19; stroke:#34302b; }
+        .card   { fill:#262320; stroke:#3f3a34; }
+        .hit    { fill:#b0414f; stroke:#b0414f; }
+        .q, .tier { fill:#ece6de; }
+        .cap    { fill:#8c8378; }
+        .note   { fill:#a39a8e; }
+        .win    { fill:#ec8f9d; }
+        .walk   { stroke:#5c554d; }
+        .arrowhead { fill:#5c554d; }
+      }
     </style>
   </defs>
 
-  <rect x="8" y="8" width="864" height="232" rx="18" fill="#faf8f5" stroke="#e7e1d9"/>
+  <rect class="frame" x="8" y="8" width="864" height="232" rx="18"/>
 
   <!-- query -->
-  <rect x="32" y="36" width="300" height="36" rx="9" fill="#ffffff" stroke="#dcd5cc"/>
-  <text class="q" x="48" y="59">scope.get("tts.provider")</text>
+  <rect class="card" x="32" y="36" width="300" height="36" rx="9"/>
+  <text class="q" x="48" y="59">scope.get("editor.theme")</text>
 
   <text class="cap" x="32" y="104">WALK · MOST → LEAST SPECIFIC</text>
 
   <!-- tier chain -->
   <g>
-    <rect x="32"  y="116" width="140" height="50" rx="10" fill="#8a2d3b" stroke="#8a2d3b"/>
-    <rect x="201" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="370" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="539" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="708" y="116" width="140" height="50" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
+    <rect class="hit"  x="32"  y="116" width="140" height="50" rx="10"/>
+    <rect class="card" x="201" y="116" width="140" height="50" rx="10"/>
+    <rect class="card" x="370" y="116" width="140" height="50" rx="10"/>
+    <rect class="card" x="539" y="116" width="140" height="50" rx="10"/>
+    <rect class="card" x="708" y="116" width="140" height="50" rx="10"/>
     <text class="tierw" x="102" y="146" text-anchor="middle">session</text>
     <text class="tier"  x="271" y="146" text-anchor="middle">directory</text>
     <text class="tier"  x="440" y="146" text-anchor="middle">project</text>
@@ -36,11 +52,11 @@
   </g>
 
   <!-- walk arrows -->
-  <line x1="174" y1="141" x2="199" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
-  <line x1="343" y1="141" x2="368" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
-  <line x1="512" y1="141" x2="537" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
-  <line x1="681" y1="141" x2="706" y2="141" stroke="#c3bbb0" stroke-width="1.6" marker-end="url(#sa)"/>
+  <line class="walk" x1="174" y1="141" x2="199" y2="141" marker-end="url(#sa)"/>
+  <line class="walk" x1="343" y1="141" x2="368" y2="141" marker-end="url(#sa)"/>
+  <line class="walk" x1="512" y1="141" x2="537" y2="141" marker-end="url(#sa)"/>
+  <line class="walk" x1="681" y1="141" x2="706" y2="141" marker-end="url(#sa)"/>
 
   <text class="win"  x="102" y="190" text-anchor="middle">▲ first match wins</text>
-  <text class="note" x="440" y="222" text-anchor="middle">a write always names its tier · the same five tiers resolve identically across CLI, MCP, and Pi</text>
+  <text class="note" x="440" y="222" text-anchor="middle">a write always names its tier · the same five tiers resolve the same way in every host</text>
 </svg>

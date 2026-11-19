@@ -1,83 +1,112 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" role="img" aria-label="gonk core architecture: hosts sit on adapters and the extension-spec surface, which sit on the foundation packages auth, context, retrieval, skills, tool-registry, tool-orchestrator, scope, and store.">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 404" font-family="'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif" role="img" aria-label="gonk architecture: hosts (a command line, MCP clients over stdio or HTTP, Pi, Claude Code, Codex) reach tools through the registry adapters and the extension-spec materializers, which sit on the foundation packages: tool-registry, tool-orchestrator, auth and utils for tools; scope, store, skills, context and retrieval for state and context.">
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#c3bbb0"/>
+      <path class="arrowhead" d="M0,0 L10,5 L0,10 z"/>
     </marker>
     <style>
+      .frame  { fill:#faf8f5; stroke:#e7e1d9; }
+      .card   { fill:#ffffff; stroke:#dcd5cc; }
+      .found  { fill:#fbf3f3; stroke:#e3c9cd; }
       .band   { fill:#a39a8e; font-size:11px; font-weight:600; letter-spacing:2px; }
       .pkg    { font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; font-size:13px; font-weight:600; fill:#8a2d3b; }
-      .pkgn   { font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; font-size:13px; font-weight:600; fill:#3a342e; }
+      .pkgs   { font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace; font-size:11.5px; font-weight:600; fill:#8a2d3b; }
       .desc   { font-size:11.5px; fill:#8c8378; }
       .host   { font-size:13.5px; font-weight:600; fill:#3a342e; }
+      .hostd  { font-size:10.5px; fill:#8c8378; }
       .note   { font-size:12px; fill:#8c8378; font-style:italic; }
       .flow   { stroke:#c3bbb0; stroke-width:1.6; }
+      .tie    { fill:none; stroke:#cbb6ba; stroke-width:1.3; stroke-dasharray:4 3; }
+      .arrowhead { fill:#c3bbb0; }
+      @media (prefers-color-scheme: dark) {
+        .frame  { fill:#1d1b19; stroke:#34302b; }
+        .card   { fill:#262320; stroke:#3f3a34; }
+        .found  { fill:#2b2022; stroke:#5a3c42; }
+        .band   { fill:#8c8378; }
+        .pkg, .pkgs { fill:#ec8f9d; }
+        .desc, .hostd, .note { fill:#a39a8e; }
+        .host   { fill:#ece6de; }
+        .flow   { stroke:#5c554d; }
+        .tie    { stroke:#7a5a60; }
+        .arrowhead { fill:#5c554d; }
+      }
     </style>
   </defs>
 
-  <rect x="8" y="8" width="864" height="344" rx="18" fill="#faf8f5" stroke="#e7e1d9"/>
+  <rect class="frame" x="8" y="8" width="864" height="388" rx="18"/>
 
   <!-- HOSTS -->
   <text class="band" x="32" y="40">HOSTS</text>
   <g>
-    <rect x="32"  y="48" width="180" height="44" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="244" y="48" width="180" height="44" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="456" y="48" width="180" height="44" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="668" y="48" width="180" height="44" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <text class="host" x="122" y="75" text-anchor="middle">CLI</text>
-    <text class="host" x="334" y="75" text-anchor="middle">MCP client</text>
-    <text class="host" x="546" y="75" text-anchor="middle">Pi agent</text>
-    <text class="host" x="758" y="75" text-anchor="middle">Claude Code</text>
+    <rect class="card" x="32"  y="48" width="150" height="48" rx="10"/>
+    <rect class="card" x="198" y="48" width="150" height="48" rx="10"/>
+    <rect class="card" x="364" y="48" width="150" height="48" rx="10"/>
+    <rect class="card" x="530" y="48" width="150" height="48" rx="10"/>
+    <rect class="card" x="696" y="48" width="150" height="48" rx="10"/>
+    <text class="host" x="107" y="77" text-anchor="middle">Command line</text>
+    <text class="host" x="273" y="70" text-anchor="middle">MCP clients</text>
+    <text class="hostd" x="273" y="86" text-anchor="middle">stdio · HTTP</text>
+    <text class="host" x="439" y="77" text-anchor="middle">Pi</text>
+    <text class="host" x="605" y="77" text-anchor="middle">Claude Code</text>
+    <text class="host" x="771" y="77" text-anchor="middle">Codex</text>
   </g>
 
-  <line class="flow" x1="200" y1="94" x2="200" y2="132" marker-end="url(#ah)"/>
-  <line class="flow" x1="440" y1="94" x2="440" y2="132" marker-end="url(#ah)"/>
-  <line class="flow" x1="680" y1="94" x2="680" y2="132" marker-end="url(#ah)"/>
+  <line class="flow" x1="200" y1="98" x2="200" y2="132" marker-end="url(#ah)"/>
+  <line class="flow" x1="440" y1="98" x2="440" y2="132" marker-end="url(#ah)"/>
+  <line class="flow" x1="680" y1="98" x2="680" y2="132" marker-end="url(#ah)"/>
 
-  <!-- SURFACE -->
-  <text class="band" x="32" y="128">SURFACE</text>
+  <!-- ADAPTERS -->
+  <text class="band" x="32" y="128">ADAPTERS</text>
   <g>
-    <rect x="32"  y="136" width="392" height="56" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <rect x="456" y="136" width="392" height="56" rx="10" fill="#ffffff" stroke="#dcd5cc"/>
-    <text class="pkg"  x="228" y="161" text-anchor="middle">@gonk/tool-registry-{cli,mcp,pi}</text>
-    <text class="desc" x="228" y="180" text-anchor="middle">expose a registry to a host</text>
-    <text class="pkg"  x="652" y="161" text-anchor="middle">@gonk/extension-spec  (+ -cli/-pi/-claude)</text>
-    <text class="desc" x="652" y="180" text-anchor="middle">author once, materialize per host</text>
+    <rect class="card" x="32"  y="136" width="400" height="56" rx="10"/>
+    <rect class="card" x="448" y="136" width="400" height="56" rx="10"/>
+    <text class="pkg"  x="232" y="161" text-anchor="middle">@gonk/tool-registry-{cli,mcp,pi}</text>
+    <text class="desc" x="232" y="180" text-anchor="middle">serve one registry as subcommands, MCP tools or Pi tools</text>
+    <text class="pkgs" x="648" y="161" text-anchor="middle">@gonk/extension-spec (+ -cli -pi -claude -codex)</text>
+    <text class="desc" x="648" y="180" text-anchor="middle">author an extension once, materialize it per host</text>
   </g>
 
-  <line class="flow" x1="200" y1="194" x2="200" y2="232" marker-end="url(#ah)"/>
-  <line class="flow" x1="440" y1="194" x2="440" y2="232" marker-end="url(#ah)"/>
-  <line class="flow" x1="680" y1="194" x2="680" y2="232" marker-end="url(#ah)"/>
+  <line class="flow" x1="200" y1="194" x2="200" y2="228" marker-end="url(#ah)"/>
+  <line class="flow" x1="440" y1="194" x2="440" y2="228" marker-end="url(#ah)"/>
+  <line class="flow" x1="680" y1="194" x2="680" y2="228" marker-end="url(#ah)"/>
 
-  <!-- FOUNDATION -->
-  <text class="band" x="32" y="228">FOUNDATION</text>
+  <!-- FOUNDATION: tools -->
+  <text class="band" x="32" y="224">FOUNDATION</text>
   <g>
-    <rect x="32"  y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="135" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="238" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="341" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="444" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="547" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="650" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <rect x="753" y="236" width="95" height="56" rx="10" fill="#fbf3f3" stroke="#e3c9cd"/>
-    <text class="pkg" style="font-size:9px" x="79.5" y="261" text-anchor="middle">@gonk/auth</text>
-    <text class="desc" style="font-size:9px" x="79.5" y="280" text-anchor="middle">identity + policy</text>
-    <text class="pkg" style="font-size:9px" x="182.5" y="261" text-anchor="middle">@gonk/context</text>
-    <text class="desc" style="font-size:9px" x="182.5" y="280" text-anchor="middle">context compiler</text>
-    <text class="pkg" style="font-size:8.5px" x="285.5" y="261" text-anchor="middle">@gonk/retrieval</text>
-    <text class="desc" style="font-size:9px" x="285.5" y="280" text-anchor="middle">authorized search</text>
-    <text class="pkg" style="font-size:9px" x="388.5" y="261" text-anchor="middle">@gonk/skills</text>
-    <text class="desc" style="font-size:9px" x="388.5" y="280" text-anchor="middle">managed reads</text>
-    <text class="pkg" style="font-size:7.4px" x="491.5" y="261" text-anchor="middle">@gonk/tool-registry</text>
-    <text class="desc" style="font-size:9px" x="491.5" y="280" text-anchor="middle">typed dispatch</text>
-    <text class="pkg" style="font-size:6.7px" x="594.5" y="261" text-anchor="middle">@gonk/tool-orchestrator</text>
-    <text class="desc" style="font-size:9px" x="594.5" y="280" text-anchor="middle">selection</text>
-    <text class="pkg" style="font-size:9px" x="697.5" y="261" text-anchor="middle">@gonk/scope</text>
-    <text class="desc" style="font-size:9px" x="697.5" y="280" text-anchor="middle">five-tier scope</text>
-    <text class="pkg" style="font-size:9px" x="800.5" y="261" text-anchor="middle">@gonk/store</text>
-    <text class="desc" style="font-size:9px" x="800.5" y="280" text-anchor="middle">kv · blob · log</text>
+    <rect class="found" x="32"  y="232" width="195" height="52" rx="10"/>
+    <rect class="found" x="239" y="232" width="195" height="52" rx="10"/>
+    <rect class="found" x="446" y="232" width="195" height="52" rx="10"/>
+    <rect class="found" x="653" y="232" width="195" height="52" rx="10"/>
+    <text class="pkgs" x="129.5" y="254" text-anchor="middle">@gonk/tool-registry</text>
+    <text class="desc" x="129.5" y="273" text-anchor="middle">typed tools, checked dispatch</text>
+    <text class="pkgs" x="336.5" y="254" text-anchor="middle">@gonk/tool-orchestrator</text>
+    <text class="desc" x="336.5" y="273" text-anchor="middle">one catalog, chosen tools</text>
+    <text class="pkgs" x="543.5" y="254" text-anchor="middle">@gonk/auth</text>
+    <text class="desc" x="543.5" y="273" text-anchor="middle">identity and policy</text>
+    <text class="pkgs" x="750.5" y="254" text-anchor="middle">@gonk/utils</text>
+    <text class="desc" x="750.5" y="273" text-anchor="middle">path and file safety</text>
   </g>
 
-  <!-- store & scope share one resolution -->
-  <path d="M697.5,300 L697.5,312 L800.5,312 L800.5,300" fill="none" stroke="#cbb6ba" stroke-width="1.3" stroke-dasharray="4 3"/>
-  <text class="note" x="749" y="334" text-anchor="middle">store &amp; scope share one substrate</text>
+  <!-- FOUNDATION: state and context -->
+  <g>
+    <rect class="found" x="32"  y="296" width="150" height="52" rx="10"/>
+    <rect class="found" x="198" y="296" width="150" height="52" rx="10"/>
+    <rect class="found" x="364" y="296" width="150" height="52" rx="10"/>
+    <rect class="found" x="530" y="296" width="150" height="52" rx="10"/>
+    <rect class="found" x="696" y="296" width="150" height="52" rx="10"/>
+    <text class="pkgs" x="107" y="318" text-anchor="middle">@gonk/scope</text>
+    <text class="desc" x="107" y="337" text-anchor="middle">five-tier settings</text>
+    <text class="pkgs" x="273" y="318" text-anchor="middle">@gonk/store</text>
+    <text class="desc" x="273" y="337" text-anchor="middle">state per tier</text>
+    <text class="pkgs" x="439" y="318" text-anchor="middle">@gonk/skills</text>
+    <text class="desc" x="439" y="337" text-anchor="middle">find and read skills</text>
+    <text class="pkgs" x="605" y="318" text-anchor="middle">@gonk/context</text>
+    <text class="desc" x="605" y="337" text-anchor="middle">model context, budgeted</text>
+    <text class="pkgs" x="771" y="318" text-anchor="middle">@gonk/retrieval</text>
+    <text class="desc" x="771" y="337" text-anchor="middle">authorized search</text>
+  </g>
+
+  <!-- scope, store and skills share the tiers -->
+  <path class="tie" d="M107,356 L107,366 L439,366 L439,356"/>
+  <line class="tie" x1="273" y1="356" x2="273" y2="366"/>
+  <text class="note" x="273" y="386" text-anchor="middle">store and skills use scope's five tiers</text>
 </svg>

@@ -17,7 +17,7 @@ Build capabilities on these primitives and they ship once, to run on any host.
 
 ## Architecture
 
-<p align="center"><img src="assets/architecture.svg" alt="Hosts (CLI, MCP client, Pi agent, Claude Code) sit on the adapter and extension-spec surface, which sits on the foundation packages: auth, context, retrieval, skills, tool-registry, tool-orchestrator, scope, and store." width="880"></p>
+<p align="center"><img src="assets/architecture.svg" alt="Hosts (a command line, MCP clients over stdio or HTTP, Pi, Claude Code, Codex) reach tools through the registry adapters and the extension-spec materializers. These sit on the foundation packages: tool-registry, tool-orchestrator, auth and utils for tools, and scope, store, skills, context and retrieval for state and context." width="880"></p>
 
 The foundation primitives, each its own package, plus an authoring layer on top of them:
 
@@ -54,7 +54,7 @@ projection to that same schema value for MCP, declare `approval: "read" |
 
 Every tool you write inherits config resolution for free — no config-file plumbing, no per-host storage code. A read with no tier named walks **most → least specific** and returns the first match; a write always names its tier. The same five tiers resolve identically across CLI, MCP, and Pi.
 
-<p align="center"><img src="assets/scope-resolution.svg" alt="A read walks the five tiers session, directory, project, persona, global from most to least specific and returns the first match; a write always names its tier." width="880"></p>
+<p align="center"><img src="assets/scope-resolution.svg" alt="A read walks the five tiers session, directory, project, persona and global, from most to least specific, and returns the first match. A write always names its tier." width="880"></p>
 
 A worked example — Gimble, the example persona, keeps a voice preference at the persona tier, and a session override wins without erasing it:
 
