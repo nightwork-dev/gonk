@@ -57,6 +57,7 @@ export type {
   SkillCreateRequest,
   SkillDirectoryEntry,
   SkillFileEntry,
+  SkillFieldWarning,
   SkillFreshness,
   SkillFreshnessProbe,
   SkillFreshnessProbeInput,

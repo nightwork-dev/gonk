@@ -263,6 +263,7 @@ function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
       "updatedAt",
       "requirements",
       "freshness",
+      "warnings",
     ]) &&
     isManagedSkillId(value.id) &&
     isOptionalNonEmptyString(value.name) &&
@@ -284,7 +285,21 @@ function isManagedSkillSummary(value: unknown): value is ManagedSkillSummary {
     isOptionalIsoTimestamp(value.lastUsedAt) &&
     isOptionalIsoTimestamp(value.updatedAt) &&
     (value.requirements === undefined || isSkillRequirement(value.requirements)) &&
-    (value.freshness === undefined || isSkillFreshnessResult(value.freshness))
+    (value.freshness === undefined || isSkillFreshnessResult(value.freshness)) &&
+    (value.warnings === undefined || isSkillFieldWarningList(value.warnings))
+  );
+}
+
+function isSkillFieldWarningList(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (warning) =>
+        isExactRecord(warning, ["field", "message"]) &&
+        isNonEmptyString(warning.field) &&
+        isNonEmptyString(warning.message)
+    )
   );
 }
 
@@ -310,6 +325,7 @@ function isManagedSkillDetail(value: unknown): value is ManagedSkillDetail {
       "updatedAt",
       "requirements",
       "freshness",
+      "warnings",
       "body",
       "supportingFiles",
       "provenance",
@@ -735,7 +751,7 @@ function pickSummary(value: Record<string, unknown>): Record<string, unknown> {
     "id", "name", "description", "version", "author", "tags", "origin", "scope",
     "lifecycle", "capabilities", "revision", "contentHash", "pinned",
     "agentCreated", "useCount", "lastUsedAt", "updatedAt", "requirements",
-    "freshness",
+    "freshness", "warnings",
   ]) {
     if (Object.hasOwn(value, key)) out[key] = value[key];
   }

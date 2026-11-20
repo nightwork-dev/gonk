@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { SCOPE_RESOLUTION_ORDER, type ScopeName } from "@gonk/scope";
 import type { GonkSyncState } from "@gonk/store";
@@ -22,6 +22,7 @@ import type {
 const JOURNAL_NAMESPACE = "skills.lifecycle";
 const MUTATION_PREFIX = "mutation:";
 const ACTIVATION_PREFIX = "activation:";
+const JOURNAL_ID_KEY = "journal-id";
 
 /**
  * Restart-durable lifecycle receipts stored under each scope's bound Mirk
@@ -149,6 +150,15 @@ export class FilesystemSkillLifecycleJournal implements SkillLifecycleJournal {
       activationKey(input.securityContextKey, input.receipt.activationId),
       record
     );
+  }
+
+  journalId(scope: ScopeName): string {
+    const state = this.kv(scope);
+    const existing = state.get(JOURNAL_ID_KEY);
+    if (typeof existing === "string" && existing.length > 0) return existing;
+    const created = `journal:${randomUUID()}`;
+    state.set(JOURNAL_ID_KEY, created);
+    return created;
   }
 
   private kv(scope: ScopeName) {

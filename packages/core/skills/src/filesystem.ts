@@ -43,7 +43,11 @@ import { bindGonkSyncState } from "@gonk/store";
 import { ToolError, type ToolDefinition } from "@gonk/tool-registry";
 import { stringify as stringifyYaml } from "yaml";
 
-import { parseSkillDocument, type FrontmatterRecord } from "./frontmatter.ts";
+import {
+  parseSkillDocument,
+  rewriteSkillManifest,
+  type FrontmatterRecord,
+} from "./frontmatter.ts";
 import { isManagedSkillId, isManagedSkillPath } from "./identifiers.ts";
 import { FilesystemSkillLifecycleJournal } from "./journal.ts";
 import { isIsoDateOrTimestamp, isIsoTimestamp } from "./validation.ts";
@@ -61,6 +65,7 @@ import {
   skillFreshnessResultSchema,
 } from "./schemas.ts";
 import type {
+  SkillFieldWarning,
   FilesystemManagedSkillRegistryOptions,
   ManagedSkillDetail,
   ManagedSkillSummary,
@@ -412,7 +417,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         return mutationFailed(request.id, "not-found", "Patch target not found");
       }
       const body = detail.skill.body.split(request.find).join(request.replace);
-      const metadata = metadataFromDetail(detail.skill, this.now());
+      const updatedAt = this.now();
       return this.transactMutation(
         "patch",
         auth,
@@ -422,9 +427,14 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
         [skillDir],
         async () => {
           this.atomicRewriteSkillDir(skillDir, (temp) => {
+            const manifest = join(temp, MANIFEST);
             writeFileSync(
-              join(temp, MANIFEST),
-              renderSkillManifest(request.id, metadata, body, {}),
+              manifest,
+              rewriteSkillManifest(
+                readFileSync(manifest, "utf8"),
+                { updated_at: updatedAt },
+                body
+              ),
               "utf8"
             );
             applyFileMutations(temp, request.writeFiles, request.removeFiles);
@@ -614,24 +624,20 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       async () => {
         mkdirSync(dirname(live), { recursive: true });
         renameSync(staged.path, live);
-        const parsed = safeParseExisting(join(live, MANIFEST));
-        if (parsed) {
-          writeFileSync(
-            join(live, MANIFEST),
-            renderSkillManifest(request.id, parsed, parsed.body, {
-              updatedAt: this.now(),
-              needsAudit: false,
-            }),
-            "utf8"
-          );
-        } else {
-          const manifest = join(live, MANIFEST);
-          writeFileSync(
-            manifest,
-            readFileSync(manifest, "utf8").replace(/^needs_audit: true\n/m, ""),
-            "utf8"
-          );
+        const manifest = join(live, MANIFEST);
+        const text = readFileSync(manifest, "utf8");
+        let promoted: string;
+        try {
+          promoted = rewriteSkillManifest(text, {
+            needs_audit: undefined,
+            updated_at: this.now(),
+          });
+        } catch {
+          // Frontmatter the editor cannot place still loses its audit flag;
+          // reading the promoted skill reports what is wrong with the rest.
+          promoted = text.replace(/^needs_audit: true\r?\n/m, "");
         }
+        writeFileSync(manifest, promoted, "utf8");
         return this.mutationDetail(request.id, staged.scope, "active");
       }
     );
@@ -834,6 +840,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       securityContextKey: securityKey,
       activationId: receipt.activationId,
     });
+    snapshot.markApplied();
     try {
       this.lifecycleJournal.writeActivation({
         securityContextKey: securityKey,
@@ -914,6 +921,7 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
       result = await mutate();
       hasResult = true;
       if (result.status === "failed") snapshot.rollback();
+      else snapshot.markApplied();
       const remembered = this.remember(
         operation,
         auth,
@@ -1001,6 +1009,17 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     return join(root, lifecycle === "staged" ? STAGING_DIR : ARCHIVE_DIR);
   }
 
+  /** The lifecycle root of a tier, or undefined when the tier has no home
+   *  (for example the persona tier while no persona is active). */
+  private lifecycleRootIfHome(
+    scope: SkillScope,
+    lifecycle: SkillLifecycle
+  ): string | undefined {
+    return resolveTierHomes(this.env).has(scope)
+      ? this.lifecycleRoot(scope, lifecycle)
+      : undefined;
+  }
+
   private skillDir(scope: SkillScope, id: string): string {
     return join(this.lifecycleRoot(scope, "active"), id);
   }
@@ -1011,7 +1030,9 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
   ): { scope: SkillScope; path: string } | undefined {
     for (const current of SCOPE_RESOLUTION_ORDER) {
       if (scope !== undefined && current !== scope) continue;
-      const path = join(this.lifecycleRoot(current, "staged"), id);
+      const root = this.lifecycleRootIfHome(current, "staged");
+      if (!root) continue;
+      const path = join(root, id);
       if (existsSync(join(path, MANIFEST))) return { scope: current, path };
     }
     return undefined;
@@ -1021,8 +1042,8 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const entries: SkillArchiveEntry[] = [];
     for (const current of SCOPE_RESOLUTION_ORDER) {
       if (scope !== undefined && current !== scope) continue;
-      const root = this.lifecycleRoot(current, "archived");
-      if (!existsSync(root)) continue;
+      const root = this.lifecycleRootIfHome(current, "archived");
+      if (!root || !existsSync(root)) continue;
       for (const name of readdirSync(root).sort(compareOpaque)) {
         const archivedAt = parseArchiveName(id, name);
         if (!archivedAt) continue;
@@ -1089,9 +1110,14 @@ export class FilesystemManagedSkillRegistry implements WritableManagedSkillRegis
     const denied = await authorizeSkill(auth, action, id, scope, { id, scope, ...patch });
     if (denied) return mutationFailed(id, "denied", denied.reason);
     this.atomicRewriteSkillDir(this.skillDir(scope, id), (temp) => {
+      const manifest = join(temp, MANIFEST);
       writeFileSync(
-        join(temp, MANIFEST),
-        renderSkillManifest(id, { ...metadataFromDetail(found.skill, found.skill.updatedAt), ...patch }, found.skill.body, {}),
+        manifest,
+        rewriteSkillManifest(readFileSync(manifest, "utf8"), {
+          ...(patch.pinned === undefined ? {} : { pinned: patch.pinned }),
+          ...(patch.useCount === undefined ? {} : { use_count: patch.useCount }),
+          ...(patch.lastUsedAt === undefined ? {} : { last_used_at: patch.lastUsedAt }),
+        }),
         "utf8"
       );
     });
@@ -1457,57 +1483,6 @@ function renderSkillManifest(
   return `---\n${stringifyYaml(frontmatter)}---\n${body.endsWith("\n") ? body : `${body}\n`}`;
 }
 
-function metadataFromDetail(
-  skill: ManagedSkillDetail,
-  updatedAt: string | undefined
-): {
-  description: string;
-  name?: string;
-  version?: string;
-  author?: string;
-  tags?: readonly string[];
-  provenance?: SkillProvenance;
-  pinned?: boolean;
-  agentCreated?: boolean;
-  useCount?: number;
-  lastUsedAt?: string;
-  updatedAt?: string;
-} {
-  return {
-    description: skill.description,
-    ...(skill.name === undefined ? {} : { name: skill.name }),
-    ...(skill.version === undefined ? {} : { version: skill.version }),
-    ...(skill.author === undefined ? {} : { author: skill.author }),
-    ...(skill.tags === undefined ? {} : { tags: skill.tags }),
-    ...(skill.provenance === undefined ? {} : { provenance: skill.provenance }),
-    ...(skill.pinned === undefined ? {} : { pinned: skill.pinned }),
-    ...(skill.agentCreated === undefined ? {} : { agentCreated: skill.agentCreated }),
-    ...(skill.useCount === undefined ? {} : { useCount: skill.useCount }),
-    ...(skill.lastUsedAt === undefined ? {} : { lastUsedAt: skill.lastUsedAt }),
-    ...(updatedAt === undefined ? {} : { updatedAt }),
-  };
-}
-
-function safeParseExisting(path: string):
-  | (ReturnType<typeof parseMetadata> & { body: string; createdAt?: string })
-  | undefined {
-  try {
-    const document = parseSkillDocument(readFileSync(path, "utf8"));
-    const id = optionalString(document.frontmatter.id, "id");
-    const metadata = parseMetadata(document.frontmatter, id ?? "");
-    const createdRaw = document.frontmatter.created_at ?? document.frontmatter.createdAt;
-    return {
-      ...metadata,
-      body: document.body,
-      ...(createdRaw === undefined
-        ? {}
-        : { createdAt: requiredIsoTimestamp(createdRaw, "created_at") }),
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 function archiveName(id: string, timestamp: string): string {
   return `${id}-${timestamp.replace(/[:.]/g, "-")}`;
 }
@@ -1575,6 +1550,9 @@ function writeFileAtomic(path: string, content: string): void {
 
 interface FilesystemSnapshot {
   setProbe(probe: SkillTransactionProbe): void;
+  /** Record that the files hold the finished mutation. Called just before
+   *  the receipt is written. */
+  markApplied(): void;
   commit(): void;
   rollback(): void;
 }
@@ -1592,6 +1570,10 @@ interface SkillTransactionMarker {
   markerVersion: 1;
   scope: SkillScope;
   probe: SkillTransactionProbe;
+  /** The writer's journal (`SkillLifecycleJournal.journalId`), when it has one. */
+  journalId?: string;
+  /** The files hold the finished mutation; only the receipt may be missing. */
+  applied?: true;
   entries: readonly {
     path: string;
     backup: string;
@@ -1652,10 +1634,12 @@ class FilesystemSkillTransactionStore {
           directory,
         });
       }
+      const journalId = this.journal.journalId?.(scope);
       const marker: SkillTransactionMarker = {
         markerVersion: 1,
         scope,
         probe,
+        ...(journalId === undefined ? {} : { journalId }),
         entries,
       };
       writeTransactionMarker(root, marker);
@@ -1673,10 +1657,9 @@ class FilesystemSkillTransactionStore {
       if (!home || !lstatIfExists(home)) continue;
       const namespace = this.namespace(scope, home);
       if (!existsSync(namespace)) continue;
+      // A live writer holds the lock and settles its own transaction.
       const releaseLock = this.tryAcquireLock(scope, namespace);
-      if (!releaseLock) {
-        throw new Error(`Another skill transaction is active in scope: ${scope}`);
-      }
+      if (!releaseLock) continue;
       try {
         for (const name of readdirSync(namespace).sort(compareOpaque)) {
           const root = join(namespace, name);
@@ -1704,7 +1687,18 @@ class FilesystemSkillTransactionStore {
     }
   }
 
+  /**
+   * Whether a crashed transaction's files are kept. The writer's own journal
+   * decides by its receipt. Another host cannot read that journal, so it keeps
+   * files the writer had finished (`applied`) and restores any it had not.
+   */
   private isCommitted(marker: SkillTransactionMarker): boolean {
+    if (
+      marker.journalId !== undefined &&
+      marker.journalId !== this.journal.journalId?.(marker.scope)
+    ) {
+      return marker.applied === true;
+    }
     if (marker.probe.kind === "rollback") return false;
     if (marker.probe.kind === "mutation") {
       return (
@@ -1790,6 +1784,11 @@ function persistentSnapshot(
       marker = { ...marker, probe };
       writeTransactionMarker(root, marker);
     },
+    markApplied() {
+      if (settled) throw new Error("Skill transaction is already settled");
+      marker = { ...marker, applied: true };
+      writeTransactionMarker(root, marker);
+    },
     commit() {
       if (settled) return;
       rmSync(root, { recursive: true, force: true });
@@ -1852,10 +1851,15 @@ function writeTransactionMarker(
 function parseTransactionMarker(content: string): SkillTransactionMarker | undefined {
   try {
     const value = JSON.parse(content) as unknown;
-    if (!isRecord(value) || !hasOnlyKeys(value, ["markerVersion", "scope", "probe", "entries"])) {
+    if (
+      !isRecord(value) ||
+      !hasOnlyKeys(value, ["markerVersion", "scope", "probe", "entries"], ["journalId", "applied"])
+    ) {
       return undefined;
     }
     if (value.markerVersion !== 1 || !isSkillScope(value.scope)) return undefined;
+    if (value.journalId !== undefined && typeof value.journalId !== "string") return undefined;
+    if (value.applied !== undefined && value.applied !== true) return undefined;
     const probe = parseTransactionProbe(value.probe);
     if (!probe || !Array.isArray(value.entries)) return undefined;
     const entries = value.entries.map(parseTransactionEntry);
@@ -1864,6 +1868,8 @@ function parseTransactionMarker(content: string): SkillTransactionMarker | undef
       markerVersion: 1,
       scope: value.scope,
       probe,
+      ...(value.journalId === undefined ? {} : { journalId: value.journalId }),
+      ...(value.applied === true ? { applied: true as const } : {}),
       entries: entries as SkillTransactionMarker["entries"],
     };
   } catch {
@@ -2120,9 +2126,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasOnlyKeys(
   value: Record<string, unknown>,
-  keys: readonly string[]
+  keys: readonly string[],
+  optionalKeys: readonly string[] = []
 ): boolean {
-  const expected = new Set(keys);
+  const expected = new Set([...keys, ...optionalKeys]);
   return Object.keys(value).every((key) => expected.has(key)) &&
     keys.every((key) => key in value);
 }
@@ -2575,6 +2582,9 @@ function readDefinition(
     ...(metadata.requirements === undefined
       ? {}
       : { requirements: metadata.requirements }),
+    ...(metadata.warnings.length === 0
+      ? {}
+      : { warnings: Object.freeze([...metadata.warnings]) }),
   };
   return {
     summary,
@@ -2601,8 +2611,15 @@ interface ParsedMetadata {
   updatedAt?: string;
   requirements?: SkillRequirement;
   provenance?: SkillProvenance;
+  warnings: SkillFieldWarning[];
 }
 
+/**
+ * Read a manifest's frontmatter. Only what makes a skill unusable refuses it:
+ * an id that does not match its folder, a missing description, or a staged
+ * skill in the active folder. Any other field that does not parse is left out
+ * of the record and reported as a warning; the file keeps it as written.
+ */
 function parseMetadata(
   frontmatter: FrontmatterRecord,
   directoryId: string
@@ -2620,66 +2637,75 @@ function parseMetadata(
   if (needsAudit === true) {
     throw new TypeError("Staged skill appeared in the active directory");
   }
-  if (frontmatter.created_at !== undefined || frontmatter.createdAt !== undefined) {
-    requiredIsoTimestamp(
-      frontmatter.created_at ?? frontmatter.createdAt,
-      "created_at"
-    );
+  const warnings: SkillFieldWarning[] = [];
+  const field = <T>(
+    label: string,
+    value: FrontmatterRecord[string] | undefined,
+    read: (value: unknown, label: string) => T | undefined
+  ): T | undefined => {
+    if (value === undefined) return undefined;
+    try {
+      return read(value, label);
+    } catch (error) {
+      warnings.push({ field: label, message: warningMessage(error) });
+      return undefined;
+    }
+  };
+  field("created_at", frontmatter.created_at ?? frontmatter.createdAt, requiredIsoTimestamp);
+  const name = field("name", frontmatter.name, requiredString);
+  const version = field("version", frontmatter.version, requiredString);
+  const author = field("author", frontmatter.author, requiredString);
+  const tags = field("tags", frontmatter.tags, optionalStringArray);
+  const pinned = field("pinned", frontmatter.pinned, optionalBoolean);
+  const agentCreated = field(
+    "agent_created",
+    frontmatter.agent_created ?? frontmatter.agentCreated,
+    optionalBoolean
+  );
+  const useCount = field(
+    "use_count",
+    frontmatter.use_count ?? frontmatter.useCount,
+    nonNegativeInteger
+  );
+  const lastUsedAt = field(
+    "last_used_at",
+    frontmatter.last_used_at ?? frontmatter.lastUsedAt,
+    requiredIsoTimestamp
+  );
+  const updatedAt = field(
+    "updated_at",
+    frontmatter.updated_at ?? frontmatter.updatedAt,
+    requiredIsoTimestamp
+  );
+  let requirements: SkillRequirement | undefined;
+  try {
+    requirements = parseRequirements(frontmatter);
+  } catch (error) {
+    warnings.push({ field: "requirements", message: warningMessage(error) });
   }
-  const requirements = parseRequirements(frontmatter);
-  const provenance = parseProvenance(frontmatter.provenance);
-  const tags = optionalStringArray(frontmatter.tags, "tags");
+  const provenance = field("provenance", frontmatter.provenance, (value) =>
+    parseProvenance(value, warnings)
+  );
   return {
     id,
-    ...(frontmatter.name === undefined
-      ? {}
-      : { name: requiredString(frontmatter.name, "name") }),
+    ...(name === undefined ? {} : { name }),
     description,
-    ...(frontmatter.version === undefined
-      ? {}
-      : { version: requiredString(frontmatter.version, "version") }),
-    ...(frontmatter.author === undefined
-      ? {}
-      : { author: requiredString(frontmatter.author, "author") }),
+    ...(version === undefined ? {} : { version }),
+    ...(author === undefined ? {} : { author }),
     ...(tags === undefined ? {} : { tags }),
-    ...(frontmatter.pinned === undefined
-      ? {}
-      : { pinned: optionalBoolean(frontmatter.pinned, "pinned")! }),
-    ...((frontmatter.agent_created ?? frontmatter.agentCreated) === undefined
-      ? {}
-      : {
-          agentCreated: optionalBoolean(
-            frontmatter.agent_created ?? frontmatter.agentCreated,
-            "agent_created"
-          )!,
-        }),
-    ...((frontmatter.use_count ?? frontmatter.useCount) === undefined
-      ? {}
-      : {
-          useCount: nonNegativeInteger(
-            frontmatter.use_count ?? frontmatter.useCount,
-            "use_count"
-          ),
-        }),
-    ...((frontmatter.last_used_at ?? frontmatter.lastUsedAt) === undefined
-      ? {}
-      : {
-          lastUsedAt: requiredIsoTimestamp(
-            frontmatter.last_used_at ?? frontmatter.lastUsedAt,
-            "last_used_at"
-          ),
-        }),
-    ...((frontmatter.updated_at ?? frontmatter.updatedAt) === undefined
-      ? {}
-      : {
-          updatedAt: requiredIsoTimestamp(
-            frontmatter.updated_at ?? frontmatter.updatedAt,
-            "updated_at"
-          ),
-        }),
+    ...(pinned === undefined ? {} : { pinned }),
+    ...(agentCreated === undefined ? {} : { agentCreated }),
+    ...(useCount === undefined ? {} : { useCount }),
+    ...(lastUsedAt === undefined ? {} : { lastUsedAt }),
+    ...(updatedAt === undefined ? {} : { updatedAt }),
     ...(requirements === undefined ? {} : { requirements }),
     ...(provenance === undefined ? {} : { provenance }),
+    warnings,
   };
+}
+
+function warningMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "could not be read";
 }
 
 function parseRequirements(frontmatter: FrontmatterRecord): SkillRequirement | undefined {
@@ -2704,7 +2730,10 @@ function parseRequirements(frontmatter: FrontmatterRecord): SkillRequirement | u
   };
 }
 
-function parseProvenance(value: unknown): SkillProvenance | undefined {
+function parseProvenance(
+  value: unknown,
+  warnings: SkillFieldWarning[]
+): SkillProvenance | undefined {
   if (value === undefined || value === null) return undefined;
   if (!isFrontmatterRecord(value)) {
     throw new TypeError("provenance must be a mapping");
@@ -2721,16 +2750,22 @@ function parseProvenance(value: unknown): SkillProvenance | undefined {
     ...(value.version === undefined
       ? {}
       : { version: requiredString(value.version, "provenance.version") }),
-    ...((value.pinned_at ?? value.pinnedAt) === undefined
-      ? {}
-      : {
-          pinnedAt: requiredIsoDateOrTimestamp(
-            value.pinned_at ?? value.pinnedAt,
-            "provenance.pinned_at"
-          ),
-        }),
+    ...optionalPinnedAt(value.pinned_at ?? value.pinnedAt, warnings),
     anchors,
   };
+}
+
+function optionalPinnedAt(
+  value: unknown,
+  warnings: SkillFieldWarning[]
+): { pinnedAt?: string } {
+  if (value === undefined) return {};
+  try {
+    return { pinnedAt: requiredIsoDateOrTimestamp(value, "provenance.pinned_at") };
+  } catch (error) {
+    warnings.push({ field: "provenance.pinned_at", message: warningMessage(error) });
+    return {};
+  }
 }
 
 function parseProvenanceAnchors(value: unknown): readonly SkillProvenanceAnchor[] {

@@ -129,6 +129,16 @@ export interface ManagedSkillSummary {
   updatedAt?: string;
   requirements?: SkillRequirement;
   freshness?: SkillFreshnessResult;
+  /** Frontmatter fields that did not parse. The skill is still listed; each
+   *  field is left out of this record and stays in the file as written. */
+  warnings?: readonly SkillFieldWarning[];
+}
+
+/** One frontmatter field that did not parse, named by its key path
+ *  (for example `provenance.pinned_at`). */
+export interface SkillFieldWarning {
+  field: string;
+  message: string;
 }
 
 export interface ManagedSkillDetail extends ManagedSkillSummary {
@@ -456,6 +466,14 @@ export interface SkillLifecycleJournal {
   readActivation(query: SkillActivationJournalQuery): SkillActivationReceipt | undefined;
   listActivations(securityContextKey: string): readonly SkillActivationReceipt[];
   writeActivation(input: SkillActivationJournalWrite): void;
+  /**
+   * A stable id for the storage this journal keeps a scope's receipts in.
+   * Hosts that share that storage return the same id. Crash recovery uses it
+   * to tell its own unfinished transactions from another host's, whose
+   * receipts it cannot read. A journal without it is treated as the writer of
+   * every transaction it finds.
+   */
+  journalId?(scope: SkillScope): string;
 }
 
 export interface SkillActivateRequest {

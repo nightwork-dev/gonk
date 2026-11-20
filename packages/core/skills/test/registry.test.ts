@@ -437,9 +437,10 @@ describe("authorized filesystem mutations", () => {
         "mutation",
         () => {
           crash.capture();
+          // Opening while this transaction is live leaves it to its writer.
           expect(
-            () => new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource })
-          ).toThrow("Another skill transaction is active in scope: project");
+            new FilesystemManagedSkillRegistry({ env: harness.env, stateSource: harness.stateSource })
+          ).toBeInstanceOf(FilesystemManagedSkillRegistry);
           concurrentConstructionObservedPendingState = existsSync(
             join(harness.home("project"), "skills", "journal-rollback")
           );
@@ -1257,16 +1258,18 @@ describe("filesystem safety and parsing", () => {
     expect(result.skills.map(({ id }) => id)).toEqual(["valid"]);
   });
 
-  it("rejects invalid metadata timestamps", async () => {
+  it("leaves invalid metadata timestamps out and reports them", async () => {
     const harness = make();
     await harness.seed({
       scope: "project",
       id: "bad-time",
       frontmatter: "id: bad-time\ndescription: invalid time\nupdated_at: yesterday",
     });
-    expect(await harness.registry.get({ id: "bad-time" })).toEqual({
-      status: "not-found",
-      id: "bad-time",
+    expect(await harness.registry.get({ id: "bad-time" })).toMatchObject({
+      status: "found",
+      skill: {
+        warnings: [{ field: "updated_at", message: "updated_at must be an ISO 8601 timestamp" }],
+      },
     });
 
     await harness.seed({
@@ -1275,10 +1278,11 @@ describe("filesystem safety and parsing", () => {
       frontmatter:
         "id: date-only-update\ndescription: invalid operational date\nupdated_at: 2026-07-16",
     });
-    expect(await harness.registry.get({ id: "date-only-update" })).toEqual({
-      status: "not-found",
-      id: "date-only-update",
-    });
+    const dateOnly = await harness.registry.get({ id: "date-only-update" });
+    expect(dateOnly.status === "found" ? dateOnly.skill.updatedAt : "listed").toBeUndefined();
+    expect(dateOnly.status === "found" ? dateOnly.skill.warnings : undefined).toEqual([
+      { field: "updated_at", message: "updated_at must be an ISO 8601 timestamp" },
+    ]);
   });
 
   it("rejects manifest and supporting-file symlinks, including in-tree links", async () => {
@@ -1407,7 +1411,7 @@ describe("provenance and freshness", () => {
     expect(result.skill.freshness).toEqual({ status: "unknown" });
   });
 
-  it("rejects impossible date-only provenance values", async () => {
+  it("leaves impossible date-only provenance values out and reports them", async () => {
     const harness = make();
     await harness.seed({
       scope: "project",
@@ -1416,10 +1420,16 @@ describe("provenance and freshness", () => {
         .replace("id: sourced", "id: impossible-provenance-date")
         .replace("2026-07-16T00:00:00Z", "2026-02-31"),
     });
-    expect(await harness.registry.get({ id: "impossible-provenance-date" })).toEqual({
-      status: "not-found",
-      id: "impossible-provenance-date",
-    });
+    const found = await harness.registry.get({ id: "impossible-provenance-date" });
+    expect(found.status).toBe("found");
+    if (found.status !== "found") return;
+    expect(found.skill.provenance?.pinnedAt).toBeUndefined();
+    expect(found.skill.warnings).toEqual([
+      {
+        field: "provenance.pinned_at",
+        message: "provenance.pinned_at must be an ISO 8601 date or timestamp",
+      },
+    ]);
   });
 
   it("uses an injected probe and normalizes failures to unprobeable", async () => {
