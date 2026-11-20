@@ -1,5 +1,14 @@
 # @gonk/tool-registry-mcp
 
+## 0.13.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/auth@0.13.4
+  - @gonk/tool-orchestrator@0.13.4
+  - @gonk/tool-registry@0.13.4
+
 ## 0.13.3
 
 ### Patch Changes

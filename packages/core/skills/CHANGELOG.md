@@ -1,5 +1,17 @@
 # @gonk/skills
 
+## 0.13.4
+
+### Patch Changes
+
+- Rewrites (pin, record usage, activate, patch, promote) change only the keys they mean to change and keep every other frontmatter byte, including `created_at` and unknown keys. A field that does not parse is reported in the summary's new `warnings` list instead of hiding the skill. `restore`, `promote` and `archive` without a scope skip tiers with no home. Crash recovery keeps a transaction's finished files when the recovering host's journal differs from the writer's, and opening a registry while another holds the transaction lock no longer throws. `SkillLifecycleJournal` gains an optional `journalId(scope)`.
+- Updated dependencies []:
+  - @gonk/auth@0.13.4
+  - @gonk/context@0.13.4
+  - @gonk/scope@0.13.4
+  - @gonk/store@0.13.4
+  - @gonk/tool-registry@0.13.4
+
 ## 0.13.3
 
 ### Patch Changes

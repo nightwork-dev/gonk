@@ -1,5 +1,13 @@
 # @gonk/channel
 
+## 0.13.4
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @gonk/scope@0.13.4
+  - @gonk/tool-registry@0.13.4
+
 ## 0.13.3
 
 ### Patch Changes
